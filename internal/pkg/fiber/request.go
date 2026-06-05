@@ -37,7 +37,7 @@ func ParseAndValidate[T any](c *fiber.Ctx, req *T) error {
 		normalizable.Normalize()
 	}
 
-	if errs := Validate(req); errs != nil {
+	if errs := ValidateStruct(req); errs != nil {
 		return NewValidationError(errs)
 	}
 	return nil
@@ -70,7 +70,7 @@ func ParseQueryWithValidation[T any](c *fiber.Ctx) (*T, error) {
 	if err := c.QueryParser(&req); err != nil {
 		return nil, BadRequest("Invalid query parameters")
 	}
-	if errs := Validate(&req); errs != nil {
+	if errs := ValidateStruct(&req); errs != nil {
 		return nil, NewValidationError(errs)
 	}
 	return &req, nil

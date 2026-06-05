@@ -48,7 +48,7 @@ func setAuthContext(c *fiber.Ctx, claims jwt.MapClaims) {
 	// on normal staff/customer tokens.
 	if _, ok := claims["impersonation_sid"].(string); ok {
 		if ro, ok := claims["read_only"].(bool); ok {
-			c.Locals("impersonationReadOnly", ro)
+			c.Locals(fiberctx.KeyImpersonationReadOnly, ro)
 		}
 	}
 }
@@ -97,6 +97,17 @@ func tryAuthenticate(c *fiber.Ctx, jwtSecret string, db *gorm.DB) bool {
 	claims, err := security.ParseJWTToken(token, jwtSecret)
 	if err == nil {
 		if err := security.ValidateJWTTokenType(claims, "access"); err == nil {
+			// Reject tokens whose backing session has been revoked (logout,
+			// "log out other devices", session revocation). Session-bound
+			// tokens carry session_id; PATs and sessionless tokens skip this
+			// and remain valid. Mirrors the revocation check the refresh path
+			// already enforces in AuthService.RefreshToken.
+			if sessionID, ok := claims["session_id"].(string); ok && sessionID != "" {
+				if !sessionIsLive(sessionID) {
+					return false
+				}
+			}
+
 			setAuthContext(c, claims)
 			return true
 		}

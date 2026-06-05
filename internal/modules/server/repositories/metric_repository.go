@@ -2,7 +2,6 @@ package repositories
 
 import (
 	"context"
-	"errors"
 	"time"
 
 	"gorm.io/gorm"
@@ -39,18 +38,10 @@ func (r *MetricRepository) FindByServer(ctx context.Context, serverID string, fr
 
 // FindLatestByServer finds the latest metric for a server
 func (r *MetricRepository) FindLatestByServer(ctx context.Context, serverID string) (*models.Metric, error) {
-	var metric models.Metric
-	err := r.DB.WithContext(ctx).
-		Where("server_id = ?", serverID).
-		Order("recorded_at DESC").
-		First(&metric).Error
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, nil
-		}
-		return nil, err
-	}
-	return &metric, nil
+	return repository.FindOneOrNil[models.Metric](ctx, r.DB,
+		repository.WithServerID(serverID),
+		repository.OrderBy("recorded_at", "DESC"),
+	)
 }
 
 // DeleteOld deletes metrics older than a certain time for a specific server

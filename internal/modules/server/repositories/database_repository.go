@@ -2,7 +2,6 @@ package repositories
 
 import (
 	"context"
-	"errors"
 
 	"gorm.io/gorm"
 
@@ -38,51 +37,32 @@ func (r *DatabaseRepository) FindByID(ctx context.Context, id string) (*models.D
 
 // FindByIDWithServer returns a database by ID with the Server relation preloaded
 func (r *DatabaseRepository) FindByIDWithServer(ctx context.Context, id string) (*models.Database, error) {
-	var database models.Database
-	err := r.DB.WithContext(ctx).Preload("Server").First(&database, "id = ?", id).Error
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, fiberutil.NotFound()
-		}
-		return nil, err
-	}
-	return &database, nil
+	return repository.FindOne[models.Database](ctx, r.DB,
+		repository.WithID(id),
+		repository.Preload("Server"),
+	)
 }
 
 // FindUsersByServer returns all database users for a server
 func (r *DatabaseRepository) FindUsersByServer(ctx context.Context, serverID string) ([]models.DatabaseUser, error) {
-	var users []models.DatabaseUser
-	err := r.DB.WithContext(ctx).
-		Where("server_id = ?", serverID).
-		Order("created_at DESC").
-		Find(&users).Error
-	return users, err
+	return repository.FindAll[models.DatabaseUser](ctx, r.DB,
+		repository.WithServerID(serverID),
+		repository.OrderByCreatedDesc(),
+	)
 }
 
 // FindUserByID returns a database user by ID
 func (r *DatabaseRepository) FindUserByID(ctx context.Context, id string) (*models.DatabaseUser, error) {
-	var user models.DatabaseUser
-	err := r.DB.WithContext(ctx).First(&user, "id = ?", id).Error
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, fiberutil.NotFound()
-		}
-		return nil, err
-	}
-	return &user, nil
+	return repository.FindOne[models.DatabaseUser](ctx, r.DB, repository.WithID(id))
 }
 
 // FindUserByIDWithServer returns a database user by ID with the Server relation preloaded
 func (r *DatabaseRepository) FindUserByIDWithServer(ctx context.Context, id string) (*models.DatabaseUser, error) {
-	var user models.DatabaseUser
-	err := r.DB.WithContext(ctx).Preload("Server").Preload("Databases").Where("id = ?", id).First(&user).Error
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, fiberutil.NotFound()
-		}
-		return nil, err
-	}
-	return &user, nil
+	return repository.FindOne[models.DatabaseUser](ctx, r.DB,
+		repository.WithID(id),
+		repository.Preload("Server"),
+		repository.Preload("Databases"),
+	)
 }
 
 // CreateUser creates a new database user

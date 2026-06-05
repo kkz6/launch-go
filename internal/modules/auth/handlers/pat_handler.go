@@ -87,13 +87,8 @@ func (h *PATHandler) List(c *fiber.Ctx) error {
 }
 
 // Create creates a new PAT for the authenticated user
-func (h *PATHandler) Create(c *fiber.Ctx) error {
+func (h *PATHandler) Create(c *fiber.Ctx, req *createPATRequest) error {
 	userID, err := fiberctx.MustGetUserID(c)
-	if err != nil {
-		return err
-	}
-
-	req, err := fiberctx.MustParseAndValidate[createPATRequest](c)
 	if err != nil {
 		return err
 	}

@@ -10,12 +10,8 @@ import (
 // UpdateComposerAuth updates the Composer auth.json configuration on the
 // server. PUT to a parent-scoped resource with no own id, so it does not
 // fit the generic Update / UpdateNested helpers.
-func (h *Handler) UpdateComposerAuth(c *fiber.Ctx) error {
+func (h *Handler) UpdateComposerAuth(c *fiber.Ctx, req *dto.UpdateComposerAuthRequest) error {
 	teamID, serverID, err := fiberctx.GetTeamAndServerID(c)
-	if err != nil {
-		return err
-	}
-	req, err := fiberctx.MustParseAndValidate[dto.UpdateComposerAuthRequest](c)
 	if err != nil {
 		return err
 	}

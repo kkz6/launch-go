@@ -19,13 +19,8 @@ func NewTeamHandler(service *services.Service) *TeamHandler {
 }
 
 // CreateTeam creates a new team
-func (h *TeamHandler) CreateTeam(c *fiber.Ctx) error {
+func (h *TeamHandler) CreateTeam(c *fiber.Ctx, req *dto.CreateTeamRequest) error {
 	userID, err := fiberctx.MustGetUserID(c)
-	if err != nil {
-		return err
-	}
-
-	req, err := fiberctx.MustParseAndValidate[dto.CreateTeamRequest](c)
 	if err != nil {
 		return err
 	}
@@ -63,18 +58,13 @@ func (h *TeamHandler) GetTeam(c *fiber.Ctx) error {
 }
 
 // UpdateTeam updates a team
-func (h *TeamHandler) UpdateTeam(c *fiber.Ctx) error {
+func (h *TeamHandler) UpdateTeam(c *fiber.Ctx, req *dto.UpdateTeamRequest) error {
 	userID, err := fiberctx.MustGetUserID(c)
 	if err != nil {
 		return err
 	}
 
 	teamID, err := fiberctx.GetTeamIDParam(c)
-	if err != nil {
-		return err
-	}
-
-	req, err := fiberctx.MustParseAndValidate[dto.UpdateTeamRequest](c)
 	if err != nil {
 		return err
 	}
@@ -122,13 +112,8 @@ func (h *TeamHandler) GetUserTeams(c *fiber.Ctx) error {
 }
 
 // SwitchTeam switches the user's current team (from request body)
-func (h *TeamHandler) SwitchTeam(c *fiber.Ctx) error {
+func (h *TeamHandler) SwitchTeam(c *fiber.Ctx, req *dto.SwitchTeamRequest) error {
 	userID, err := fiberctx.MustGetUserID(c)
-	if err != nil {
-		return err
-	}
-
-	req, err := fiberctx.MustParseAndValidate[dto.SwitchTeamRequest](c)
 	if err != nil {
 		return err
 	}

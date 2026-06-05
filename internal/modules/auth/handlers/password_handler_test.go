@@ -12,6 +12,7 @@ import (
 
 	"github.com/kkz6/launch-go/internal/modules/auth/handlers"
 	"github.com/kkz6/launch-go/internal/modules/auth/services"
+	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 )
 
 func setupPasswordHandler() (*fiber.App, *mockRepoRegistry, *handlers.Handler) {
@@ -26,7 +27,7 @@ func setupPasswordHandler() (*fiber.App, *mockRepoRegistry, *handlers.Handler) {
 
 func TestPasswordHandler_ForgotPassword_Success(t *testing.T) {
 	app, reg, handler := setupPasswordHandler()
-	app.Post("/forgot-password", handler.Password.ForgotPassword)
+	app.Post("/forgot-password", fiberutil.Validate(handler.Password.ForgotPassword))
 
 	user := newTestUser("user_001", "Test User", "test@example.com", "hashed")
 	reg.user.users["user_001"] = user
@@ -44,7 +45,7 @@ func TestPasswordHandler_ForgotPassword_Success(t *testing.T) {
 
 func TestPasswordHandler_ForgotPassword_AlwaysReturnsSuccess(t *testing.T) {
 	app, _, handler := setupPasswordHandler()
-	app.Post("/forgot-password", handler.Password.ForgotPassword)
+	app.Post("/forgot-password", fiberutil.Validate(handler.Password.ForgotPassword))
 
 	// Non-existent email should still return success to prevent enumeration
 	resp, err := app.Test(makeJSONRequest(http.MethodPost, "/forgot-password", map[string]string{
@@ -59,7 +60,7 @@ func TestPasswordHandler_ForgotPassword_AlwaysReturnsSuccess(t *testing.T) {
 
 func TestPasswordHandler_ForgotPassword_ValidationError(t *testing.T) {
 	app, _, handler := setupPasswordHandler()
-	app.Post("/forgot-password", handler.Password.ForgotPassword)
+	app.Post("/forgot-password", fiberutil.Validate(handler.Password.ForgotPassword))
 
 	resp, err := app.Test(makeJSONRequest(http.MethodPost, "/forgot-password", map[string]string{
 		"email": "not-an-email",
@@ -70,7 +71,7 @@ func TestPasswordHandler_ForgotPassword_ValidationError(t *testing.T) {
 
 func TestPasswordHandler_ResetPassword_ValidationError(t *testing.T) {
 	app, _, handler := setupPasswordHandler()
-	app.Post("/reset-password", handler.Password.ResetPassword)
+	app.Post("/reset-password", fiberutil.Validate(handler.Password.ResetPassword))
 
 	// Missing required fields
 	resp, err := app.Test(makeJSONRequest(http.MethodPost, "/reset-password", map[string]string{}), testTimeout)
@@ -80,7 +81,7 @@ func TestPasswordHandler_ResetPassword_ValidationError(t *testing.T) {
 
 func TestPasswordHandler_ResetPassword_InvalidToken(t *testing.T) {
 	app, reg, handler := setupPasswordHandler()
-	app.Post("/reset-password", handler.Password.ResetPassword)
+	app.Post("/reset-password", fiberutil.Validate(handler.Password.ResetPassword))
 
 	user := newTestUser("user_001", "Test User", "test@example.com", "hashed")
 	reg.user.users["user_001"] = user

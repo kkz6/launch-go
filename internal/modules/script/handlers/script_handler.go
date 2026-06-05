@@ -22,50 +22,37 @@ func NewScriptHandler(service *services.ScriptService) *ScriptHandler {
 }
 
 // List returns all scripts accessible to the user
-func (h *ScriptHandler) List(c *fiber.Ctx) error {
-	teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
+func (h *ScriptHandler) List(r *fiberutil.Request) error {
+	scripts, err := h.service.List(r.Context(), r.UserID, r.TeamID)
 	if err != nil {
-		return err
-	}
-
-	scripts, err := h.service.List(c.Context(), userID, teamID)
-	if err != nil {
-		return fiberutil.HandleError(c, err)
+		return fiberutil.HandleError(r.Ctx, err)
 	}
 
 	results := pkgdto.ConvertSlicePtr(scripts, dto.ToScriptResponse)
 
-	return fiberutil.OK(c, "Scripts retrieved", results)
+	return fiberutil.OK(r.Ctx, "Scripts retrieved", results)
 }
 
 // Show returns a single script
-func (h *ScriptHandler) Show(c *fiber.Ctx) error {
-	teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
-	if err != nil {
-		return err
-	}
-	scriptID := c.Params("id")
+func (h *ScriptHandler) Show(r *fiberutil.Request) error {
+	scriptID := r.Params("id")
 
-	script, err := h.service.Get(c.Context(), scriptID, userID, teamID)
+	script, err := h.service.Get(r.Context(), scriptID, r.UserID, r.TeamID)
 	if err != nil {
 		if fiberutil.IsNotFound(err) {
-			return fiberutil.RespondNotFound(c, "Script not found")
+			return fiberutil.RespondNotFound(r.Ctx, "Script not found")
 		}
 
-		return fiberutil.HandleError(c, err)
+		return fiberutil.HandleError(r.Ctx, err)
 	}
 
-	return fiberutil.OK(c, "Script retrieved", dto.ToScriptResponse(script))
+	return fiberutil.OK(r.Ctx, "Script retrieved", dto.ToScriptResponse(script))
 }
 
-// Create creates a new script
-func (h *ScriptHandler) Create(c *fiber.Ctx) error {
+// Create creates a new script.
+// Skipped: uses MustGetUserID only (user-scoped); stays on fiberutil.Validate.
+func (h *ScriptHandler) Create(c *fiber.Ctx, req *dto.CreateScriptRequest) error {
 	userID, err := fiberutil.MustGetUserID(c)
-	if err != nil {
-		return err
-	}
-
-	req, err := fiberutil.MustParseAndValidate[dto.CreateScriptRequest](c)
 	if err != nil {
 		return err
 	}
@@ -79,94 +66,68 @@ func (h *ScriptHandler) Create(c *fiber.Ctx) error {
 }
 
 // Update updates a script
-func (h *ScriptHandler) Update(c *fiber.Ctx) error {
-	teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
-	if err != nil {
-		return err
-	}
-	scriptID := c.Params("id")
+func (h *ScriptHandler) Update(r *fiberutil.Request, req *dto.UpdateScriptRequest) error {
+	scriptID := r.Params("id")
 
-	req, err := fiberutil.MustParseAndValidate[dto.UpdateScriptRequest](c)
-	if err != nil {
-		return err
-	}
-
-	script, err := h.service.Update(c.Context(), scriptID, userID, teamID, req)
+	script, err := h.service.Update(r.Context(), scriptID, r.UserID, r.TeamID, req)
 	if err != nil {
 		if fiberutil.IsNotFound(err) {
-			return fiberutil.RespondNotFound(c, "Script not found")
+			return fiberutil.RespondNotFound(r.Ctx, "Script not found")
 		}
 
-		return fiberutil.HandleError(c, err)
+		return fiberutil.HandleError(r.Ctx, err)
 	}
 
-	return fiberutil.OK(c, "Script updated", dto.ToScriptResponse(script))
+	return fiberutil.OK(r.Ctx, "Script updated", dto.ToScriptResponse(script))
 }
 
 // Delete deletes a script
-func (h *ScriptHandler) Delete(c *fiber.Ctx) error {
-	teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
-	if err != nil {
-		return err
-	}
-	scriptID := c.Params("id")
+func (h *ScriptHandler) Delete(r *fiberutil.Request) error {
+	scriptID := r.Params("id")
 
-	if err := h.service.Delete(c.Context(), scriptID, userID, teamID); err != nil {
+	if err := h.service.Delete(r.Context(), scriptID, r.UserID, r.TeamID); err != nil {
 		if fiberutil.IsNotFound(err) {
-			return fiberutil.RespondNotFound(c, "Script not found")
+			return fiberutil.RespondNotFound(r.Ctx, "Script not found")
 		}
 
-		return fiberutil.HandleError(c, err)
+		return fiberutil.HandleError(r.Ctx, err)
 	}
 
-	return fiberutil.NoContent(c)
+	return fiberutil.NoContent(r.Ctx)
 }
 
 // Execute executes a script on servers
-func (h *ScriptHandler) Execute(c *fiber.Ctx) error {
-	teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
-	if err != nil {
-		return err
-	}
-	scriptID := c.Params("id")
+func (h *ScriptHandler) Execute(r *fiberutil.Request, req *dto.ExecuteScriptRequest) error {
+	scriptID := r.Params("id")
 
-	req, err := fiberutil.MustParseAndValidate[dto.ExecuteScriptRequest](c)
-	if err != nil {
-		return err
-	}
-
-	result, err := h.service.Execute(c.Context(), scriptID, userID, teamID, req)
+	result, err := h.service.Execute(r.Context(), scriptID, r.UserID, r.TeamID, req)
 	if err != nil {
 		if fiberutil.IsNotFound(err) {
-			return fiberutil.RespondNotFound(c, "Script not found")
+			return fiberutil.RespondNotFound(r.Ctx, "Script not found")
 		}
 
-		return fiberutil.HandleError(c, err)
+		return fiberutil.HandleError(r.Ctx, err)
 	}
 
-	return fiberutil.OK(c, "Script execution started", result)
+	return fiberutil.OK(r.Ctx, "Script execution started", result)
 }
 
 // ListExecutions returns executions for a script
-func (h *ScriptHandler) ListExecutions(c *fiber.Ctx) error {
-	teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
-	if err != nil {
-		return err
-	}
-	scriptID := c.Params("id")
+func (h *ScriptHandler) ListExecutions(r *fiberutil.Request) error {
+	scriptID := r.Params("id")
 
-	executions, err := h.service.ListExecutions(c.Context(), scriptID, userID, teamID)
+	executions, err := h.service.ListExecutions(r.Context(), scriptID, r.UserID, r.TeamID)
 	if err != nil {
 		if fiberutil.IsNotFound(err) {
-			return fiberutil.RespondNotFound(c, "Script not found")
+			return fiberutil.RespondNotFound(r.Ctx, "Script not found")
 		}
 
-		return fiberutil.HandleError(c, err)
+		return fiberutil.HandleError(r.Ctx, err)
 	}
 
 	results := pkgdto.ConvertSlicePtr(executions, dto.ToExecutionResponse)
 
-	return fiberutil.OK(c, "Executions retrieved", results)
+	return fiberutil.OK(r.Ctx, "Executions retrieved", results)
 }
 
 // GetExecution returns a single execution

@@ -106,7 +106,7 @@ func TestPATHandler_List_NoUserID(t *testing.T) {
 
 func TestPATHandler_Create_Success_No2FA(t *testing.T) {
 	app, reg, handler := setupPATHandler("user_001")
-	app.Post("/tokens", handler.Create)
+	app.Post("/tokens", fiberutil.Validate(handler.Create))
 
 	reg.user.users["user_001"] = newTestUser("user_001", "Test User", "test@example.com", "hashed")
 
@@ -134,7 +134,7 @@ func TestPATHandler_Create_Success_No2FA(t *testing.T) {
 
 func TestPATHandler_Create_WithScopes(t *testing.T) {
 	app, reg, handler := setupPATHandler("user_001")
-	app.Post("/tokens", handler.Create)
+	app.Post("/tokens", fiberutil.Validate(handler.Create))
 
 	reg.user.users["user_001"] = newTestUser("user_001", "Test User", "test@example.com", "hashed")
 
@@ -162,7 +162,7 @@ func TestPATHandler_Create_WithScopes(t *testing.T) {
 
 func TestPATHandler_Create_WithExpiresAt(t *testing.T) {
 	app, reg, handler := setupPATHandler("user_001")
-	app.Post("/tokens", handler.Create)
+	app.Post("/tokens", fiberutil.Validate(handler.Create))
 
 	reg.user.users["user_001"] = newTestUser("user_001", "Test User", "test@example.com", "hashed")
 
@@ -186,7 +186,7 @@ func TestPATHandler_Create_WithExpiresAt(t *testing.T) {
 
 func TestPATHandler_Create_ValidationError_MissingName(t *testing.T) {
 	app, reg, handler := setupPATHandler("user_001")
-	app.Post("/tokens", handler.Create)
+	app.Post("/tokens", fiberutil.Validate(handler.Create))
 
 	reg.user.users["user_001"] = newTestUser("user_001", "Test User", "test@example.com", "hashed")
 
@@ -208,7 +208,7 @@ func TestPATHandler_Create_ValidationError_MissingName(t *testing.T) {
 
 func TestPATHandler_Create_InvalidExpiresAtFormat(t *testing.T) {
 	app, reg, handler := setupPATHandler("user_001")
-	app.Post("/tokens", handler.Create)
+	app.Post("/tokens", fiberutil.Validate(handler.Create))
 
 	reg.user.users["user_001"] = newTestUser("user_001", "Test User", "test@example.com", "hashed")
 
@@ -228,7 +228,7 @@ func TestPATHandler_Create_InvalidExpiresAtFormat(t *testing.T) {
 
 func TestPATHandler_Create_2FA_RequiredNoCode(t *testing.T) {
 	app, reg, handler := setupPATHandler("user_001")
-	app.Post("/tokens", handler.Create)
+	app.Post("/tokens", fiberutil.Validate(handler.Create))
 
 	now := time.Now()
 	secret := "JBSWY3DPEHPK3PXP"
@@ -256,7 +256,7 @@ func TestPATHandler_Create_2FA_RequiredNoCode(t *testing.T) {
 
 func TestPATHandler_Create_2FA_InvalidCode(t *testing.T) {
 	app, reg, handler := setupPATHandler("user_001")
-	app.Post("/tokens", handler.Create)
+	app.Post("/tokens", fiberutil.Validate(handler.Create))
 
 	now := time.Now()
 	secret := "JBSWY3DPEHPK3PXP"

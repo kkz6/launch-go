@@ -51,6 +51,26 @@ func (r TeamRole) IsValid() bool {
 	return enumtypes.IsValid(r, allTeamRoles...)
 }
 
+// teamRoleLevels ranks roles by privilege; higher means more permissions.
+// Roles not present here (invalid or empty) rank 0, below every real role.
+var teamRoleLevels = map[TeamRole]int{
+	TeamRoleOwner:  4,
+	TeamRoleAdmin:  3,
+	TeamRoleEditor: 2,
+	TeamRoleMember: 1,
+}
+
+// Level returns the privilege rank of the role. Invalid or empty roles rank 0.
+// This is the single source of truth for role ordering used by the access gate.
+func (r TeamRole) Level() int {
+	return teamRoleLevels[r]
+}
+
+// AtLeast reports whether this role has at least the privilege of minRole.
+func (r TeamRole) AtLeast(minRole TeamRole) bool {
+	return r.Level() >= minRole.Level() && r.Level() > 0
+}
+
 // CanManageTeam checks if this role can manage team settings
 func (r TeamRole) CanManageTeam() bool {
 	return r == TeamRoleOwner

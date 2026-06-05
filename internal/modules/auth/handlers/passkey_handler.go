@@ -127,18 +127,13 @@ func (h *PasskeyHandler) FinishLogin(c *fiber.Ctx) error {
 }
 
 // Update updates a passkey's name
-func (h *PasskeyHandler) Update(c *fiber.Ctx) error {
+func (h *PasskeyHandler) Update(c *fiber.Ctx, req *authdto.PasskeyUpdateRequest) error {
 	userID, err := fiberctx.MustGetUserID(c)
 	if err != nil {
 		return err
 	}
 
 	passkeyID := c.Params("id")
-
-	req, err := fiberctx.MustParseAndValidate[authdto.PasskeyUpdateRequest](c)
-	if err != nil {
-		return err
-	}
 
 	if err := h.Service().Passkey.UpdatePasskeyName(c.Context(), passkeyID, userID, req.Name); err != nil {
 		return fiberctx.HandleError(c, err)

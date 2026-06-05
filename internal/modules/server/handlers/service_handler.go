@@ -11,12 +11,8 @@ import (
 // ServiceOperation performs an operation on a service (start/stop/restart/...)
 // from the request body. Action with body so it does not fit
 // ActionItemNested.
-func (h *Handler) ServiceOperation(c *fiber.Ctx) error {
+func (h *Handler) ServiceOperation(c *fiber.Ctx, req *dto.ServiceOperationRequest) error {
 	teamID, serverID, serviceID, err := fiberctx.GetTeamServerAndEntityID(c, "serviceId")
-	if err != nil {
-		return err
-	}
-	req, err := fiberctx.MustParseAndValidate[dto.ServiceOperationRequest](c)
 	if err != nil {
 		return err
 	}
@@ -51,12 +47,8 @@ func (h *Handler) ServiceOperationByAction(c *fiber.Ctx) error {
 // InstallPhpExtension installs a PHP extension on a server's PHP service.
 // Action with body, three implied scopes (server, php, extension) — does
 // not fit a generic helper.
-func (h *Handler) InstallPhpExtension(c *fiber.Ctx) error {
+func (h *Handler) InstallPhpExtension(c *fiber.Ctx, req *dto.InstallPhpExtensionRequest) error {
 	teamID, serverID, phpID, err := fiberctx.GetTeamServerAndEntityID(c, "phpId")
-	if err != nil {
-		return err
-	}
-	req, err := fiberctx.MustParseAndValidate[dto.InstallPhpExtensionRequest](c)
 	if err != nil {
 		return err
 	}

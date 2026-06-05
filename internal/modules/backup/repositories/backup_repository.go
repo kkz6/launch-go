@@ -2,11 +2,8 @@ package repositories
 
 import (
 	"context"
-	"errors"
 
 	"gorm.io/gorm"
-
-	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 
 	"github.com/kkz6/launch-go/internal/modules/backup/models"
 	"github.com/kkz6/launch-go/internal/pkg/repository"
@@ -27,17 +24,6 @@ func NewBackupRepository(db *gorm.DB) *BackupRepository {
 	return &BackupRepository{Base: repository.NewBase[models.Backup](db)}
 }
 
-// readQuery returns a context-scoped query with the standard preloads
-// applied: latest 50 jobs, storage provider, and databases.
-func (r *BackupRepository) readQuery(ctx context.Context) *gorm.DB {
-	return r.DB.WithContext(ctx).
-		Preload("Jobs", func(db *gorm.DB) *gorm.DB {
-			return db.Order("created_at DESC").Limit(50)
-		}).
-		Preload("StorageProvider").
-		Preload("Databases")
-}
-
 // CreateBackupWithDatabases creates a backup and associates it with databases.
 func (r *BackupRepository) CreateBackupWithDatabases(ctx context.Context, backup *models.Backup, databaseIDs []string) error {
 	return r.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
@@ -54,38 +40,40 @@ func (r *BackupRepository) CreateBackupWithDatabases(ctx context.Context, backup
 
 // FindBackupByID finds a backup by ID with preloads.
 func (r *BackupRepository) FindBackupByID(ctx context.Context, id string) (*models.Backup, error) {
-	var backup models.Backup
-	err := r.readQuery(ctx).First(&backup, "id = ?", id).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil, fiberutil.NotFound()
-	}
-	if err != nil {
-		return nil, err
-	}
-	return &backup, nil
+	return repository.FindOne[models.Backup](ctx, r.DB,
+		repository.WithID(id),
+		repository.PreloadWithScope("Jobs", func(db *gorm.DB) *gorm.DB {
+			return db.Order("created_at DESC").Limit(50)
+		}),
+		repository.Preload("StorageProvider"),
+		repository.Preload("Databases"),
+	)
 }
 
 // FindBackupByIDAndServer finds a backup by ID and server ID with preloads.
 func (r *BackupRepository) FindBackupByIDAndServer(ctx context.Context, id, serverID string) (*models.Backup, error) {
-	var backup models.Backup
-	err := r.readQuery(ctx).First(&backup, "id = ? AND server_id = ?", id, serverID).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil, fiberutil.NotFound()
-	}
-	if err != nil {
-		return nil, err
-	}
-	return &backup, nil
+	return repository.FindOne[models.Backup](ctx, r.DB,
+		repository.WithID(id),
+		repository.WithServerID(serverID),
+		repository.PreloadWithScope("Jobs", func(db *gorm.DB) *gorm.DB {
+			return db.Order("created_at DESC").Limit(50)
+		}),
+		repository.Preload("StorageProvider"),
+		repository.Preload("Databases"),
+	)
 }
 
 // FindBackupsByServerID finds all backups for a server with preloads.
 func (r *BackupRepository) FindBackupsByServerID(ctx context.Context, serverID string) ([]models.Backup, error) {
-	var backups []models.Backup
-	err := r.readQuery(ctx).
-		Where("server_id = ?", serverID).
-		Order("created_at DESC").
-		Find(&backups).Error
-	return backups, err
+	return repository.FindAll[models.Backup](ctx, r.DB,
+		repository.WithServerID(serverID),
+		repository.OrderByCreatedDesc(),
+		repository.PreloadWithScope("Jobs", func(db *gorm.DB) *gorm.DB {
+			return db.Order("created_at DESC").Limit(50)
+		}),
+		repository.Preload("StorageProvider"),
+		repository.Preload("Databases"),
+	)
 }
 
 // UpdateBackupWithDatabases updates a backup and its associated databases.
@@ -117,18 +105,10 @@ func (r *BackupRepository) DeleteBackup(ctx context.Context, id string) error {
 // Returns (nil, nil) when no backup exists (this is by design — callers
 // treat absence as a normal state, not an error).
 func (r *BackupRepository) GetLatestBackupByServerID(ctx context.Context, serverID string) (*models.Backup, error) {
-	var backup models.Backup
-	err := r.DB.WithContext(ctx).
-		Where("server_id = ?", serverID).
-		Order("created_at DESC").
-		First(&backup).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	return &backup, nil
+	return repository.FindOneOrNil[models.Backup](ctx, r.DB,
+		repository.WithServerID(serverID),
+		repository.OrderByCreatedDesc(),
+	)
 }
 
 // SyncBackupDatabases syncs the databases for a backup.

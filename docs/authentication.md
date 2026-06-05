@@ -1,10 +1,10 @@
 # Authentication
 
-This document covers how authentication works across all platforms: web app, mobile app, and CLI.
+This document covers how authentication works across all platforms: web app, mobile app, and programmatic API access.
 
 ## Overview
 
-Launch uses **JWT-based authentication** for web and mobile clients, and **Personal Access Tokens (PATs)** for CLI and API integrations. All authenticated requests use `Bearer` tokens in the `Authorization` header.
+Launch uses **JWT-based authentication** for web and mobile clients, and **Personal Access Tokens (PATs)** for API integrations. All authenticated requests use `Bearer` tokens in the `Authorization` header.
 
 ## Web App Authentication
 
@@ -49,25 +49,11 @@ For features like email verification and password reset, use deep links with the
 - **iOS**: Store tokens in the Keychain
 - **Android**: Store tokens in EncryptedSharedPreferences or the Keystore
 
-## CLI Authentication (launchctl)
+## API & Programmatic Authentication
 
-The CLI uses **Personal Access Tokens** for authentication. PATs don't expire by default (unless set at creation) and are simpler than OAuth flows.
-
-### Setup
-
-```bash
-# Login with a PAT (interactive prompt)
-launchctl auth login
-
-# Login with a PAT (non-interactive)
-launchctl auth login --token <your-token>
-
-# Check authentication status
-launchctl auth status
-
-# Logout (clear stored credentials)
-launchctl auth logout
-```
+Programmatic clients (CI, scripts, third-party integrations) authenticate with
+**Personal Access Tokens**. PATs don't expire by default (unless set at
+creation) and are simpler than OAuth flows.
 
 ### Creating a PAT
 
@@ -75,7 +61,6 @@ PATs can be created through:
 
 1. **Web UI**: Settings > Security > Personal Access Tokens
 2. **API**: `POST /api/user/tokens` with `{"name": "my-token"}`
-3. **CLI**: `launchctl token create "my-token"`
 
 The plain text token is only shown once at creation. Store it securely.
 
@@ -83,26 +68,23 @@ The plain text token is only shown once at creation. Store it securely.
 
 1. User creates a PAT via the web UI or API
 2. The plain text token is shown once; a SHA-256 hash is stored in the database
-3. User stores the token in the CLI via `launchctl auth login`
-4. CLI sends `Authorization: Bearer <pat>` on all API requests
-5. The middleware hashes the incoming token and looks it up in the `personal_access_tokens` table
+3. The client sends `Authorization: Bearer <pat>` on all API requests
+4. The middleware hashes the incoming token and looks it up in the `personal_access_tokens` table
 
-### Token Storage
-
-Credentials are stored at `~/.config/launchctl/credentials.json` with `0600` permissions.
-
-### PAT Management
+### PAT Management (API)
 
 ```bash
 # List your tokens
-launchctl token list
+GET /api/user/tokens
 
 # Create a new token
-launchctl token create "deployment-ci"
+POST /api/user/tokens   {"name": "deployment-ci"}
 
 # Revoke a token
-launchctl token revoke <token-id>
+DELETE /api/user/tokens/{id}
 ```
+
+A PAT can also be exchanged for short-lived JWTs via `POST /api/auth/token`.
 
 ## Session Management
 
@@ -163,5 +145,5 @@ PAT requests update the token's `last_used_at` timestamp on each use.
 ### Storage
 - Never log or expose tokens in error messages
 - PATs are stored as SHA-256 hashes; the plain text is never persisted
-- CLI credentials use `0600` file permissions
+- API clients should store PATs in a secret manager or `0600` file, never in source
 - Mobile apps should use platform-specific secure storage (Keychain/Keystore)

@@ -19,13 +19,8 @@ func NewTwoFactorHandler(service *services.Service) *TwoFactorHandler {
 }
 
 // EnableTwoFactor initiates 2FA setup
-func (h *TwoFactorHandler) EnableTwoFactor(c *fiber.Ctx) error {
+func (h *TwoFactorHandler) EnableTwoFactor(c *fiber.Ctx, req *dto.EnableTwoFactorRequest) error {
 	userID, err := fiberctx.MustGetUserID(c)
-	if err != nil {
-		return err
-	}
-
-	req, err := fiberctx.MustParseAndValidate[dto.EnableTwoFactorRequest](c)
 	if err != nil {
 		return err
 	}
@@ -39,13 +34,8 @@ func (h *TwoFactorHandler) EnableTwoFactor(c *fiber.Ctx) error {
 }
 
 // ConfirmTwoFactor confirms 2FA setup and returns recovery codes
-func (h *TwoFactorHandler) ConfirmTwoFactor(c *fiber.Ctx) error {
+func (h *TwoFactorHandler) ConfirmTwoFactor(c *fiber.Ctx, req *dto.ConfirmTwoFactorRequest) error {
 	userID, err := fiberctx.MustGetUserID(c)
-	if err != nil {
-		return err
-	}
-
-	req, err := fiberctx.MustParseAndValidate[dto.ConfirmTwoFactorRequest](c)
 	if err != nil {
 		return err
 	}
@@ -59,13 +49,8 @@ func (h *TwoFactorHandler) ConfirmTwoFactor(c *fiber.Ctx) error {
 }
 
 // DisableTwoFactor disables 2FA
-func (h *TwoFactorHandler) DisableTwoFactor(c *fiber.Ctx) error {
+func (h *TwoFactorHandler) DisableTwoFactor(c *fiber.Ctx, req *dto.EnableTwoFactorRequest) error {
 	userID, err := fiberctx.MustGetUserID(c)
-	if err != nil {
-		return err
-	}
-
-	req, err := fiberctx.MustParseAndValidate[dto.EnableTwoFactorRequest](c)
 	if err != nil {
 		return err
 	}
@@ -79,12 +64,7 @@ func (h *TwoFactorHandler) DisableTwoFactor(c *fiber.Ctx) error {
 
 // TwoFactorChallenge verifies 2FA code during login using a challenge token.
 // This is a public endpoint — no auth middleware required.
-func (h *TwoFactorHandler) TwoFactorChallenge(c *fiber.Ctx) error {
-	req, err := fiberctx.MustParseAndValidate[dto.TwoFactorChallengeRequest](c)
-	if err != nil {
-		return err
-	}
-
+func (h *TwoFactorHandler) TwoFactorChallenge(c *fiber.Ctx, req *dto.TwoFactorChallengeRequest) error {
 	code := req.Code
 	if code == "" {
 		code = req.RecoveryCode

@@ -25,98 +25,70 @@ func NewStoredCertificateHandler(svc *services.StoredCertificateService) *Stored
 }
 
 // List returns the team's stored certificates.
-func (h *StoredCertificateHandler) List(c *gofiber.Ctx) error {
-	teamID, err := fiberutil.MustGetTeamID(c)
+func (h *StoredCertificateHandler) List(r *fiberutil.Request) error {
+	rows, err := h.svc.List(r.Context(), r.TeamID)
 	if err != nil {
 		return err
 	}
-	rows, err := h.svc.List(c.Context(), teamID)
-	if err != nil {
-		return err
-	}
-	return fiberutil.OK(c, "Stored certificates retrieved", rows)
+	return fiberutil.OK(r.Ctx, "Stored certificates retrieved", rows)
 }
 
 // Get returns one stored certificate.
-func (h *StoredCertificateHandler) Get(c *gofiber.Ctx) error {
-	teamID, err := fiberutil.MustGetTeamID(c)
-	if err != nil {
-		return err
-	}
-	row, err := h.svc.Get(c.Context(), teamID, c.Params("id"))
+func (h *StoredCertificateHandler) Get(r *fiberutil.Request) error {
+	row, err := h.svc.Get(r.Context(), r.TeamID, r.Params("id"))
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return fiberutil.NotFound("Stored certificate not found")
 		}
 		return err
 	}
-	return fiberutil.OK(c, "Stored certificate retrieved", row)
+	return fiberutil.OK(r.Ctx, "Stored certificate retrieved", row)
 }
 
 // Create saves a new stored certificate. Returns 201 on success, 409
 // with {existing:{id,name}} on fingerprint dedupe, 422 on validation
 // failure / cert parse failure / key mismatch.
-func (h *StoredCertificateHandler) Create(c *gofiber.Ctx) error {
-	teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
+func (h *StoredCertificateHandler) Create(r *fiberutil.Request, req *dto.CreateStoredCertificateRequest) error {
+	uid := r.UserID
+	row, err := h.svc.Create(r.Context(), r.TeamID, &uid, *req)
 	if err != nil {
-		return err
+		return mapCreateOrUpdateError(r.Ctx, err)
 	}
-	req, err := fiberutil.MustParseAndValidate[dto.CreateStoredCertificateRequest](c)
-	if err != nil {
-		return err
-	}
-	uid := userID
-	row, err := h.svc.Create(c.Context(), teamID, &uid, *req)
-	if err != nil {
-		return mapCreateOrUpdateError(c, err)
-	}
-	return fiberutil.Created(c, "Stored certificate created", row)
+	return fiberutil.Created(r.Ctx, "Stored certificate created", row)
 }
 
 // Update modifies an existing stored certificate. Same error mapping as Create.
-func (h *StoredCertificateHandler) Update(c *gofiber.Ctx) error {
-	teamID, _, err := fiberutil.MustGetTeamAndUserID(c)
+func (h *StoredCertificateHandler) Update(r *fiberutil.Request, req *dto.UpdateStoredCertificateRequest) error {
+	row, pendingRedeploys, err := h.svc.Update(r.Context(), r.TeamID, r.Params("id"), *req)
 	if err != nil {
-		return err
+		return mapCreateOrUpdateError(r.Ctx, err)
 	}
-	req, err := fiberutil.MustParseAndValidate[dto.UpdateStoredCertificateRequest](c)
-	if err != nil {
-		return err
-	}
-	row, pendingRedeploys, err := h.svc.Update(c.Context(), teamID, c.Params("id"), *req)
-	if err != nil {
-		return mapCreateOrUpdateError(c, err)
-	}
-	c.Set("X-Pending-Redeploys", strconv.Itoa(pendingRedeploys))
-	return fiberutil.OK(c, "Stored certificate updated", row)
+	r.Set("X-Pending-Redeploys", strconv.Itoa(pendingRedeploys))
+	return fiberutil.OK(r.Ctx, "Stored certificate updated", row)
 }
 
 // Delete soft-deletes a stored certificate. If ?force=true is set,
 // referenced sites/domains are flipped back to Let's Encrypt first
 // (cascading via DeleteWithForce). Without force, returns 409 with
 // {usages:[...]} when the cert is still referenced.
-func (h *StoredCertificateHandler) Delete(c *gofiber.Ctx) error {
-	teamID, _, err := fiberutil.MustGetTeamAndUserID(c)
-	if err != nil {
-		return err
-	}
-	id := c.Params("id")
-	force := c.Query("force") == "true" || c.Query("force") == "1"
+func (h *StoredCertificateHandler) Delete(r *fiberutil.Request) error {
+	id := r.Params("id")
+	force := r.Query("force") == "true" || r.Query("force") == "1"
 
 	if force {
-		if err := h.svc.DeleteWithForce(c.Context(), teamID, id); err != nil {
+		if err := h.svc.DeleteWithForce(r.Context(), r.TeamID, id); err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return fiberutil.NotFound("Stored certificate not found")
 			}
 			return err
 		}
-		return fiberutil.NoContent(c)
+		return fiberutil.NoContent(r.Ctx)
 	}
 
-	if err := h.svc.Delete(c.Context(), teamID, id); err != nil {
+	if err := h.svc.Delete(r.Context(), r.TeamID, id); err != nil {
 		var inUseErr services.ErrInUse
 		if errors.As(err, &inUseErr) {
-			return c.Status(gofiber.StatusConflict).JSON(gofiber.Map{
+			return r.Status(gofiber.StatusConflict).JSON(gofiber.Map{
 				"message": "Stored certificate is still in use",
 				"usages":  inUseErr.Usages,
 			})
@@ -126,25 +98,21 @@ func (h *StoredCertificateHandler) Delete(c *gofiber.Ctx) error {
 		}
 		return err
 	}
-	return fiberutil.NoContent(c)
+	return fiberutil.NoContent(r.Ctx)
 }
 
 // Usages returns the list of sites and docker domains that reference
 // the stored certificate. Used by the UI's "in use by N resources"
 // badge and by the delete confirmation dialog.
-func (h *StoredCertificateHandler) Usages(c *gofiber.Ctx) error {
-	teamID, err := fiberutil.MustGetTeamID(c)
-	if err != nil {
-		return err
-	}
-	usages, err := h.svc.Usages(c.Context(), teamID, c.Params("id"))
+func (h *StoredCertificateHandler) Usages(r *fiberutil.Request) error {
+	usages, err := h.svc.Usages(r.Context(), r.TeamID, r.Params("id"))
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return fiberutil.NotFound("Stored certificate not found")
 		}
 		return err
 	}
-	return fiberutil.OK(c, "Usages retrieved", usages)
+	return fiberutil.OK(r.Ctx, "Usages retrieved", usages)
 }
 
 // mapCreateOrUpdateError maps service errors to HTTP responses:

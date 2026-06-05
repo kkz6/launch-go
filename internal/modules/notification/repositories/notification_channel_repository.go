@@ -2,7 +2,6 @@ package repositories
 
 import (
 	"context"
-	"errors"
 
 	"gorm.io/gorm"
 
@@ -50,36 +49,15 @@ func (r *NotificationChannelRepository) Delete(ctx context.Context, id string) e
 
 // FindByID finds a notification channel by ID
 func (r *NotificationChannelRepository) FindByID(ctx context.Context, id string) (*models.NotificationChannel, error) {
-	var channel models.NotificationChannel
-
-	err := r.DB.WithContext(ctx).First(&channel, "id = ?", id).Error
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, fiberutil.NotFound()
-		}
-
-		return nil, err
-	}
-
-	return &channel, nil
+	return repository.FindOne[models.NotificationChannel](ctx, r.DB, repository.WithID(id))
 }
 
 // FindByIDAndTeamID finds a notification channel by ID and team ID
 func (r *NotificationChannelRepository) FindByIDAndTeamID(ctx context.Context, id, teamID string) (*models.NotificationChannel, error) {
-	var channel models.NotificationChannel
-
-	err := r.DB.WithContext(ctx).
-		Where("id = ? AND team_id = ?", id, teamID).
-		First(&channel).Error
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, fiberutil.NotFound()
-		}
-
-		return nil, err
-	}
-
-	return &channel, nil
+	return repository.FindOne[models.NotificationChannel](ctx, r.DB,
+		repository.WithID(id),
+		repository.WithTeamID(teamID),
+	)
 }
 
 // FindByTeamID finds all notification channels for a team

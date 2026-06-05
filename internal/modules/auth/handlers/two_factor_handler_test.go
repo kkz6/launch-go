@@ -15,6 +15,7 @@ import (
 
 	"github.com/kkz6/launch-go/internal/modules/auth/handlers"
 	"github.com/kkz6/launch-go/internal/modules/auth/services"
+	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/security"
 )
 
@@ -34,7 +35,7 @@ func setupTwoFactorHandler(userID string) (*fiber.App, *mockRepoRegistry, *handl
 
 func TestTwoFactorHandler_EnableTwoFactor_Success(t *testing.T) {
 	app, reg, handler := setupTwoFactorHandler("user_001")
-	app.Post("/two-factor/enable", handler.TwoFactor.EnableTwoFactor)
+	app.Post("/two-factor/enable", fiberutil.Validate(handler.TwoFactor.EnableTwoFactor))
 
 	hashed, _ := security.HashPassword("correct-password")
 	user := newTestUser("user_001", "Test User", "test@example.com", hashed)
@@ -62,7 +63,7 @@ func TestTwoFactorHandler_EnableTwoFactor_NoUserID(t *testing.T) {
 	svc, _ := services.NewService(reg, cfg, &logger, nil, newMockCache())
 	handler := handlers.NewHandler(svc)
 	app := newTestAppWithValidation()
-	app.Post("/two-factor/enable", handler.TwoFactor.EnableTwoFactor)
+	app.Post("/two-factor/enable", fiberutil.Validate(handler.TwoFactor.EnableTwoFactor))
 
 	resp, err := app.Test(makeJSONRequest(http.MethodPost, "/two-factor/enable", map[string]string{
 		"password": "any-password",
@@ -73,7 +74,7 @@ func TestTwoFactorHandler_EnableTwoFactor_NoUserID(t *testing.T) {
 
 func TestTwoFactorHandler_ConfirmTwoFactor_Success(t *testing.T) {
 	app, reg, handler := setupTwoFactorHandler("user_001")
-	app.Post("/two-factor/confirm", handler.TwoFactor.ConfirmTwoFactor)
+	app.Post("/two-factor/confirm", fiberutil.Validate(handler.TwoFactor.ConfirmTwoFactor))
 
 	secret := "JBSWY3DPEHPK3PXP"
 	user := newTestUser("user_001", "Test User", "test@example.com", "hashed")
@@ -102,7 +103,7 @@ func TestTwoFactorHandler_ConfirmTwoFactor_Success(t *testing.T) {
 
 func TestTwoFactorHandler_ConfirmTwoFactor_InvalidCode(t *testing.T) {
 	app, reg, handler := setupTwoFactorHandler("user_001")
-	app.Post("/two-factor/confirm", handler.TwoFactor.ConfirmTwoFactor)
+	app.Post("/two-factor/confirm", fiberutil.Validate(handler.TwoFactor.ConfirmTwoFactor))
 
 	secret := "JBSWY3DPEHPK3PXP"
 	user := newTestUser("user_001", "Test User", "test@example.com", "hashed")
@@ -118,7 +119,7 @@ func TestTwoFactorHandler_ConfirmTwoFactor_InvalidCode(t *testing.T) {
 
 func TestTwoFactorHandler_ConfirmTwoFactor_ValidationError(t *testing.T) {
 	app, reg, handler := setupTwoFactorHandler("user_001")
-	app.Post("/two-factor/confirm", handler.TwoFactor.ConfirmTwoFactor)
+	app.Post("/two-factor/confirm", fiberutil.Validate(handler.TwoFactor.ConfirmTwoFactor))
 
 	user := newTestUser("user_001", "Test User", "test@example.com", "hashed")
 	reg.user.users["user_001"] = user
@@ -133,7 +134,7 @@ func TestTwoFactorHandler_ConfirmTwoFactor_ValidationError(t *testing.T) {
 
 func TestTwoFactorHandler_DisableTwoFactor_Success(t *testing.T) {
 	app, reg, handler := setupTwoFactorHandler("user_001")
-	app.Delete("/two-factor/disable", handler.TwoFactor.DisableTwoFactor)
+	app.Delete("/two-factor/disable", fiberutil.Validate(handler.TwoFactor.DisableTwoFactor))
 
 	secret := "JBSWY3DPEHPK3PXP"
 	now := time.Now()
@@ -159,7 +160,7 @@ func TestTwoFactorHandler_DisableTwoFactor_Success(t *testing.T) {
 
 func TestTwoFactorHandler_DisableTwoFactor_WrongPassword(t *testing.T) {
 	app, reg, handler := setupTwoFactorHandler("user_001")
-	app.Delete("/two-factor/disable", handler.TwoFactor.DisableTwoFactor)
+	app.Delete("/two-factor/disable", fiberutil.Validate(handler.TwoFactor.DisableTwoFactor))
 
 	secret := "JBSWY3DPEHPK3PXP"
 	now := time.Now()
@@ -178,7 +179,7 @@ func TestTwoFactorHandler_DisableTwoFactor_WrongPassword(t *testing.T) {
 
 func TestTwoFactorHandler_DisableTwoFactor_ValidationError(t *testing.T) {
 	app, reg, handler := setupTwoFactorHandler("user_001")
-	app.Delete("/two-factor/disable", handler.TwoFactor.DisableTwoFactor)
+	app.Delete("/two-factor/disable", fiberutil.Validate(handler.TwoFactor.DisableTwoFactor))
 
 	user := newTestUser("user_001", "Test User", "test@example.com", "hashed")
 	reg.user.users["user_001"] = user
@@ -207,7 +208,7 @@ func TestTwoFactorHandler_TwoFactorChallenge_Success(t *testing.T) {
 
 	// Step 1: Login to get a challenge token
 	loginApp := newTestAppWithValidation()
-	loginApp.Post("/login", handler.Auth.Login)
+	loginApp.Post("/login", fiberutil.Validate(handler.Auth.Login))
 
 	loginResp, err := loginApp.Test(makeJSONRequest(http.MethodPost, "/login", map[string]string{
 		"email":    "test@example.com",
@@ -229,7 +230,7 @@ func TestTwoFactorHandler_TwoFactorChallenge_Success(t *testing.T) {
 
 	// Step 2: Complete the challenge
 	challengeApp := newTestAppWithValidation()
-	challengeApp.Post("/two-factor/challenge", handler.TwoFactor.TwoFactorChallenge)
+	challengeApp.Post("/two-factor/challenge", fiberutil.Validate(handler.TwoFactor.TwoFactorChallenge))
 
 	code, err := totp.GenerateCode(secret, time.Now())
 	require.NoError(t, err)
@@ -271,7 +272,7 @@ func TestTwoFactorHandler_TwoFactorChallenge_InvalidCode(t *testing.T) {
 
 	// Login to get a challenge token
 	loginApp := newTestAppWithValidation()
-	loginApp.Post("/login", handler.Auth.Login)
+	loginApp.Post("/login", fiberutil.Validate(handler.Auth.Login))
 
 	loginResp, err := loginApp.Test(makeJSONRequest(http.MethodPost, "/login", map[string]string{
 		"email":    "test@example.com",
@@ -286,7 +287,7 @@ func TestTwoFactorHandler_TwoFactorChallenge_InvalidCode(t *testing.T) {
 
 	// Try with invalid code
 	challengeApp := newTestAppWithValidation()
-	challengeApp.Post("/two-factor/challenge", handler.TwoFactor.TwoFactorChallenge)
+	challengeApp.Post("/two-factor/challenge", fiberutil.Validate(handler.TwoFactor.TwoFactorChallenge))
 
 	resp, err := challengeApp.Test(makeJSONRequest(http.MethodPost, "/two-factor/challenge", map[string]string{
 		"challenge_token": challengeToken,
@@ -304,7 +305,7 @@ func TestTwoFactorHandler_TwoFactorChallenge_InvalidToken(t *testing.T) {
 	handler := handlers.NewHandler(svc)
 
 	app := newTestAppWithValidation()
-	app.Post("/two-factor/challenge", handler.TwoFactor.TwoFactorChallenge)
+	app.Post("/two-factor/challenge", fiberutil.Validate(handler.TwoFactor.TwoFactorChallenge))
 
 	user := newTestUser("user_001", "Test User", "test@example.com", "hashed")
 	reg.user.users["user_001"] = user
@@ -335,7 +336,7 @@ func TestTwoFactorHandler_TwoFactorChallenge_TokenCannotBeReused(t *testing.T) {
 
 	// Login to get challenge token
 	loginApp := newTestAppWithValidation()
-	loginApp.Post("/login", handler.Auth.Login)
+	loginApp.Post("/login", fiberutil.Validate(handler.Auth.Login))
 
 	loginResp, err := loginApp.Test(makeJSONRequest(http.MethodPost, "/login", map[string]string{
 		"email":    "test@example.com",
@@ -350,7 +351,7 @@ func TestTwoFactorHandler_TwoFactorChallenge_TokenCannotBeReused(t *testing.T) {
 
 	// First use — succeeds
 	challengeApp := newTestAppWithValidation()
-	challengeApp.Post("/two-factor/challenge", handler.TwoFactor.TwoFactorChallenge)
+	challengeApp.Post("/two-factor/challenge", fiberutil.Validate(handler.TwoFactor.TwoFactorChallenge))
 
 	code, _ := totp.GenerateCode(secret, time.Now())
 	resp, err := challengeApp.Test(makeJSONRequest(http.MethodPost, "/two-factor/challenge", map[string]string{
@@ -441,7 +442,7 @@ func TestAuthHandler_Login_TwoFactorEnabled_ReturnsChallengeToken(t *testing.T) 
 	svc, _ := services.NewService(reg, cfg, &logger, nil, newMockCache())
 	handler := handlers.NewHandler(svc)
 	app := newTestAppWithValidation()
-	app.Post("/login", handler.Auth.Login)
+	app.Post("/login", fiberutil.Validate(handler.Auth.Login))
 
 	secret := "JBSWY3DPEHPK3PXP"
 	now := time.Now()

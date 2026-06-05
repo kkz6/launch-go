@@ -5,8 +5,6 @@ import (
 
 	"gorm.io/gorm"
 
-	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
-
 	"github.com/kkz6/launch-go/internal/modules/site/models"
 	"github.com/kkz6/launch-go/internal/pkg/repository"
 )
@@ -25,30 +23,19 @@ func NewCommandRepository(db *gorm.DB) *CommandRepository {
 
 // FindByID finds a command by ID with custom error.
 func (r *CommandRepository) FindByID(ctx context.Context, id string) (*models.Command, error) {
-	var cmd models.Command
-	err := r.DB.WithContext(ctx).
-		Preload("User").
-		Where("id = ?", id).
-		First(&cmd).Error
-	if err != nil {
-		if repository.IsNotFound(err) {
-			return nil, fiberutil.NotFound()
-		}
-		return nil, err
-	}
-	return &cmd, nil
+	return repository.FindOne[models.Command](ctx, r.DB,
+		repository.Preload("User"),
+		repository.WithID(id),
+	)
 }
 
 // FindBySite finds all commands for a site
 func (r *CommandRepository) FindBySite(ctx context.Context, siteID string) ([]models.Command, error) {
-	var cmds []models.Command
-	err := r.DB.WithContext(ctx).
-		Preload("User").
-		Where("site_id = ?", siteID).
-		Order("created_at DESC").
-		Find(&cmds).Error
-
-	return cmds, err
+	return repository.FindAll[models.Command](ctx, r.DB,
+		repository.Preload("User"),
+		repository.WithSiteID(siteID),
+		repository.OrderByCreatedDesc(),
+	)
 }
 
 // DeleteBySite deletes all commands for a site

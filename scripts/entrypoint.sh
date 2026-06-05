@@ -6,7 +6,7 @@ MODE="${MODE:-api}"
 # Run migrations if RUN_MIGRATIONS is set to true
 if [ "$RUN_MIGRATIONS" = "true" ]; then
     echo "Running database migrations..."
-    ./migrate migrate
+    ./console migrate:run
     echo "Migrations completed."
 fi
 
@@ -17,7 +17,7 @@ case "$MODE" in
         ;;
     worker)
         echo "Starting Worker..."
-        exec ./worker
+        exec ./console queue:work
         ;;
     *)
         echo "Unknown mode: $MODE"

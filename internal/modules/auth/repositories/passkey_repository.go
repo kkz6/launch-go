@@ -56,11 +56,7 @@ func (r *PasskeyRepository) DeleteByUserID(ctx context.Context, id, userID strin
 
 // CountByUserID counts passkeys for a user
 func (r *PasskeyRepository) CountByUserID(ctx context.Context, userID string) (int64, error) {
-	var count int64
-	err := r.DB.WithContext(ctx).
-		Model(&models.Passkey{}).
-		Where("user_id = ?", userID).
-		Count(&count).Error
-
-	return count, err
+	return repository.Count[models.Passkey](ctx, r.DB,
+		repository.WithUserID(userID),
+	)
 }

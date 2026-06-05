@@ -6,11 +6,12 @@ import (
 
 // Context key constants for storing and retrieving values from fiber.Ctx.Locals
 const (
-	KeyUserID   = "userID"
-	KeyTeamID   = "teamID"
-	KeyTeamRole = "teamRole"
-	KeyUser     = "user"
-	KeyTraceID  = "traceID"
+	KeyUserID                = "userID"
+	KeyTeamID                = "teamID"
+	KeyTeamRole              = "teamRole"
+	KeyUser                  = "user"
+	KeyTraceID               = "traceID"
+	KeyImpersonationReadOnly = "impersonationReadOnly"
 )
 
 // SetUserContext sets the user ID and optional user object in the request context.
@@ -100,6 +101,13 @@ func GetUserRole(c *fiber.Ctx) string {
 	if !ok {
 		return ""
 	}
+	return v
+}
+
+// IsImpersonationReadOnly reports whether the request runs under a read-only
+// impersonation ("spectate") token. Only set on minted impersonation tokens.
+func IsImpersonationReadOnly(c *fiber.Ctx) bool {
+	v, _ := c.Locals(KeyImpersonationReadOnly).(bool)
 	return v
 }
 

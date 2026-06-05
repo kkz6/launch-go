@@ -19,17 +19,12 @@ func NewTeamMemberHandler(service *services.Service) *TeamMemberHandler {
 }
 
 // InviteTeamMember invites a user to a team
-func (h *TeamMemberHandler) InviteTeamMember(c *fiber.Ctx) error {
+func (h *TeamMemberHandler) InviteTeamMember(c *fiber.Ctx, req *dto.InviteTeamMemberRequest) error {
 	userID, err := fiberctx.MustGetUserID(c)
 	if err != nil {
 		return err
 	}
 	teamID := c.Params("teamId")
-
-	req, err := fiberctx.MustParseAndValidate[dto.InviteTeamMemberRequest](c)
-	if err != nil {
-		return err
-	}
 
 	if err := h.Service().TeamMember.InviteTeamMember(c.Context(), userID, teamID, req); err != nil {
 		return fiberctx.HandleError(c, err)
@@ -86,18 +81,13 @@ func (h *TeamMemberHandler) CancelTeamInvitation(c *fiber.Ctx) error {
 }
 
 // UpdateTeamMemberRole updates a team member's role
-func (h *TeamMemberHandler) UpdateTeamMemberRole(c *fiber.Ctx) error {
+func (h *TeamMemberHandler) UpdateTeamMemberRole(c *fiber.Ctx, req *dto.UpdateTeamMemberRequest) error {
 	userID, err := fiberctx.MustGetUserID(c)
 	if err != nil {
 		return err
 	}
 	teamID := c.Params("teamId")
 	targetUserID := c.Params("userId")
-
-	req, err := fiberctx.MustParseAndValidate[dto.UpdateTeamMemberRequest](c)
-	if err != nil {
-		return err
-	}
 
 	if err := h.Service().TeamMember.UpdateTeamMemberRole(c.Context(), userID, teamID, targetUserID, req); err != nil {
 		return fiberctx.HandleError(c, err)
@@ -155,12 +145,7 @@ func (h *TeamMemberHandler) GetInvitationDetails(c *fiber.Ctx) error {
 }
 
 // AcceptInvitationWithRegistration accepts an invitation by registering a new user account
-func (h *TeamMemberHandler) AcceptInvitationWithRegistration(c *fiber.Ctx) error {
-	req, err := fiberctx.MustParseAndValidate[dto.AcceptInvitationRequest](c)
-	if err != nil {
-		return err
-	}
-
+func (h *TeamMemberHandler) AcceptInvitationWithRegistration(c *fiber.Ctx, req *dto.AcceptInvitationRequest) error {
 	// Look up invitation to get the email
 	invitation, err := h.Service().TeamMember.GetInvitationByID(c.Context(), req.InvitationToken)
 	if err != nil {

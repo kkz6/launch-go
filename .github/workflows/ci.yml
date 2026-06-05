@@ -84,11 +84,8 @@ jobs:
       - name: Build API
         run: go build -o bin/api ./cmd/api
 
-      - name: Build Worker
-        run: go build -o bin/worker ./cmd/worker
-
-      - name: Build Migrate
-        run: go build -o bin/migrate ./cmd/migrate
+      - name: Build Console
+        run: go build -o bin/console ./cmd/console
 
   security:
     name: Security Scan

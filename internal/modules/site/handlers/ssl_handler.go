@@ -22,16 +22,12 @@ func NewSSLHandler(sslService *services.SSLService) *SSLHandler {
 }
 
 // UpdateSSL updates SSL settings for a site.
-func (h *SSLHandler) UpdateSSL(c *fiber.Ctx) error {
+func (h *SSLHandler) UpdateSSL(c *fiber.Ctx, req *dto.UpdateSSLRequest) error {
 	serverID, siteID, err := fiberctx.GetServerAndSiteID(c)
 	if err != nil {
 		return err
 	}
 	userID, err := fiberctx.MustGetUserID(c)
-	if err != nil {
-		return err
-	}
-	req, err := fiberctx.MustParseAndValidate[dto.UpdateSSLRequest](c)
 	if err != nil {
 		return err
 	}

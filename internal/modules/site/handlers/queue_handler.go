@@ -21,12 +21,8 @@ func NewQueueHandler(queueService *services.QueueService) *QueueHandler {
 }
 
 // UpdateAutoRestartQueue toggles the auto-restart queue setting on a site.
-func (h *QueueHandler) UpdateAutoRestartQueue(c *fiber.Ctx) error {
+func (h *QueueHandler) UpdateAutoRestartQueue(c *fiber.Ctx, req *dto.UpdateAutoRestartQueueRequest) error {
 	serverID, siteID, err := fiberctx.GetServerAndSiteID(c)
-	if err != nil {
-		return err
-	}
-	req, err := fiberctx.MustParseAndValidate[dto.UpdateAutoRestartQueueRequest](c)
 	if err != nil {
 		return err
 	}

@@ -21,20 +21,32 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/auth"
 	authtypes "github.com/kkz6/launch-go/internal/modules/auth/types"
 	"github.com/kkz6/launch-go/internal/modules/backup"
+	backuppolicies "github.com/kkz6/launch-go/internal/modules/backup/policies"
 	"github.com/kkz6/launch-go/internal/modules/billing"
+	billingpolicies "github.com/kkz6/launch-go/internal/modules/billing/policies"
 	"github.com/kkz6/launch-go/internal/modules/certificate"
+	certificatepolicies "github.com/kkz6/launch-go/internal/modules/certificate/policies"
 	"github.com/kkz6/launch-go/internal/modules/dashboard"
 	databasemodule "github.com/kkz6/launch-go/internal/modules/database"
+	databasepolicies "github.com/kkz6/launch-go/internal/modules/database/policies"
 	"github.com/kkz6/launch-go/internal/modules/dns"
+	dnspolicies "github.com/kkz6/launch-go/internal/modules/dns/policies"
 	"github.com/kkz6/launch-go/internal/modules/docker"
+	dockerpolicies "github.com/kkz6/launch-go/internal/modules/docker/policies"
 	"github.com/kkz6/launch-go/internal/modules/git"
+	gitpolicies "github.com/kkz6/launch-go/internal/modules/git/policies"
 	"github.com/kkz6/launch-go/internal/modules/notification"
+	notificationpolicies "github.com/kkz6/launch-go/internal/modules/notification/policies"
 	"github.com/kkz6/launch-go/internal/modules/platform"
+	platformpolicies "github.com/kkz6/launch-go/internal/modules/platform/policies"
 	"github.com/kkz6/launch-go/internal/modules/script"
+	scriptpolicies "github.com/kkz6/launch-go/internal/modules/script/policies"
 	"github.com/kkz6/launch-go/internal/modules/server"
+	serverpolicies "github.com/kkz6/launch-go/internal/modules/server/policies"
 	"github.com/kkz6/launch-go/internal/modules/site"
 	"github.com/kkz6/launch-go/internal/modules/site/adapters"
 	sitedto "github.com/kkz6/launch-go/internal/modules/site/dto"
+	sitepolicies "github.com/kkz6/launch-go/internal/modules/site/policies"
 	"github.com/kkz6/launch-go/internal/modules/staff"
 	stafftypes "github.com/kkz6/launch-go/internal/modules/staff/types"
 	wsmodule "github.com/kkz6/launch-go/internal/modules/websocket"
@@ -343,6 +355,35 @@ func (a *Application) registerModules() {
 	middleware.InitUserStatus(func(userID string) authtypes.UserStatus {
 		return staffModule.Service().UserStatusForUser(context.Background(), userID)
 	})
+
+	// Wire session-liveness so the Auth chokepoint rejects access tokens whose
+	// backing session has been revoked (logout, "log out other devices",
+	// session revocation) immediately, instead of letting them linger until the
+	// token's TTL expires. Mirrors the revocation check RefreshToken already
+	// performs on the refresh path.
+	middleware.InitSessionValidator(func(sessionID string) bool {
+		exists, err := authModule.Repos().Session().Exists(context.Background(), sessionID)
+		return err == nil && exists
+	})
+
+	// Wire the authorization gate and register module policies into it. The
+	// auth module owns the gate (with its read-only freeze hook and team
+	// abilities); each module registers its own abilities. The Can(ability)
+	// route middleware authorizes against this gate.
+	gate := authModule.Gate()
+	serverpolicies.Register(gate)
+	sitepolicies.Register(gate)
+	databasepolicies.Register(gate)
+	backuppolicies.Register(gate)
+	certificatepolicies.Register(gate)
+	dnspolicies.Register(gate)
+	dockerpolicies.Register(gate)
+	gitpolicies.Register(gate)
+	scriptpolicies.Register(gate)
+	notificationpolicies.Register(gate)
+	platformpolicies.Register(gate)
+	billingpolicies.Register(gate)
+	middleware.InitGate(gate)
 
 	// Boot all HTTP routes through the kernel
 	// Note: TeamContext middleware is applied at the route level where team scope is required

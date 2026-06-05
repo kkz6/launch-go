@@ -5,7 +5,6 @@ import (
 
 	"github.com/kkz6/launch-go/internal/modules/backup/dto"
 	"github.com/kkz6/launch-go/internal/modules/backup/services"
-	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 )
 
 // BackupJobHandler exposes the public agent webhook for backup job
@@ -21,12 +20,7 @@ func NewBackupJobHandler(jobService *services.BackupJobService) *BackupJobHandle
 }
 
 // CreateBackupJob is the agent webhook for reporting a backup run result.
-func (h *BackupJobHandler) CreateBackupJob(c *fiber.Ctx) error {
-	req, err := fiberutil.MustParseAndValidate[dto.CreateBackupJobRequest](c)
-	if err != nil {
-		return err
-	}
-
+func (h *BackupJobHandler) CreateBackupJob(c *fiber.Ctx, req *dto.CreateBackupJobRequest) error {
 	if _, err := h.jobService.CreateBackupJob(c.Context(), c.Params("backup"), c.Params("token"), req); err != nil {
 		return err
 	}

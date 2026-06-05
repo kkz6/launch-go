@@ -2,12 +2,10 @@ package repositories
 
 import (
 	"context"
-	"errors"
 
 	"gorm.io/gorm"
 
 	"github.com/kkz6/launch-go/internal/modules/docker/models"
-	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/repository"
 )
 
@@ -29,17 +27,11 @@ func NewComposeRepository(db *gorm.DB) *ComposeRepository {
 func (r *ComposeRepository) FindByIDAndTeamServer(
 	ctx context.Context, id, teamID, serverID string,
 ) (*models.Compose, error) {
-	var c models.Compose
-	err := r.DB.WithContext(ctx).
-		Where("id = ? AND team_id = ? AND server_id = ?", id, teamID, serverID).
-		First(&c).Error
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, fiberutil.NotFound()
-		}
-		return nil, err
-	}
-	return &c, nil
+	return repository.FindOne[models.Compose](ctx, r.DB,
+		repository.WithID(id),
+		repository.WithTeamID(teamID),
+		repository.WithServerID(serverID),
+	)
 }
 
 // ListForProject returns compose stacks in a project, newest first.

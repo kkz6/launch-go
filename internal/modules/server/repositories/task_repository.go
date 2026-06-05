@@ -2,7 +2,6 @@ package repositories
 
 import (
 	"context"
-	"errors"
 
 	"gorm.io/gorm"
 
@@ -51,18 +50,10 @@ func (r *TaskRepository) FindByServer(ctx context.Context, serverID string, limi
 
 // FindLatestByServer finds the latest task for a server
 func (r *TaskRepository) FindLatestByServer(ctx context.Context, serverID string) (*models.Task, error) {
-	var task models.Task
-	err := r.DB.WithContext(ctx).
-		Where("server_id = ?", serverID).
-		Order("created_at DESC").
-		First(&task).Error
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, nil
-		}
-		return nil, err
-	}
-	return &task, nil
+	return repository.FindOneOrNil[models.Task](ctx, r.DB,
+		repository.WithServerID(serverID),
+		repository.OrderByCreatedDesc(),
+	)
 }
 
 // UpdateOutput updates the output field of a task

@@ -7,6 +7,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/kkz6/launch-go/internal/modules/auth/models"
+	"github.com/kkz6/launch-go/internal/pkg/repository"
 	"github.com/kkz6/launch-go/internal/pkg/util"
 )
 
@@ -42,13 +43,10 @@ func (r *SessionRepository) FindByID(ctx context.Context, id string) (*models.Se
 
 // GetByUser gets all sessions for a user, ordered by last activity
 func (r *SessionRepository) GetByUser(ctx context.Context, userID string) ([]models.Session, error) {
-	var sessions []models.Session
-	err := r.db.WithContext(ctx).
-		Where("user_id = ?", userID).
-		Order("last_activity DESC").
-		Find(&sessions).Error
-
-	return sessions, err
+	return repository.FindAll[models.Session](ctx, r.db,
+		repository.WithUserID(userID),
+		repository.OrderBy("last_activity", "DESC"),
+	)
 }
 
 // UpdateLastActivity updates the last activity timestamp for a session

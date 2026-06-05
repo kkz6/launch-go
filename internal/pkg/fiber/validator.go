@@ -22,8 +22,8 @@ func init() {
 	})
 }
 
-// Validate validates a struct and returns field-specific errors.
-func Validate(s interface{}) map[string][]string {
+// ValidateStruct validates a struct and returns field-specific errors.
+func ValidateStruct(s interface{}) map[string][]string {
 	err := validate.Struct(s)
 	if err == nil {
 		return nil

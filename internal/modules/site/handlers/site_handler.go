@@ -32,85 +32,65 @@ func (h *SiteHandler) SetDomainRepository(repo dnscontracts.DomainRepository) {
 
 // Show returns a single site enriched with queue count and source-control
 // info — composes 3 service calls so it stays bespoke.
-func (h *SiteHandler) Show(c *fiber.Ctx) error {
-	serverID, siteID, err := fiberctx.GetServerAndSiteID(c)
-	if err != nil {
-		return err
-	}
-	teamID, err := fiberctx.MustGetTeamID(c)
+func (h *SiteHandler) Show(r *fiberctx.Request) error {
+	serverID, siteID, err := fiberctx.GetServerAndSiteID(r.Ctx)
 	if err != nil {
 		return err
 	}
 
-	site, err := h.siteService.FindByID(c.Context(), siteID, serverID, teamID)
+	site, err := h.siteService.FindByID(r.Context(), siteID, serverID, r.TeamID)
 	if err != nil {
 		return err
 	}
 
 	resp := dto.ToSiteResponse(site)
-	resp.QueueCount = h.siteService.GetQueueCount(c.Context(), site.ID)
+	resp.QueueCount = h.siteService.GetQueueCount(r.Context(), site.ID)
 
 	if site.SourceControlID != nil && *site.SourceControlID != "" {
 		resp.SourceControl, resp.Repository = h.siteService.GetSourceControlInfo(
-			c.Context(),
-			teamID,
+			r.Context(),
+			r.TeamID,
 			*site.SourceControlID,
 			site.SourceControlRepositoriesID,
 		)
 	}
-	return fiberctx.OK(c, "Site retrieved", resp)
+	return fiberctx.OK(r.Ctx, "Site retrieved", resp)
 }
 
 // Delete kicks off async site deletion. Returns 200 with a status
 // message rather than 204 because the resource is not gone yet — the
 // generic Delete helper would change the status code.
-func (h *SiteHandler) Delete(c *fiber.Ctx) error {
-	serverID, siteID, err := fiberctx.GetServerAndSiteID(c)
+func (h *SiteHandler) Delete(r *fiberctx.Request) error {
+	serverID, siteID, err := fiberctx.GetServerAndSiteID(r.Ctx)
 	if err != nil {
 		return err
 	}
-	teamID, err := fiberctx.MustGetTeamID(c)
-	if err != nil {
+	if err := h.siteService.Delete(r.Context(), siteID, serverID, r.TeamID); err != nil {
 		return err
 	}
-	if err := h.siteService.Delete(c.Context(), siteID, serverID, teamID); err != nil {
-		return err
-	}
-	return fiberctx.OK(c, "Site deletion initiated", nil)
+	return fiberctx.OK(r.Ctx, "Site deletion initiated", nil)
 }
 
 // RegenerateDeployToken regenerates the deploy token. POST without body
 // that returns the updated site DTO — does not fit ActionItem (no
 // payload) or Update (no body).
-func (h *SiteHandler) RegenerateDeployToken(c *fiber.Ctx) error {
-	serverID, siteID, err := fiberctx.GetServerAndSiteID(c)
+func (h *SiteHandler) RegenerateDeployToken(r *fiberctx.Request) error {
+	serverID, siteID, err := fiberctx.GetServerAndSiteID(r.Ctx)
 	if err != nil {
 		return err
 	}
-	teamID, err := fiberctx.MustGetTeamID(c)
+	site, err := h.siteService.RegenerateDeployToken(r.Context(), siteID, serverID, r.TeamID)
 	if err != nil {
 		return err
 	}
-	site, err := h.siteService.RegenerateDeployToken(c.Context(), siteID, serverID, teamID)
-	if err != nil {
-		return err
-	}
-	return fiberctx.OK(c, "Deploy token regenerated", dto.ToSiteResponse(site))
+	return fiberctx.OK(r.Ctx, "Deploy token regenerated", dto.ToSiteResponse(site))
 }
 
 // UpdateDeploymentSettings updates a subset of site fields. PATCH that
 // reuses Update with a coerced request — stays bespoke for the
 // translation step.
-func (h *SiteHandler) UpdateDeploymentSettings(c *fiber.Ctx) error {
-	serverID, siteID, err := fiberctx.GetServerAndSiteID(c)
-	if err != nil {
-		return err
-	}
-	teamID, userID, err := fiberctx.MustGetTeamAndUserID(c)
-	if err != nil {
-		return err
-	}
-	req, err := fiberctx.MustParseAndValidate[dto.UpdateDeploymentSettingsRequest](c)
+func (h *SiteHandler) UpdateDeploymentSettings(r *fiberctx.Request, req *dto.UpdateDeploymentSettingsRequest) error {
+	serverID, siteID, err := fiberctx.GetServerAndSiteID(r.Ctx)
 	if err != nil {
 		return err
 	}
@@ -127,27 +107,23 @@ func (h *SiteHandler) UpdateDeploymentSettings(c *fiber.Ctx) error {
 		QueueDeployments:             req.QueueDeployments,
 	}
 
-	site, err := h.siteService.Update(c.Context(), siteID, serverID, teamID, userID, updateReq)
+	site, err := h.siteService.Update(r.Context(), siteID, serverID, r.TeamID, r.UserID, updateReq)
 	if err != nil {
 		return err
 	}
-	return fiberctx.OK(c, "Deployment settings updated", site)
+	return fiberctx.OK(r.Ctx, "Deployment settings updated", site)
 }
 
 // GetSettings returns a composite payload combining site, TLS options,
 // PHP versions, source-control + repository info, and the active
 // certificate.
-func (h *SiteHandler) GetSettings(c *fiber.Ctx) error {
-	serverID, siteID, err := fiberctx.GetServerAndSiteID(c)
-	if err != nil {
-		return err
-	}
-	teamID, err := fiberctx.MustGetTeamID(c)
+func (h *SiteHandler) GetSettings(r *fiberctx.Request) error {
+	serverID, siteID, err := fiberctx.GetServerAndSiteID(r.Ctx)
 	if err != nil {
 		return err
 	}
 
-	settingsData, err := h.siteService.GetSettings(c.Context(), siteID, serverID, teamID)
+	settingsData, err := h.siteService.GetSettings(r.Context(), siteID, serverID, r.TeamID)
 	if err != nil {
 		return err
 	}
@@ -168,7 +144,7 @@ func (h *SiteHandler) GetSettings(c *fiber.Ctx) error {
 		certResp := dto.ToCertificateResponse(settingsData.ActiveCertificate)
 		resp.ActiveCertificate = &certResp
 	}
-	return fiberctx.OK(c, "Site settings retrieved", resp)
+	return fiberctx.OK(r.Ctx, "Site settings retrieved", resp)
 }
 
 // GetCreateOptions returns the static options for creating a site.

@@ -30,12 +30,7 @@ func (h *Handler) ListSSHKeys(c *fiber.Ctx) error {
 
 // GenerateSSHKey generates a new SSH key pair locally — no DB write or
 // service call, just crypto. Stays bespoke.
-func (h *Handler) GenerateSSHKey(c *fiber.Ctx) error {
-	req, err := fiberctx.MustParseAndValidate[dto.GenerateSSHKeyRequest](c)
-	if err != nil {
-		return err
-	}
-
+func (h *Handler) GenerateSSHKey(c *fiber.Ctx, req *dto.GenerateSSHKeyRequest) error {
 	var privateKeyPEM, publicKeyStr string
 
 	switch req.Type {
@@ -76,12 +71,8 @@ func (h *Handler) GenerateSSHKey(c *fiber.Ctx) error {
 
 // AttachSSHKey attaches an SSH key (by id from the body) to a server.
 // Action with body — does not fit a generic helper.
-func (h *Handler) AttachSSHKey(c *fiber.Ctx) error {
+func (h *Handler) AttachSSHKey(c *fiber.Ctx, req *dto.AttachSSHKeyRequest) error {
 	teamID, serverID, err := fiberctx.GetTeamAndServerID(c)
-	if err != nil {
-		return err
-	}
-	req, err := fiberctx.MustParseAndValidate[dto.AttachSSHKeyRequest](c)
 	if err != nil {
 		return err
 	}

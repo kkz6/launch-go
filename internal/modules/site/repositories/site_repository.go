@@ -69,50 +69,36 @@ func (r *SiteRepository) FindByIDAndServer(ctx context.Context, id, serverID str
 
 // FindByIDAndTeam finds a site by ID and team ID with custom error.
 func (r *SiteRepository) FindByIDAndTeam(ctx context.Context, id, teamID string) (*models.Site, error) {
-	var site models.Site
-	err := r.DB.WithContext(ctx).
-		First(&site, "id = ? AND team_id = ?", id, teamID).Error
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, fiberutil.NotFound()
-		}
-		return nil, err
-	}
-	return &site, nil
+	return repository.FindOne[models.Site](ctx, r.DB,
+		repository.WithID(id),
+		repository.WithTeamID(teamID),
+	)
 }
 
 // FindByIDAndServerAndTeam finds a site by ID, server ID, and team ID.
 func (r *SiteRepository) FindByIDAndServerAndTeam(ctx context.Context, id, serverID, teamID string) (*models.Site, error) {
-	var site models.Site
-	err := r.DB.WithContext(ctx).
-		First(&site, "id = ? AND server_id = ? AND team_id = ?", id, serverID, teamID).Error
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, fiberutil.NotFound()
-		}
-		return nil, err
-	}
-	return &site, nil
+	return repository.FindOne[models.Site](ctx, r.DB,
+		repository.WithID(id),
+		repository.WithServerID(serverID),
+		repository.WithTeamID(teamID),
+	)
 }
 
 // FindAllByTeam finds all sites for a team
 func (r *SiteRepository) FindAllByTeam(ctx context.Context, teamID string) ([]models.Site, error) {
-	var sites []models.Site
-	err := r.DB.WithContext(ctx).
-		Where("team_id = ?", teamID).
-		Order("created_at DESC").
-		Find(&sites).Error
-	return sites, err
+	return repository.FindAll[models.Site](ctx, r.DB,
+		repository.WithTeamID(teamID),
+		repository.OrderByCreatedDesc(),
+	)
 }
 
 // FindByServerAndTeam finds sites by server ID and team ID
 func (r *SiteRepository) FindByServerAndTeam(ctx context.Context, serverID, teamID string) ([]models.Site, error) {
-	var sites []models.Site
-	err := r.DB.WithContext(ctx).
-		Where("server_id = ? AND team_id = ?", serverID, teamID).
-		Order("created_at DESC").
-		Find(&sites).Error
-	return sites, err
+	return repository.FindAll[models.Site](ctx, r.DB,
+		repository.WithServerID(serverID),
+		repository.WithTeamID(teamID),
+		repository.OrderByCreatedDesc(),
+	)
 }
 
 // CountByTeam counts all sites for a team

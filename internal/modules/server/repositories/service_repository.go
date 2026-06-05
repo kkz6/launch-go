@@ -40,25 +40,18 @@ func (r *ServiceRepository) FindByID(ctx context.Context, id string) (*models.In
 
 // FindByServerAndType finds all services by server and type
 func (r *ServiceRepository) FindByServerAndType(ctx context.Context, serverID string, serviceType types.ServiceType) ([]models.InstalledService, error) {
-	var services []models.InstalledService
-	err := r.DB.WithContext(ctx).
-		Where("server_id = ? AND type = ?", serverID, serviceType).
-		Find(&services).Error
-	return services, err
+	return repository.FindAll[models.InstalledService](ctx, r.DB,
+		repository.WithServerID(serverID),
+		repository.WithType(string(serviceType)),
+	)
 }
 
 // FindOneByServerAndType finds a service by server and type
 func (r *ServiceRepository) FindOneByServerAndType(ctx context.Context, serverID string, serviceType types.ServiceType) (*models.InstalledService, error) {
-	var service models.InstalledService
-	err := r.DB.WithContext(ctx).
-		First(&service, "server_id = ? AND type = ?", serverID, serviceType).Error
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, fiberutil.NotFound()
-		}
-		return nil, err
-	}
-	return &service, nil
+	return repository.FindOne[models.InstalledService](ctx, r.DB,
+		repository.WithServerID(serverID),
+		repository.WithType(string(serviceType)),
+	)
 }
 
 // FindByServerAndSoftware finds a service by server and software

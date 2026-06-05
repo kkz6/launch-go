@@ -50,21 +50,11 @@ func (r *TeamMemberRepository) UpdateRole(ctx context.Context, teamID, userID, r
 
 // Get gets a specific team member
 func (r *TeamMemberRepository) Get(ctx context.Context, teamID, userID string) (*models.TeamMember, error) {
-	var member models.TeamMember
-	err := r.DB.WithContext(ctx).
-		Preload("User").
-		Where("team_id = ? AND user_id = ?", teamID, userID).
-		First(&member).Error
-
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, nil
-		}
-
-		return nil, err
-	}
-
-	return &member, nil
+	return repository.FindOneOrNil[models.TeamMember](ctx, r.DB,
+		repository.WithTeamID(teamID),
+		repository.WithUserID(userID),
+		repository.Preload("User"),
+	)
 }
 
 // IsMember checks if a user is a member of a team

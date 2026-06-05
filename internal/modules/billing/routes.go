@@ -5,6 +5,7 @@ import (
 
 	"github.com/kkz6/launch-go/internal/middleware"
 	"github.com/kkz6/launch-go/internal/modules/billing/handlers"
+	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 )
 
 // RegisterRoutes registers the module routes (implements app.RouteRegistrar)
@@ -22,22 +23,22 @@ func (m *Module) RegisterRoutes(router fiber.Router, authMiddleware fiber.Handle
 func (m *Module) registerBillingRoutes(router fiber.Router, authMiddleware fiber.Handler, handler *handlers.BillingHandler) {
 	billing := router.Group("/billing", authMiddleware, middleware.TeamScope())
 	{
-		billing.Get("/", handler.Index)
+		billing.Get("/", fiberutil.Handler(handler.Index))
 		billing.Get("/plans", handler.GetPlans)
-		billing.Post("/generate-checkout-url", handler.GenerateCheckoutURL)
-		billing.Post("/cancel-subscription", handler.CancelSubscription)
-		billing.Post("/resume-subscription", handler.ResumeSubscription)
+		billing.Post("/generate-checkout-url", middleware.Can("billing.update"), fiberutil.Bind(handler.GenerateCheckoutURL))
+		billing.Post("/cancel-subscription", middleware.Can("billing.update"), fiberutil.Validate(handler.CancelSubscription))
+		billing.Post("/resume-subscription", middleware.Can("billing.update"), fiberutil.Validate(handler.ResumeSubscription))
 
-		billing.Get("/subscriptions", handler.GetSubscriptions)
+		billing.Get("/subscriptions", fiberutil.Handler(handler.GetSubscriptions))
 		billing.Get("/subscriptions/:id", handler.GetSubscription)
-		billing.Get("/orders", handler.GetOrders)
-		billing.Get("/options", handler.GetSubscriptionOptions)
+		billing.Get("/orders", fiberutil.Handler(handler.GetOrders))
+		billing.Get("/options", fiberutil.Handler(handler.GetSubscriptionOptions))
 	}
 }
 
 // registerSubscriptionRoutes registers subscription registration route
 func (m *Module) registerSubscriptionRoutes(router fiber.Router, authMiddleware fiber.Handler, handler *handlers.BillingHandler) {
-	router.Get("/register/subscription", authMiddleware, middleware.TeamScope(), handler.RegisterSubscription)
+	router.Get("/register/subscription", authMiddleware, middleware.TeamScope(), fiberutil.Handler(handler.RegisterSubscription))
 }
 
 // RegisterWebhookRoutes registers webhook routes (implements app.WebhookRegistrar)

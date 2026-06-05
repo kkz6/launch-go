@@ -29,26 +29,21 @@ func NewBillingHandler(service *services.BillingService, serverCountFn func(team
 }
 
 // Index returns billing information for the current team
-func (h *BillingHandler) Index(c *fiber.Ctx) error {
-	teamID, err := fiberctx.MustGetTeamID(c)
-	if err != nil {
-		return err
-	}
-
+func (h *BillingHandler) Index(r *fiberctx.Request) error {
 	serverCount := 0
 	if h.serverCountFn != nil {
-		count, err := h.serverCountFn(teamID)
+		count, err := h.serverCountFn(r.TeamID)
 		if err == nil {
 			serverCount = count
 		}
 	}
 
-	data, err := h.service.GetBillingData(c.Context(), teamID, serverCount)
+	data, err := h.service.GetBillingData(r.Context(), r.TeamID, serverCount)
 	if err != nil {
-		return fiberctx.HandleError(c, err)
+		return fiberctx.HandleError(r.Ctx, err)
 	}
 
-	return fiberctx.OK(c, "Billing data retrieved", data)
+	return fiberctx.OK(r.Ctx, "Billing data retrieved", data)
 }
 
 // GetPlans returns all available subscription plans
@@ -61,38 +56,23 @@ func (h *BillingHandler) GetPlans(c *fiber.Ctx) error {
 }
 
 // GenerateCheckoutURL generates a checkout URL for subscribing
-func (h *BillingHandler) GenerateCheckoutURL(c *fiber.Ctx) error {
-	teamID, err := fiberctx.MustGetTeamID(c)
-	if err != nil {
-		return err
-	}
-
-	req, err := fiberctx.MustParseAndValidate[dto.GenerateCheckoutURLRequest](c)
-	if err != nil {
-		return err
-	}
-
+func (h *BillingHandler) GenerateCheckoutURL(r *fiberctx.Request, req *dto.GenerateCheckoutURLRequest) error {
 	redirectURL := h.appURL + "/settings/billing"
 
 	// Extract customer info from auth context to prefill checkout
-	customerEmail, _ := c.Locals("email").(string)
-	customerName, _ := c.Locals("name").(string)
+	customerEmail, _ := r.Locals("email").(string)
+	customerName, _ := r.Locals("name").(string)
 
-	url, err := h.service.GenerateCheckoutURL(c.Context(), teamID, req, redirectURL, customerEmail, customerName)
+	url, err := h.service.GenerateCheckoutURL(r.Context(), r.TeamID, req, redirectURL, customerEmail, customerName)
 	if err != nil {
-		return fiberctx.HandleError(c, err)
+		return fiberctx.HandleError(r.Ctx, err)
 	}
 
-	return fiberctx.OK(c, "Checkout URL generated", dto.GenerateCheckoutURLResponse{URL: url})
+	return fiberctx.OK(r.Ctx, "Checkout URL generated", dto.GenerateCheckoutURLResponse{URL: url})
 }
 
 // CancelSubscription cancels a subscription
-func (h *BillingHandler) CancelSubscription(c *fiber.Ctx) error {
-	req, err := fiberctx.MustParseAndValidate[dto.CancelSubscriptionRequest](c)
-	if err != nil {
-		return err
-	}
-
+func (h *BillingHandler) CancelSubscription(c *fiber.Ctx, req *dto.CancelSubscriptionRequest) error {
 	if err := h.service.CancelSubscription(c.Context(), req.SubscriptionID); err != nil {
 		return fiberctx.HandleError(c, err)
 	}
@@ -101,12 +81,7 @@ func (h *BillingHandler) CancelSubscription(c *fiber.Ctx) error {
 }
 
 // ResumeSubscription resumes a cancelled subscription
-func (h *BillingHandler) ResumeSubscription(c *fiber.Ctx) error {
-	req, err := fiberctx.MustParseAndValidate[dto.ResumeSubscriptionRequest](c)
-	if err != nil {
-		return err
-	}
-
+func (h *BillingHandler) ResumeSubscription(c *fiber.Ctx, req *dto.ResumeSubscriptionRequest) error {
 	if err := h.service.ResumeSubscription(c.Context(), req.SubscriptionID); err != nil {
 		return fiberctx.HandleError(c, err)
 	}
@@ -115,15 +90,10 @@ func (h *BillingHandler) ResumeSubscription(c *fiber.Ctx) error {
 }
 
 // GetSubscriptions returns all subscriptions for the current team
-func (h *BillingHandler) GetSubscriptions(c *fiber.Ctx) error {
-	teamID, err := fiberctx.MustGetTeamID(c)
+func (h *BillingHandler) GetSubscriptions(r *fiberctx.Request) error {
+	subscriptions, err := h.service.GetSubscriptions(r.Context(), r.TeamID)
 	if err != nil {
-		return err
-	}
-
-	subscriptions, err := h.service.GetSubscriptions(c.Context(), teamID)
-	if err != nil {
-		return fiberctx.HandleError(c, err)
+		return fiberctx.HandleError(r.Ctx, err)
 	}
 
 	subscriptionResponses := make([]dto.SubscriptionResponse, len(subscriptions))
@@ -132,7 +102,7 @@ func (h *BillingHandler) GetSubscriptions(c *fiber.Ctx) error {
 		subscriptionResponses[i] = dto.ToSubscriptionResponse(&sub, plan, "")
 	}
 
-	return fiberctx.OK(c, "Subscriptions retrieved", subscriptionResponses)
+	return fiberctx.OK(r.Ctx, "Subscriptions retrieved", subscriptionResponses)
 }
 
 // GetSubscription returns a specific subscription
@@ -149,36 +119,27 @@ func (h *BillingHandler) GetSubscription(c *fiber.Ctx) error {
 }
 
 // GetOrders returns all orders for the current team
-func (h *BillingHandler) GetOrders(c *fiber.Ctx) error {
-	teamID, err := fiberctx.MustGetTeamID(c)
+func (h *BillingHandler) GetOrders(r *fiberctx.Request) error {
+	orders, err := h.service.GetOrders(r.Context(), r.TeamID)
 	if err != nil {
-		return err
-	}
-
-	orders, err := h.service.GetOrders(c.Context(), teamID)
-	if err != nil {
-		return fiberctx.HandleError(c, err)
+		return fiberctx.HandleError(r.Ctx, err)
 	}
 
 	orderResponses := pkgdto.TransformSlice(orders, dto.ToOrderResponse)
 
-	return fiberctx.OK(c, "Orders retrieved", orderResponses)
+	return fiberctx.OK(r.Ctx, "Orders retrieved", orderResponses)
 }
 
 // GetSubscriptionOptions returns the subscription limits/options for the current team
-func (h *BillingHandler) GetSubscriptionOptions(c *fiber.Ctx) error {
-	teamID, err := fiberctx.MustGetTeamID(c)
-	if err != nil {
-		return err
-	}
+func (h *BillingHandler) GetSubscriptionOptions(r *fiberctx.Request) error {
 	userRole := billingtypes.UserRoleCustomer
 
-	if role := fiberctx.GetUserRole(c); role != "" {
+	if role := fiberctx.GetUserRole(r.Ctx); role != "" {
 		userRole = billingtypes.UserRole(role)
 	}
 
 	options := services.NewTeamSubscriptionOptions(
-		teamID,
+		r.TeamID,
 		h.service,
 		userRole,
 		func(ctx context.Context, tID string) (int, error) {
@@ -191,31 +152,26 @@ func (h *BillingHandler) GetSubscriptionOptions(c *fiber.Ctx) error {
 		nil,
 	)
 
-	resp, err := options.GetSubscriptionOptionsResponse(c.Context())
+	resp, err := options.GetSubscriptionOptionsResponse(r.Context())
 	if err != nil {
-		return fiberctx.HandleError(c, err)
+		return fiberctx.HandleError(r.Ctx, err)
 	}
 
-	return fiberctx.OK(c, "Subscription options retrieved", resp)
+	return fiberctx.OK(r.Ctx, "Subscription options retrieved", resp)
 }
 
 // RegisterSubscription shows the subscription selection page
-func (h *BillingHandler) RegisterSubscription(c *fiber.Ctx) error {
-	teamID, err := fiberctx.MustGetTeamID(c)
+func (h *BillingHandler) RegisterSubscription(r *fiberctx.Request) error {
+	subscribed, err := h.service.IsSubscribed(r.Context(), r.TeamID)
 	if err != nil {
-		return err
-	}
-
-	subscribed, err := h.service.IsSubscribed(c.Context(), teamID)
-	if err != nil {
-		return fiberctx.HandleError(c, err)
+		return fiberctx.HandleError(r.Ctx, err)
 	}
 	if subscribed {
-		return fiberctx.HandleError(c, services.ErrAlreadySubscribed)
+		return fiberctx.HandleError(r.Ctx, services.ErrAlreadySubscribed)
 	}
 
 	plans := h.service.GetPlans()
 	planResponses := pkgdto.TransformSlice(plans, dto.ToPlanResponse)
 
-	return fiberctx.OK(c, "Registration subscription plans", planResponses)
+	return fiberctx.OK(r.Ctx, "Registration subscription plans", planResponses)
 }
