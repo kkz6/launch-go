@@ -150,7 +150,7 @@ func (j *GHABootstrapWorkflowJob) handleApplication(ctx context.Context) error {
 	// `ghcr.io/<owner>/<repo>:launch-<sha>` — the identical ref — so the
 	// second build overwrites the first and both deploy the same image
 	// (#94). The slug keys the tag on the app so they stay distinct.
-	cfg.ImageSlug = applicationImageSlug(app.Name, app.ID)
+	cfg.ImageSlug = workloadImageSlug(app.Name, app.ID)
 
 	// Namespace the deploy-token secret and the workflow file per application so
 	// multiple apps can share one repo without clobbering each other's token /
@@ -548,6 +548,13 @@ func (j *GHABootstrapWorkflowJob) handleCompose(ctx context.Context) error {
 		return fmt.Errorf("gha bootstrap: compose %s: %w", compose.ID, err)
 	}
 
+	// Namespace the GHCR image tag per compose stack. The compose template
+	// already keys the tag on the service name, but two stacks built from
+	// one repo that share a service name (e.g. both have "web") would still
+	// render the identical `launch-web-<sha>` ref and overwrite each other
+	// (#96). The slug keys the tag on the stack so they stay distinct.
+	cfg.ImageSlug = workloadImageSlug(compose.Name, compose.ID)
+
 	// Compose keeps the shared LAUNCH_DEPLOY_TOKEN secret (no per-app
 	// namespacing yet), so no forced re-push.
 	rawToken, tokenHash, err := j.mintTokenIfNeeded(compose.GHADeployTokenHash, false)
@@ -716,18 +723,23 @@ func ghcrImageRepository(owner, repo string) string {
 	return "ghcr.io/" + strings.ToLower(owner+"/"+repo)
 }
 
-// applicationImageSlug builds the per-application component of the GHCR
-// image tag (`launch-<slug>-<sha>`). It combines a human-readable slug of
-// the app name (the same SlugFromName used for the container name, so the
-// two stay consistent) with a short, lowercased fragment of the app's ULID
-// so two apps in the same repo never collide on one tag — even if they
-// share a name — while staying legible on the GHCR package page (e.g.
-// "web-3y8r6ck7").
+// workloadImageSlug builds the per-workload component of the GHCR image
+// tag (`launch-<slug>-...`). It combines a human-readable slug of the
+// workload name (the same SlugFromName used for the container name, so the
+// two stay consistent) with a short, lowercased fragment of the workload's
+// ULID so two workloads in the same repo never collide on one tag — even
+// if they share a name — while staying legible on the GHCR package page
+// (e.g. "web-3y8r6ck7").
+//
+// Used for both applications (tag = launch-<slug>-<sha>) and compose stacks
+// (tag = launch-<slug>-<service>-<sha>); the id fragment is what stops two
+// apps, or two compose stacks sharing a service name, from overwriting each
+// other's image.
 //
 // SlugFromName never returns empty (it falls back to "app"), so the result
 // always has a name part; the id fragment guarantees uniqueness.
-func applicationImageSlug(name, appID string) string {
-	idFrag := strings.ToLower(appID)
+func workloadImageSlug(name, id string) string {
+	idFrag := strings.ToLower(id)
 	if len(idFrag) > 8 {
 		idFrag = idFrag[len(idFrag)-8:]
 	}
@@ -989,6 +1001,7 @@ func (j *GHABootstrapWorkflowJob) renderWorkflow(
 			ComposeFilePath:  cfg.ComposeFilePath,
 			LaunchBaseURL:    j.Payload.LaunchBaseURL,
 			ComposeID:        id,
+			ImageSlug:        cfg.ImageSlug,
 			BuildSecretNames: buildSecretNames,
 			AutoDeploy:       cfg.AutoDeploy,
 		})
