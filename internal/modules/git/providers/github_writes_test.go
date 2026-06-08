@@ -36,6 +36,11 @@ type fakeGitHub struct {
 	repoPub  *[32]byte
 	repoPriv *[32]byte
 
+	// existingContentSHA controls the GET /contents/ response used by the
+	// PutContents upsert path: non-empty → 200 with that blob sha (file
+	// exists), empty → 404 (file absent).
+	existingContentSHA string
+
 	mu       sync.Mutex
 	requests []recordedRequest
 }
@@ -93,6 +98,15 @@ func (f *fakeGitHub) serve(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusCreated)
 	case r.Method == http.MethodPatch && strings.Contains(r.URL.Path, "/actions/variables/"):
 		w.WriteHeader(http.StatusNoContent)
+	case r.Method == http.MethodGet && strings.Contains(r.URL.Path, "/contents/"):
+		// PutContents resolves the current blob sha here when no SHA was
+		// supplied. Empty existingContentSHA == file absent (404).
+		if f.existingContentSHA == "" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(map[string]any{"sha": f.existingContentSHA, "type": "file"})
 	case r.Method == http.MethodPut && strings.Contains(r.URL.Path, "/contents/"):
 		// Mirror the real GitHub response shape — BOTH content.sha
 		// (file blob) and commit.sha (the commit). The provider must
@@ -235,6 +249,67 @@ func TestPutContents_DoesNotReturnCommitSHA(t *testing.T) {
 		"PutContents must return content.sha (blob), not commit.sha "+
 			"— otherwise every subsequent update 409s on If-Match")
 	assert.Equal(t, "fakeBlobSha000000000000000000000000000000", sha)
+}
+
+// Regression for #80: when no SHA is supplied but the file already exists
+// (e.g. several apps share one repo + workflow path), PutContents must resolve
+// the current blob SHA and update — not blindly create, which GitHub rejects
+// with 422 "sha wasn't supplied".
+func TestPutContents_UpsertsWhenFileExistsWithoutSHA(t *testing.T) {
+	fake := newFakeGitHub(t)
+	defer fake.Close()
+	fake.existingContentSHA = "existingBlobSha1111111111111111111111111"
+	p := testProvider(t, fake.srv.URL)
+
+	_, err := p.PutContents(
+		context.Background(),
+		"100", "kkz6", "shared-repo",
+		".github/workflows/launch-deploy.yml",
+		"name: Launch Deploy\n",
+		"Configure Launch deploy workflow",
+		"", // no stored SHA, but the file exists on the repo
+		"main",
+	)
+	require.NoError(t, err)
+
+	// A GET must precede the PUT, and the PUT body must carry the resolved sha.
+	var sawGet bool
+	var put recordedRequest
+	for _, r := range fake.requests {
+		if strings.Contains(r.Path, "/contents/") {
+			if r.Method == http.MethodGet {
+				sawGet = true
+			}
+			if r.Method == http.MethodPut {
+				put = r
+			}
+		}
+	}
+	assert.True(t, sawGet, "PutContents must GET the existing file SHA when none supplied")
+	assert.Equal(t, http.MethodPut, put.Method)
+	assert.Contains(t, put.Body, `"sha":"existingBlobSha1111111111111111111111111"`,
+		"PUT must update with the resolved blob sha, not create")
+}
+
+// When the file does not exist, PutContents creates it — the PUT body carries
+// NO sha field.
+func TestPutContents_CreatesWhenFileAbsent(t *testing.T) {
+	fake := newFakeGitHub(t)
+	defer fake.Close()
+	// existingContentSHA left empty → GET returns 404 → create path.
+	p := testProvider(t, fake.srv.URL)
+
+	_, err := p.PutContents(
+		context.Background(),
+		"100", "kkz6", "new-repo",
+		".github/workflows/launch-deploy.yml",
+		"name: Launch Deploy\n", "msg", "", "main",
+	)
+	require.NoError(t, err)
+
+	put := fake.requests[len(fake.requests)-1]
+	assert.Equal(t, http.MethodPut, put.Method)
+	assert.NotContains(t, put.Body, `"sha"`, "absent file must be created without a sha")
 }
 
 func TestPutActionsSecret_EncryptsValueAndPosts(t *testing.T) {
