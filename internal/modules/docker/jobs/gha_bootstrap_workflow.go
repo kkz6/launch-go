@@ -21,6 +21,7 @@ import (
 	dockernotifications "github.com/kkz6/launch-go/internal/modules/docker/notifications"
 	dockertasks "github.com/kkz6/launch-go/internal/modules/docker/tasks"
 	dockertypes "github.com/kkz6/launch-go/internal/modules/docker/types"
+	"github.com/kkz6/launch-go/internal/pkg/dbtype"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 )
 
@@ -127,6 +128,12 @@ func (j *GHABootstrapWorkflowJob) handleApplication(ctx context.Context) error {
 	if app.BuildType != nil {
 		cfg.BuildType = string(*app.BuildType)
 	}
+	// The custom Dockerfile path lives in the application's build_config (set
+	// by the create/update flow), NOT source_config — so read it from the row
+	// here, mirroring BuildType. Without this the rendered workflow always
+	// falls back to the repo-root "Dockerfile" and a custom location like
+	// "docker/Dockerfile" is silently ignored.
+	cfg.DockerfilePath = resolveAppDockerfilePath(app.BuildConfig, cfg.DockerfilePath)
 
 	rawToken, tokenHash, err := j.mintTokenIfNeeded(app.GHADeployTokenHash)
 	if err != nil {
@@ -570,6 +577,21 @@ type ghaSourceConfig struct {
 	// from PutContents. Read back into the row's source_config so the
 	// next re-sync can detect drift.
 	LastCommitSHA string
+}
+
+// resolveAppDockerfilePath returns the Dockerfile path for an application's
+// rendered workflow. The user-chosen path is persisted in the application's
+// build_config (not source_config), so a non-empty build_config["dockerfile_path"]
+// wins; otherwise the source_config-derived fallback is kept.
+func resolveAppDockerfilePath(buildConfig dbtype.JSONMap, fallback string) string {
+	if buildConfig != nil {
+		if p, ok := buildConfig["dockerfile_path"].(string); ok {
+			if p = strings.TrimSpace(p); p != "" {
+				return p
+			}
+		}
+	}
+	return fallback
 }
 
 func parseGHASourceConfig(raw map[string]any) (*ghaSourceConfig, error) {

@@ -11,6 +11,7 @@ import (
 
 	"github.com/kkz6/launch-go/internal/modules/docker/tasks"
 	dockertypes "github.com/kkz6/launch-go/internal/modules/docker/types"
+	"github.com/kkz6/launch-go/internal/pkg/dbtype"
 )
 
 // applyDeployApplicationOverrides is the pure helper extracted from
@@ -441,4 +442,41 @@ func TestDeployApplicationPayload_StringerDoesNotLeakTokenPrefixes(t *testing.T)
 			t.Fatalf("payload Stringer leaked a token-looking prefix %q: %s", prefix, s)
 		}
 	}
+}
+
+// TestResolveAppDockerfilePath verifies the GHA bootstrap reads the custom
+// Dockerfile path from the application's build_config (where the create/update
+// flow stores it), falling back to the source_config-derived default. Guards
+// the regression where a custom location like "docker/Dockerfile" was ignored
+// and the rendered workflow always built the repo-root Dockerfile.
+func TestResolveAppDockerfilePath(t *testing.T) {
+	t.Run("build_config override wins", func(t *testing.T) {
+		got := resolveAppDockerfilePath(dbtype.JSONMap{"dockerfile_path": "docker/Dockerfile"}, "Dockerfile")
+		assert.Equal(t, "docker/Dockerfile", got)
+	})
+
+	t.Run("trims whitespace", func(t *testing.T) {
+		got := resolveAppDockerfilePath(dbtype.JSONMap{"dockerfile_path": "  build/Dockerfile  "}, "Dockerfile")
+		assert.Equal(t, "build/Dockerfile", got)
+	})
+
+	t.Run("empty override keeps fallback", func(t *testing.T) {
+		got := resolveAppDockerfilePath(dbtype.JSONMap{"dockerfile_path": "   "}, "Dockerfile")
+		assert.Equal(t, "Dockerfile", got)
+	})
+
+	t.Run("missing key keeps fallback", func(t *testing.T) {
+		got := resolveAppDockerfilePath(dbtype.JSONMap{"other": "x"}, "Dockerfile")
+		assert.Equal(t, "Dockerfile", got)
+	})
+
+	t.Run("nil build_config keeps fallback", func(t *testing.T) {
+		got := resolveAppDockerfilePath(nil, "Dockerfile")
+		assert.Equal(t, "Dockerfile", got)
+	})
+
+	t.Run("non-string value keeps fallback", func(t *testing.T) {
+		got := resolveAppDockerfilePath(dbtype.JSONMap{"dockerfile_path": 123}, "Dockerfile")
+		assert.Equal(t, "Dockerfile", got)
+	})
 }
