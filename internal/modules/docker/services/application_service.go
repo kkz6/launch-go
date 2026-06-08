@@ -508,6 +508,40 @@ func (s *ApplicationService) ListDeployments(
 	return s.Repos().Deployment().ListForTarget(ctx, "application", applicationID)
 }
 
+// DeleteDeployment removes a deployment history row. When deleteFromGHA is set
+// and the deployment was run via GitHub Actions (carries a gha_run_id), the
+// GitHub Actions run is deleted first; if that fails the local row is kept so
+// the user can retry (or uncheck the option and delete just the local record).
+func (s *ApplicationService) DeleteDeployment(
+	ctx context.Context, applicationID, projectID, serverID, teamID, deploymentID string, deleteFromGHA bool,
+) error {
+	if _, err := s.requireProject(ctx, projectID, serverID, teamID); err != nil {
+		return err
+	}
+	app, err := s.Repos().Application().FindByIDAndTeamServer(ctx, applicationID, teamID, serverID)
+	if err != nil {
+		return err
+	}
+	if app.ProjectID != projectID {
+		return fiberutil.NotFound()
+	}
+	dep, err := s.Repos().Deployment().FindByID(ctx, deploymentID)
+	if err != nil {
+		return err
+	}
+	if dep.TargetType != "application" || dep.TargetID != applicationID {
+		return fiberutil.NotFound()
+	}
+
+	if deleteFromGHA && dep.GHARunID != nil && *dep.GHARunID != "" {
+		if err := deleteGHAWorkflowRun(ctx, s.DB(), s.GitProviders(), app.SourceConfig, *dep.GHARunID); err != nil {
+			return err
+		}
+	}
+
+	return s.Repos().Deployment().Delete(ctx, deploymentID)
+}
+
 // Deploy enqueues a deployment for the application. Creates a
 // deployments row in `pending`, then asynchronously dispatches the
 // docker:deploy_application asynq job which runs the SSH script.

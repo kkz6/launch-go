@@ -482,6 +482,39 @@ func (s *ComposeService) ListDeployments(
 	return s.Repos().Deployment().ListForTarget(ctx, "compose", composeID)
 }
 
+// DeleteDeployment removes a compose deployment history row, optionally deleting
+// the GitHub Actions run too (best-effort-first: a GHA failure keeps the local
+// row so the user can retry).
+func (s *ComposeService) DeleteDeployment(
+	ctx context.Context, composeID, projectID, serverID, teamID, deploymentID string, deleteFromGHA bool,
+) error {
+	if _, err := s.requireProjectScoped(ctx, projectID, serverID, teamID); err != nil {
+		return err
+	}
+	c, err := s.Repos().Compose().FindByIDAndTeamServer(ctx, composeID, teamID, serverID)
+	if err != nil {
+		return err
+	}
+	if c.ProjectID != projectID {
+		return fiberutil.NotFound()
+	}
+	dep, err := s.Repos().Deployment().FindByID(ctx, deploymentID)
+	if err != nil {
+		return err
+	}
+	if dep.TargetType != "compose" || dep.TargetID != composeID {
+		return fiberutil.NotFound()
+	}
+
+	if deleteFromGHA && dep.GHARunID != nil && *dep.GHARunID != "" {
+		if err := deleteGHAWorkflowRun(ctx, s.DB(), s.GitProviders(), c.SourceConfig, *dep.GHARunID); err != nil {
+			return err
+		}
+	}
+
+	return s.Repos().Deployment().Delete(ctx, deploymentID)
+}
+
 // Reload recreates the compose stack with the current .env and NO
 // rebuild — `docker compose up -d --remove-orphans` reusing the images
 // already on the host — so saved runtime env changes apply fast.

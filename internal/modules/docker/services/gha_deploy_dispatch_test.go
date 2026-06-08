@@ -24,8 +24,9 @@ import (
 // Returns whatever Err is set to so tests can simulate GitHub
 // failures (404 workflow missing, 403 permission denied, etc.).
 type fakeDispatcher struct {
-	Calls []dispatchCall
-	Err   error
+	Calls       []dispatchCall
+	DeletedRuns []string
+	Err         error
 }
 
 type dispatchCall struct {
@@ -36,6 +37,14 @@ func (f *fakeDispatcher) TriggerWorkflowDispatch(
 	ctx context.Context, installationID, owner, repo, workflowFile, branch string,
 ) error {
 	f.Calls = append(f.Calls, dispatchCall{installationID, owner, repo, workflowFile, branch})
+	return f.Err
+}
+
+// DeletedRuns records DeleteWorkflowRun calls (run ids) for assertions.
+func (f *fakeDispatcher) DeleteWorkflowRun(
+	ctx context.Context, installationID, owner, repo, runID string,
+) error {
+	f.DeletedRuns = append(f.DeletedRuns, runID)
 	return f.Err
 }
 

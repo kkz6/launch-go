@@ -27,6 +27,12 @@ func (r *DeploymentRepository) FindByID(ctx context.Context, id string) (*models
 	)
 }
 
+// Delete removes a deployment history row by id (hard delete — these are
+// disposable log records).
+func (r *DeploymentRepository) Delete(ctx context.Context, id string) error {
+	return r.DB.WithContext(ctx).Where("id = ?", id).Delete(&models.Deployment{}).Error
+}
+
 // ListForTarget returns deployment history for a given (type, id) pair,
 // most recent first. Used by the Deployments subtab across all three
 // workload kinds — applications, composes, and databases (target_type =
