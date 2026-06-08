@@ -145,6 +145,19 @@ func (j *GHABootstrapWorkflowJob) handleApplication(ctx context.Context) error {
 	// "docker/Dockerfile" is silently ignored.
 	cfg.DockerfilePath = resolveAppDockerfilePath(app.BuildConfig, cfg.DockerfilePath)
 
+	// Namespace the deploy-token secret and the workflow file per application so
+	// multiple apps can share one repo without clobbering each other's token /
+	// workflow (which caused cross-app deploy 401s).
+	cfg.DeployTokenSecret = appDeployTokenSecretName(app.ID)
+	perAppWorkflowPath := appWorkflowPath(app.ID)
+	if cfg.WorkflowPath != perAppWorkflowPath {
+		// First time on the per-app path (new app, or migrating off the old
+		// shared launch-deploy.yml): the stored SHA refers to the old file, so
+		// drop it — PutContents resolves the real SHA for the new path itself.
+		cfg.ExistingSHA = ""
+	}
+	cfg.WorkflowPath = perAppWorkflowPath
+
 	rawToken, tokenHash, err := j.mintTokenIfNeeded(app.GHADeployTokenHash)
 	if err != nil {
 		return err
@@ -169,6 +182,7 @@ func (j *GHABootstrapWorkflowJob) handleApplication(ctx context.Context) error {
 	updates := map[string]any{
 		"source_config": appendSourceConfig(app.SourceConfig, map[string]any{
 			"gha_workflow_sha":     cfg.LastCommitSHA,
+			"gha_workflow_path":    cfg.WorkflowPath,
 			"gha_image_repository": ghcrImageRepository(cfg.Owner, cfg.Repo),
 			// Success clears any previous failure state so a retry
 			// after the customer grants permissions flips the banner
@@ -572,6 +586,11 @@ type ghaSourceConfig struct {
 	ComposeFilePath string
 	WorkflowPath    string
 	ExistingSHA     string
+	// DeployTokenSecret is the GitHub repo-secret NAME that holds this
+	// workload's deploy token. Namespaced per application so multiple apps
+	// can share one repo without overwriting each other's token (empty →
+	// the shared "LAUNCH_DEPLOY_TOKEN", used by compose).
+	DeployTokenSecret string
 	// BuildType is the application's chosen builder ("dockerfile" |
 	// "nixpacks" | ""). Empty means "auto" — let the workflow detect by
 	// Dockerfile presence. A non-empty value is honoured verbatim so an
@@ -602,6 +621,23 @@ func resolveAppDockerfilePath(buildConfig dbtype.JSONMap, fallback string) strin
 		}
 	}
 	return fallback
+}
+
+// appDeployTokenSecretName returns the per-application GitHub repo-secret name
+// that holds the deploy token, e.g. "LAUNCH_DEPLOY_TOKEN_01KTK…". Namespacing
+// by app id lets several applications share one repo without overwriting each
+// other's token (the cause of cross-app deploy 401s). GitHub secret names allow
+// [A-Z0-9_] and must not start with a digit — the prefix + uppercased ULID
+// satisfies both.
+func appDeployTokenSecretName(appID string) string {
+	return "LAUNCH_DEPLOY_TOKEN_" + strings.ToUpper(appID)
+}
+
+// appWorkflowPath returns the per-application workflow file path. Each app gets
+// its own file so apps sharing a repo don't overwrite one another's workflow
+// (each embeds its own app id + deploy-token secret reference).
+func appWorkflowPath(appID string) string {
+	return ".github/workflows/launch-deploy-" + strings.ToLower(appID) + ".yml"
 }
 
 func parseGHASourceConfig(raw map[string]any) (*ghaSourceConfig, error) {
@@ -797,10 +833,16 @@ func (j *GHABootstrapWorkflowJob) bootstrap(
 		return err
 	}
 
-	// Token secret — only when we're rotating or first-time.
+	// Token secret — only when we're rotating or first-time. The secret name is
+	// per-application (cfg.DeployTokenSecret) so apps sharing a repo don't
+	// overwrite each other's token; compose leaves it empty → the shared name.
+	deployTokenSecret := cfg.DeployTokenSecret
+	if deployTokenSecret == "" {
+		deployTokenSecret = "LAUNCH_DEPLOY_TOKEN"
+	}
 	if rawToken != "" {
-		if err := gh.PutActionsSecret(ctx, installationID, cfg.Owner, cfg.Repo, "LAUNCH_DEPLOY_TOKEN", rawToken); err != nil {
-			return fmt.Errorf("put LAUNCH_DEPLOY_TOKEN: %w", err)
+		if err := gh.PutActionsSecret(ctx, installationID, cfg.Owner, cfg.Repo, deployTokenSecret, rawToken); err != nil {
+			return fmt.Errorf("put %s: %w", deployTokenSecret, err)
 		}
 	}
 
@@ -877,13 +919,14 @@ func (j *GHABootstrapWorkflowJob) renderWorkflow(
 	switch kind {
 	case "application":
 		return dockertasks.RenderApplicationWorkflow(dockertasks.ApplicationWorkflowData{
-			Branch:           cfg.Branch,
-			DockerfilePath:   cfg.DockerfilePath,
-			BuildType:        cfg.BuildType,
-			LaunchBaseURL:    j.Payload.LaunchBaseURL,
-			AppID:            id,
-			BuildSecretNames: buildSecretNames,
-			AutoDeploy:       cfg.AutoDeploy,
+			Branch:            cfg.Branch,
+			DockerfilePath:    cfg.DockerfilePath,
+			BuildType:         cfg.BuildType,
+			LaunchBaseURL:     j.Payload.LaunchBaseURL,
+			AppID:             id,
+			DeployTokenSecret: cfg.DeployTokenSecret,
+			BuildSecretNames:  buildSecretNames,
+			AutoDeploy:        cfg.AutoDeploy,
 		})
 	case "compose":
 		return dockertasks.RenderComposeWorkflow(dockertasks.ComposeWorkflowData{

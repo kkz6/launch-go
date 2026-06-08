@@ -34,6 +34,10 @@ type ApplicationWorkflowData struct {
 	BuildType     string
 	LaunchBaseURL string
 	AppID         string
+	// DeployTokenSecret is the per-app GitHub repo-secret NAME holding the
+	// deploy token (e.g. LAUNCH_DEPLOY_TOKEN_<APP_ID>). Namespaced per app so
+	// multiple apps can share a repo without overwriting each other's token.
+	DeployTokenSecret string
 	// BuildSecretNames are the build-time secret identifiers the
 	// workflow's docker/build-push-action should mount via its
 	// `secrets:` input. Each entry maps to a repo secret named
@@ -105,6 +109,9 @@ func validateApplicationData(d ApplicationWorkflowData) error {
 	}
 	if d.AppID == "" {
 		missing = append(missing, "AppID")
+	}
+	if d.DeployTokenSecret == "" {
+		missing = append(missing, "DeployTokenSecret")
 	}
 	if len(missing) > 0 {
 		return fmt.Errorf("RenderApplicationWorkflow: missing required field(s): %s", strings.Join(missing, ", "))
