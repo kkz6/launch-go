@@ -158,7 +158,15 @@ func (j *GHABootstrapWorkflowJob) handleApplication(ctx context.Context) error {
 	}
 	cfg.WorkflowPath = perAppWorkflowPath
 
-	rawToken, tokenHash, err := j.mintTokenIfNeeded(app.GHADeployTokenHash)
+	// If the deploy token was last pushed under a different secret name (or never
+	// recorded — legacy apps migrating to per-app namespacing), the per-app
+	// secret doesn't exist yet. A plain re-sync can't copy the old token (only
+	// its hash is stored), so force a fresh token mint to populate the new
+	// secret — otherwise the per-app workflow references an empty secret → 401.
+	lastPushedSecret := stringAt(app.SourceConfig, "gha_deploy_secret_name")
+	forceTokenPush := lastPushedSecret != cfg.DeployTokenSecret
+
+	rawToken, tokenHash, err := j.mintTokenIfNeeded(app.GHADeployTokenHash, forceTokenPush)
 	if err != nil {
 		return err
 	}
@@ -181,9 +189,10 @@ func (j *GHABootstrapWorkflowJob) handleApplication(ctx context.Context) error {
 	// deploy notify fails closed at validation.
 	updates := map[string]any{
 		"source_config": appendSourceConfig(app.SourceConfig, map[string]any{
-			"gha_workflow_sha":     cfg.LastCommitSHA,
-			"gha_workflow_path":    cfg.WorkflowPath,
-			"gha_image_repository": ghcrImageRepository(cfg.Owner, cfg.Repo),
+			"gha_workflow_sha":       cfg.LastCommitSHA,
+			"gha_workflow_path":      cfg.WorkflowPath,
+			"gha_deploy_secret_name": cfg.DeployTokenSecret,
+			"gha_image_repository":   ghcrImageRepository(cfg.Owner, cfg.Repo),
 			// Success clears any previous failure state so a retry
 			// after the customer grants permissions flips the banner
 			// off without the UI having to track it separately.
@@ -532,7 +541,9 @@ func (j *GHABootstrapWorkflowJob) handleCompose(ctx context.Context) error {
 		return fmt.Errorf("gha bootstrap: compose %s: %w", compose.ID, err)
 	}
 
-	rawToken, tokenHash, err := j.mintTokenIfNeeded(compose.GHADeployTokenHash)
+	// Compose keeps the shared LAUNCH_DEPLOY_TOKEN secret (no per-app
+	// namespacing yet), so no forced re-push.
+	rawToken, tokenHash, err := j.mintTokenIfNeeded(compose.GHADeployTokenHash, false)
 	if err != nil {
 		return err
 	}
@@ -780,12 +791,19 @@ func appendSourceConfig(orig map[string]any, updates map[string]any) map[string]
 	return out
 }
 
-// mintTokenIfNeeded generates a fresh deploy token + sha256 hash when
-// rotation is requested OR the workload has no existing hash. Returns
-// the raw plaintext token (empty when not rotated) and the hex sha256
-// to persist. Caller takes care of "show raw to user once" upstream.
-func (j *GHABootstrapWorkflowJob) mintTokenIfNeeded(existing *string) (raw, hash string, err error) {
-	needs := j.Payload.RotateToken || existing == nil || *existing == ""
+// mintTokenIfNeeded generates a fresh deploy token + sha256 hash when rotation
+// is requested, force is set, OR the workload has no existing hash. Returns the
+// raw plaintext token (empty when not minted) and the hex sha256 to persist.
+// Caller takes care of "show raw to user once" upstream.
+//
+// force is used when the deploy-token secret must be (re)pushed even though a
+// hash already exists — e.g. the secret NAME changed (per-app namespacing
+// migration). We only hold the hash, not the old plaintext, so we cannot copy
+// the existing token to the new secret; a fresh token is the only way to
+// populate it. Without this the new per-app workflow would reference a secret
+// that was never written → empty token → deploy webhook 401.
+func (j *GHABootstrapWorkflowJob) mintTokenIfNeeded(existing *string, force bool) (raw, hash string, err error) {
+	needs := force || j.Payload.RotateToken || existing == nil || *existing == ""
 	if !needs {
 		return "", "", nil
 	}
