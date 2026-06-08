@@ -64,6 +64,12 @@ type ComposeWorkflowData struct {
 	ComposeFilePath string
 	LaunchBaseURL   string
 	ComposeID       string
+	// ImageSlug is the per-stack component of the GHCR image tag
+	// (`launch-<ImageSlug>-<service>-<sha>`). Required so two compose
+	// stacks built from one repo that share a service name don't render
+	// the same `launch-<service>-<sha>` tag and overwrite each other's
+	// image.
+	ImageSlug string
 	// BuildSecretNames behave identically to ApplicationWorkflowData
 	// — one set of names available to every service's build step in
 	// the matrix.
@@ -140,6 +146,9 @@ func validateComposeData(d ComposeWorkflowData) error {
 	}
 	if d.ComposeID == "" {
 		missing = append(missing, "ComposeID")
+	}
+	if d.ImageSlug == "" {
+		missing = append(missing, "ImageSlug")
 	}
 	if len(missing) > 0 {
 		return fmt.Errorf("RenderComposeWorkflow: missing required field(s): %s", strings.Join(missing, ", "))

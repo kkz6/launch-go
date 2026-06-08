@@ -75,7 +75,12 @@ jobs:
           # lock-step with the token-exchange step's
           # ${GITHUB_REPOSITORY,,} below.
           REPO_LC="${GITHUB_REPOSITORY,,}"
-          echo "image=ghcr.io/${REPO_LC}:launch-${{ "{{" }} matrix.service {{ "}}" }}-${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
+          # The "{{.ImageSlug}}" component namespaces the tag per Launch
+          # compose stack, so two stacks built from this same repo that
+          # share a service name don't both push "launch-<service>-<sha>"
+          # and overwrite each other's image — each stack gets its own
+          # "launch-<stack-slug>-<service>-<sha>" tag in the package.
+          echo "image=ghcr.io/${REPO_LC}:launch-{{.ImageSlug}}-${{ "{{" }} matrix.service {{ "}}" }}-${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
 
       - name: Log in to GHCR
         uses: docker/login-action@v3

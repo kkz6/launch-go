@@ -259,21 +259,21 @@ func TestGHCRImageRepository_Lowercases(t *testing.T) {
 	}
 }
 
-// --- applicationImageSlug -------------------------------------------
+// --- workloadImageSlug ----------------------------------------------
 //
-// Two apps built from one repo must not collide on a single
-// `launch-<sha>` image tag (#94). The slug keys the tag per app:
-// readable name + a short app-id fragment for collision-proof
+// Two workloads built from one repo must not collide on a single image
+// tag (#94 for apps, #96 for compose stacks). The slug keys the tag per
+// workload: readable name + a short id fragment for collision-proof
 // uniqueness, lowercased and tag-charset-safe.
 
-func TestApplicationImageSlug(t *testing.T) {
+func TestWorkloadImageSlug(t *testing.T) {
 	cases := []struct {
-		name, appID, want string
+		name, id, want string
 	}{
 		// Readable name + last-8 of the (lowercased) ULID.
 		{"web", "01HJXVHGRGTQRX4P0G3Y8R6CK7", "web-3y8r6ck7"},
 		{"api", "01HJXVHGRGTQRX4P0G3Y8R6CK7", "api-3y8r6ck7"},
-		// Same name, different app → distinct slug (the collision case).
+		// Same name, different workload → distinct slug (the collision case).
 		{"web", "01HJXVHGRGTQRX4P0G3Y8R6AAAA", "web-y8r6aaaa"},
 		// Spaces/case/punctuation collapse to a clean slug.
 		{"My Cool App!!", "01HJX", "my-cool-app-01hjx"},
@@ -284,20 +284,20 @@ func TestApplicationImageSlug(t *testing.T) {
 		{"", "0123456789", "app-23456789"},
 	}
 	for _, tc := range cases {
-		t.Run(tc.name+"/"+tc.appID, func(t *testing.T) {
-			got := applicationImageSlug(tc.name, tc.appID)
+		t.Run(tc.name+"/"+tc.id, func(t *testing.T) {
+			got := workloadImageSlug(tc.name, tc.id)
 			assert.Equal(t, tc.want, got)
 			assert.NotEmpty(t, got, "slug must never be empty")
 		})
 	}
 }
 
-// TestApplicationImageSlug_DistinctPerApp is the core regression: two
-// apps from the same repo at the same commit must produce different
+// TestWorkloadImageSlug_DistinctPerWorkload is the core regression: two
+// workloads from the same repo at the same commit must produce different
 // image tags so one doesn't overwrite the other's image.
-func TestApplicationImageSlug_DistinctPerApp(t *testing.T) {
-	web := applicationImageSlug("web", "01HJXVHGRGTQRX4P0G3Y8R6CK7")
-	api := applicationImageSlug("api", "01HJXVHGRGTQRX4P0G3Y8R6CK8")
+func TestWorkloadImageSlug_DistinctPerWorkload(t *testing.T) {
+	web := workloadImageSlug("web", "01HJXVHGRGTQRX4P0G3Y8R6CK7")
+	api := workloadImageSlug("api", "01HJXVHGRGTQRX4P0G3Y8R6CK8")
 	assert.NotEqual(t, web, api)
 }
 

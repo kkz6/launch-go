@@ -45,6 +45,7 @@ func TestRenderComposeWorkflow_GoldenStable(t *testing.T) {
 		ComposeFilePath: "docker-compose.yml",
 		LaunchBaseURL:   "https://launchctl.io",
 		ComposeID:       "01HJXVHGRGTQRX4P0G3Y8R6CK8",
+		ImageSlug:       "teststack",
 	})
 	require.NoError(t, err)
 	assertGolden(t, goldenCompose, got)
@@ -119,7 +120,7 @@ func TestRenderApplicationWorkflow_AutoDeployTrigger(t *testing.T) {
 func TestRenderComposeWorkflow_AutoDeployTrigger(t *testing.T) {
 	on, err := RenderComposeWorkflow(ComposeWorkflowData{
 		Branch: "main", ComposeFilePath: "docker-compose.yml",
-		LaunchBaseURL: "https://launchctl.io", ComposeID: "01HJX", AutoDeploy: true,
+		LaunchBaseURL: "https://launchctl.io", ComposeID: "01HJX", ImageSlug: "teststack", AutoDeploy: true,
 	})
 	require.NoError(t, err)
 	assert.Contains(t, on, "push:")
@@ -269,6 +270,7 @@ func TestRenderComposeWorkflow_BuildSecretsRenderSecretsBlock(t *testing.T) {
 		ComposeFilePath:  "docker-compose.yml",
 		LaunchBaseURL:    "https://launchctl.io",
 		ComposeID:        "01HJX",
+		ImageSlug:        "teststack",
 		BuildSecretNames: []string{"PIP_INDEX_URL"},
 	})
 	require.NoError(t, err)
