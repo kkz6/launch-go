@@ -351,6 +351,45 @@ func (p *GitHubProvider) DeleteActionsVariable(
 	return fmt.Errorf("DeleteActionsVariable %s: status %d body %s", name, resp.StatusCode, string(raw))
 }
 
+// DeleteWorkflowRun removes a workflow run (and its logs) from GitHub Actions.
+// Used by the "delete deployment" flow when the user opts to also remove the
+// run from GitHub. Idempotent: a 404 (run already gone) is treated as success.
+//
+// GitHub API: DELETE /repos/{owner}/{repo}/actions/runs/{run_id}
+// docs: https://docs.github.com/en/rest/actions/workflow-runs#delete-a-workflow-run
+// Requires the installation to hold the `actions: write` permission (the same
+// permission the deploy-dispatch flow already relies on).
+func (p *GitHubProvider) DeleteWorkflowRun(
+	ctx context.Context,
+	installationID, owner, repo, runID string,
+) error {
+	if runID == "" {
+		return errors.New("DeleteWorkflowRun: runID is required")
+	}
+
+	token, err := p.GetInstallationToken(ctx, installationID)
+	if err != nil {
+		return err
+	}
+
+	apiPath := fmt.Sprintf("/repos/%s/%s/actions/runs/%s", owner, repo, runID)
+	resp, err := p.DoRaw(ctx, http.MethodDelete, apiPath, token, nil)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	switch resp.StatusCode {
+	case http.StatusNoContent, http.StatusNotFound:
+		return nil
+	case http.StatusForbidden:
+		return ErrPermissionDenied
+	default:
+		raw, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("DeleteWorkflowRun %s/%s/%s: status %d body %s", owner, repo, runID, resp.StatusCode, string(raw))
+	}
+}
+
 // ErrWorkflowNotFound is returned by TriggerWorkflowDispatch when the
 // workflow file is not yet present on the repo (or has been deleted).
 // Callers that drive the GHA-deploy button use this to surface a clean

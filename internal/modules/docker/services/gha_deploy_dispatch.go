@@ -208,6 +208,32 @@ func resolveGitHubInstallationID(ctx context.Context, db *gorm.DB, sourceControl
 // supply a fake without a real HTTP client.
 type ghaWorkflowDispatcher interface {
 	TriggerWorkflowDispatch(ctx context.Context, installationID, owner, repo, workflowFile, branch string) error
+	DeleteWorkflowRun(ctx context.Context, installationID, owner, repo, runID string) error
+}
+
+// deleteGHAWorkflowRun removes a GitHub Actions run for a workload, resolving
+// owner/repo/installation from the workload's source_config. Used by the
+// delete-deployment flow when the user opts to also remove the run from GitHub.
+func deleteGHAWorkflowRun(
+	ctx context.Context,
+	db *gorm.DB,
+	factory *gitproviders.ProviderFactory,
+	sourceConfig map[string]any,
+	runID string,
+) error {
+	fields, err := parseGHADispatchFields(sourceConfig)
+	if err != nil {
+		return err
+	}
+	installationID, err := resolveGitHubInstallationID(ctx, db, fields.SourceControlID)
+	if err != nil {
+		return err
+	}
+	gh, err := resolveGitHubDispatcher(factory)
+	if err != nil {
+		return err
+	}
+	return gh.DeleteWorkflowRun(ctx, installationID, fields.Owner, fields.Repo, runID)
 }
 
 // resolveGitHubDispatcher returns the GitHub provider as the slim

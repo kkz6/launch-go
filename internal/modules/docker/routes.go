@@ -220,6 +220,27 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 		return fiberutil.OK(c, "Deployments retrieved", out)
 	})
 
+	// Delete a single deployment history row. ?delete_from_gha=true also removes
+	// the linked GitHub Actions run (when the deployment carries a gha_run_id).
+	apps.Delete("/:id/deployments/:deploymentId", middleware.Can("docker.application.deploy"), func(c *gofiber.Ctx) error {
+		teamID, err := fiberutil.MustGetTeamID(c)
+		if err != nil {
+			return err
+		}
+		if err := applicationSvc.DeleteDeployment(
+			c.Context(),
+			c.Params("id"),
+			c.Params("projectId"),
+			c.Params("serverId"),
+			teamID,
+			c.Params("deploymentId"),
+			c.QueryBool("delete_from_gha", false),
+		); err != nil {
+			return err
+		}
+		return fiberutil.OK(c, "Deployment deleted", nil)
+	})
+
 	apps.Post("/:id/deploy", middleware.Can("docker.application.deploy"), func(c *gofiber.Ctx) error {
 		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
 		if err != nil {
@@ -1110,6 +1131,25 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 			out = append(out, dto.ToDeploymentResponse(&rows[i]))
 		}
 		return fiberutil.OK(c, "Deployments retrieved", out)
+	})
+
+	composes.Delete("/:id/deployments/:deploymentId", middleware.Can("docker.compose.deploy"), func(c *gofiber.Ctx) error {
+		teamID, err := fiberutil.MustGetTeamID(c)
+		if err != nil {
+			return err
+		}
+		if err := composeSvc.DeleteDeployment(
+			c.Context(),
+			c.Params("id"),
+			c.Params("projectId"),
+			c.Params("serverId"),
+			teamID,
+			c.Params("deploymentId"),
+			c.QueryBool("delete_from_gha", false),
+		); err != nil {
+			return err
+		}
+		return fiberutil.OK(c, "Deployment deleted", nil)
 	})
 
 	composes.Post("/:id/deploy", middleware.Can("docker.compose.deploy"), func(c *gofiber.Ctx) error {
