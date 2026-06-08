@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 
 	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 )
@@ -52,6 +53,22 @@ func (p *GitHubProvider) PutContents(
 	token, err := p.GetInstallationToken(ctx, installationID)
 	if err != nil {
 		return "", err
+	}
+
+	// When the caller has no stored SHA the file may still exist on the repo —
+	// e.g. several applications share one repo + workflow path, or the SHA was
+	// never persisted. GitHub's create-or-update API rejects a create (no sha)
+	// on an existing file with 422 "sha wasn't supplied", so resolve the current
+	// blob SHA first and only fall back to a create when the file is absent.
+	// This makes PutContents an idempotent upsert.
+	if existingSHA == "" {
+		currentSHA, exists, shaErr := p.getContentSHA(ctx, token, owner, repo, path, branch)
+		if shaErr != nil {
+			return "", shaErr
+		}
+		if exists {
+			existingSHA = currentSHA
+		}
 	}
 
 	body := map[string]interface{}{
@@ -111,6 +128,41 @@ func (p *GitHubProvider) PutContents(
 		return "", errors.New("PutContents: response missing content.sha")
 	}
 	return out.Content.SHA, nil
+}
+
+// getContentSHA returns the current blob SHA of the file at path on the given
+// branch. ok is false when the file does not exist (404). Used by PutContents
+// to upsert when no caller-supplied SHA is available.
+//
+// GitHub API: GET /repos/{owner}/{repo}/contents/{path}?ref={branch}
+func (p *GitHubProvider) getContentSHA(
+	ctx context.Context,
+	token, owner, repo, path, branch string,
+) (sha string, ok bool, err error) {
+	apiPath := fmt.Sprintf("/repos/%s/%s/contents/%s", owner, repo, path)
+	if branch != "" {
+		apiPath += "?ref=" + url.QueryEscape(branch)
+	}
+
+	resp, err := p.DoRaw(ctx, http.MethodGet, apiPath, token, nil)
+	if err != nil {
+		return "", false, err
+	}
+	defer resp.Body.Close()
+
+	switch resp.StatusCode {
+	case http.StatusNotFound:
+		return "", false, nil
+	case http.StatusOK:
+		var out putContentsResponseShaCarrier
+		if decErr := DecodeJSON(resp, &out); decErr != nil {
+			return "", false, decErr
+		}
+		return out.SHA, out.SHA != "", nil
+	default:
+		raw, _ := io.ReadAll(resp.Body)
+		return "", false, fmt.Errorf("getContentSHA %s/%s/%s: status %d body %s", owner, repo, path, resp.StatusCode, string(raw))
+	}
 }
 
 // GetActionsPublicKey fetches the repo's libsodium public key used to
