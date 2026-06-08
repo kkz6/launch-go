@@ -500,3 +500,32 @@ func TestPerAppGHANaming(t *testing.T) {
 	assert.NotEqual(t, secret, appDeployTokenSecretName(other))
 	assert.NotEqual(t, path, appWorkflowPath(other))
 }
+
+// TestMintTokenIfNeeded_ForcePushesNewSecret guards the per-app secret
+// self-heal: when the deploy-token secret name changes (migration to per-app
+// namespacing), a token must be minted even though a hash already exists, so
+// the new secret gets populated (otherwise the per-app workflow → empty secret
+// → 401).
+func TestMintTokenIfNeeded_ForcePushesNewSecret(t *testing.T) {
+	j := &GHABootstrapWorkflowJob{Payload: GHABootstrapWorkflowPayload{}}
+	existing := "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
+
+	// force=false with an existing hash and no rotate → no mint.
+	raw, hash, err := j.mintTokenIfNeeded(&existing, false)
+	require.NoError(t, err)
+	assert.Empty(t, raw)
+	assert.Empty(t, hash)
+
+	// force=true → mint a fresh token even though a hash exists.
+	raw, hash, err = j.mintTokenIfNeeded(&existing, true)
+	require.NoError(t, err)
+	assert.NotEmpty(t, raw)
+	assert.NotEmpty(t, hash)
+	assert.NotEqual(t, existing, hash)
+
+	// No existing hash → mint regardless of force.
+	raw, hash, err = j.mintTokenIfNeeded(nil, false)
+	require.NoError(t, err)
+	assert.NotEmpty(t, raw)
+	assert.NotEmpty(t, hash)
+}
