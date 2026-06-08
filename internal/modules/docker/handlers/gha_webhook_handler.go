@@ -728,6 +728,24 @@ func (h *GHAWebhookHandler) upsertGHADeployment(input ghaDeploymentUpsert) (*doc
 		return nil, err
 	}
 
+	// No row for this run yet. Adopt the dispatch-time placeholder (pending,
+	// github_actions, no run id) if one exists, so a single trigger doesn't
+	// leave an orphaned Pending row beside the webhook-created one (#92).
+	if ph, ok := h.claimGHAPlaceholder(input.TargetType, input.TargetID); ok {
+		runID := input.RunID
+		updates := map[string]any{
+			"gha_run_id":     runID,
+			"gha_run_url":    input.RunURL,
+			"image_ref":      input.ImageRef,
+			"commit_sha":     input.CommitSHA,
+			"trigger_source": input.TriggerSource,
+		}
+		if err := h.db.Model(ph).Updates(updates).Error; err != nil {
+			return nil, err
+		}
+		return ph, nil
+	}
+
 	commitSHA := input.CommitSHA
 	imageRef := input.ImageRef
 	runID := input.RunID
@@ -774,8 +792,20 @@ func (h *GHAWebhookHandler) markGHADeploymentFailed(targetType, targetID, teamID
 	if !errors.Is(err, gorm.ErrRecordNotFound) {
 		return err
 	}
-	// No prior deploy row (build failed before notifying success).
-	// Materialise a failed row so the deployment list still shows
+	// No prior deploy row for this run. Adopt the dispatch-time placeholder
+	// (pending, github_actions, no run id) if one exists, so a failed run
+	// doesn't leave an orphaned Pending row beside it (#92).
+	if ph, ok := h.claimGHAPlaceholder(targetType, targetID); ok {
+		runID := payload.RunID
+		updates := map[string]any{
+			"status":      dockertypes.DeploymentStatusFailed,
+			"gha_run_id":  runID,
+			"gha_run_url": payload.RunURL,
+			"finished_at": now,
+		}
+		return h.db.Model(ph).Updates(updates).Error
+	}
+	// Otherwise materialise a failed row so the deployment list still shows
 	// "Run #N failed" with a link to the GitHub Actions page.
 	runID := payload.RunID
 	runURL := payload.RunURL
@@ -792,6 +822,24 @@ func (h *GHAWebhookHandler) markGHADeploymentFailed(targetType, targetID, teamID
 	deployment.TeamID = teamID
 	deployment.ServerID = serverID
 	return h.db.Create(deployment).Error
+}
+
+// claimGHAPlaceholder returns the most recent dispatch-time placeholder
+// deployment for a target — a github_actions row still in Pending with no
+// gha_run_id assigned — so the first webhook notify for a run can adopt it
+// instead of spawning a duplicate row. Returns (nil, false) when none exists.
+func (h *GHAWebhookHandler) claimGHAPlaceholder(targetType, targetID string) (*dockermodels.Deployment, bool) {
+	var ph dockermodels.Deployment
+	err := h.db.Where(
+		"target_type = ? AND target_id = ? AND status = ? AND trigger_source = ? AND (gha_run_id IS NULL OR gha_run_id = '')",
+		targetType, targetID,
+		dockertypes.DeploymentStatusPending,
+		dockertypes.DeploymentTriggerGitHubActions,
+	).Order("created_at DESC").First(&ph).Error
+	if err != nil {
+		return nil, false
+	}
+	return &ph, true
 }
 
 // --- helpers --------------------------------------------------------

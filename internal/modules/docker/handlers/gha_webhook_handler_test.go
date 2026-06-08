@@ -171,6 +171,41 @@ func TestGHAApplicationDeploy_HappyPath_CreatesPendingDeployment(t *testing.T) {
 	assert.Equal(t, "11111111", *rows[0].GHARunID)
 }
 
+// Regression for #92: a single trigger creates a dispatch-time placeholder
+// (pending, github_actions, no run id); the webhook must ADOPT it rather than
+// create a second row.
+func TestGHAApplicationDeploy_AdoptsDispatchPlaceholder(t *testing.T) {
+	app, db, application := setupHandler(t)
+
+	placeholder := &dockermodels.Deployment{
+		TargetType:    "application",
+		TargetID:      application.ID,
+		Status:        dockertypes.DeploymentStatusPending,
+		TriggerSource: dockertypes.DeploymentTriggerGitHubActions,
+	}
+	placeholder.ID = util.NewULID()
+	placeholder.TeamID = application.TeamID
+	placeholder.ServerID = application.ServerID
+	require.NoError(t, db.Create(placeholder).Error)
+
+	body := applicationDeployPayload{
+		ImageTag:  "ghcr.io/kkz6/test-repo:launch-abc1234",
+		CommitSHA: "abc1234567890",
+		Branch:    "main",
+		RunID:     "22222222",
+		RunURL:    "https://github.com/kkz6/test-repo/actions/runs/22222222",
+	}
+	resp, _ := post(t, app, "/api/webhooks/docker/applications/"+application.ID+"/deploy", rawToken, body)
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+	var rows []dockermodels.Deployment
+	require.NoError(t, db.Find(&rows).Error)
+	require.Len(t, rows, 1, "webhook must adopt the dispatch placeholder, not create a second row")
+	assert.Equal(t, placeholder.ID, rows[0].ID)
+	require.NotNil(t, rows[0].GHARunID)
+	assert.Equal(t, "22222222", *rows[0].GHARunID)
+}
+
 func TestGHAApplicationDeploy_BadToken_Returns401_NoRow(t *testing.T) {
 	app, db, application := setupHandler(t)
 
@@ -384,14 +419,20 @@ func deploymentIDFromDeploy(t *testing.T, app *gofiber.App, path string, body an
 	t.Helper()
 	resp, raw := post(t, app, path, rawToken, body)
 	require.Equal(t, http.StatusOK, resp.StatusCode, "deploy notify should succeed: %s", string(raw))
-	var env struct {
-		Data struct {
-			DeploymentID string `json:"deployment_id"`
-		} `json:"data"`
-	}
+	var env deployEnvelope
 	require.NoError(t, json.Unmarshal(raw, &env))
 	require.NotEmpty(t, env.Data.DeploymentID)
 	return env.Data.DeploymentID
+}
+
+// deployEnvelope mirrors the deploy/status response shape so tests can pull
+// the created deployment id back out without an anonymous nested struct.
+type deployEnvelope struct {
+	Data deployEnvelopeData `json:"data"`
+}
+
+type deployEnvelopeData struct {
+	DeploymentID string `json:"deployment_id"`
 }
 
 // TestGHAApplicationDeploymentStatus_ReturnsStatus is the happy path for
