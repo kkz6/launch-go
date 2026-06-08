@@ -145,6 +145,13 @@ func (j *GHABootstrapWorkflowJob) handleApplication(ctx context.Context) error {
 	// "docker/Dockerfile" is silently ignored.
 	cfg.DockerfilePath = resolveAppDockerfilePath(app.BuildConfig, cfg.DockerfilePath)
 
+	// Namespace the GHCR image tag per application. Without this, two apps
+	// built from the same repo at the same commit both render
+	// `ghcr.io/<owner>/<repo>:launch-<sha>` — the identical ref — so the
+	// second build overwrites the first and both deploy the same image
+	// (#94). The slug keys the tag on the app so they stay distinct.
+	cfg.ImageSlug = applicationImageSlug(app.Name, app.ID)
+
 	// Namespace the deploy-token secret and the workflow file per application so
 	// multiple apps can share one repo without clobbering each other's token /
 	// workflow (which caused cross-app deploy 401s).
@@ -617,6 +624,13 @@ type ghaSourceConfig struct {
 	// from PutContents. Read back into the row's source_config so the
 	// next re-sync can detect drift.
 	LastCommitSHA string
+	// ImageSlug is the per-application component baked into the GHCR image
+	// tag (`launch-<ImageSlug>-<sha>`) so multiple apps built from one repo
+	// don't collide on a single `launch-<sha>` tag and overwrite each
+	// other's image. Empty for compose (its template keys the tag on the
+	// matrix service name instead). Set from the application row in
+	// handleApplication, not parsed from source_config.
+	ImageSlug string
 }
 
 // resolveAppDockerfilePath returns the Dockerfile path for an application's
@@ -700,6 +714,28 @@ func parseGHASourceConfig(raw map[string]any) (*ghaSourceConfig, error) {
 // lowercased — GHCR rejects mixed-case image refs.
 func ghcrImageRepository(owner, repo string) string {
 	return "ghcr.io/" + strings.ToLower(owner+"/"+repo)
+}
+
+// applicationImageSlug builds the per-application component of the GHCR
+// image tag (`launch-<slug>-<sha>`). It combines a human-readable slug of
+// the app name (the same SlugFromName used for the container name, so the
+// two stay consistent) with a short, lowercased fragment of the app's ULID
+// so two apps in the same repo never collide on one tag — even if they
+// share a name — while staying legible on the GHCR package page (e.g.
+// "web-3y8r6ck7").
+//
+// SlugFromName never returns empty (it falls back to "app"), so the result
+// always has a name part; the id fragment guarantees uniqueness.
+func applicationImageSlug(name, appID string) string {
+	idFrag := strings.ToLower(appID)
+	if len(idFrag) > 8 {
+		idFrag = idFrag[len(idFrag)-8:]
+	}
+	slug := dockertasks.SlugFromName(name)
+	if idFrag == "" {
+		return slug
+	}
+	return slug + "-" + idFrag
 }
 
 // looksLikeGitURL is true when s isn't a bare repo name — i.e. it
@@ -942,6 +978,7 @@ func (j *GHABootstrapWorkflowJob) renderWorkflow(
 			BuildType:         cfg.BuildType,
 			LaunchBaseURL:     j.Payload.LaunchBaseURL,
 			AppID:             id,
+			ImageSlug:         cfg.ImageSlug,
 			DeployTokenSecret: cfg.DeployTokenSecret,
 			BuildSecretNames:  buildSecretNames,
 			AutoDeploy:        cfg.AutoDeploy,

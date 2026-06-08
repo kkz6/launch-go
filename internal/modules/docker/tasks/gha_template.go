@@ -34,6 +34,11 @@ type ApplicationWorkflowData struct {
 	BuildType     string
 	LaunchBaseURL string
 	AppID         string
+	// ImageSlug is the per-application component of the GHCR image tag
+	// (`launch-<ImageSlug>-<sha>`). Required so two apps built from one
+	// repo don't render the same `launch-<sha>` tag and overwrite each
+	// other's image — the deploy would otherwise run one image for both.
+	ImageSlug string
 	// DeployTokenSecret is the per-app GitHub repo-secret NAME holding the
 	// deploy token (e.g. LAUNCH_DEPLOY_TOKEN_<APP_ID>). Namespaced per app so
 	// multiple apps can share a repo without overwriting each other's token.
@@ -109,6 +114,9 @@ func validateApplicationData(d ApplicationWorkflowData) error {
 	}
 	if d.AppID == "" {
 		missing = append(missing, "AppID")
+	}
+	if d.ImageSlug == "" {
+		missing = append(missing, "ImageSlug")
 	}
 	if d.DeployTokenSecret == "" {
 		missing = append(missing, "DeployTokenSecret")
