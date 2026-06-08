@@ -204,8 +204,11 @@ func (a *Application) registerMiddleware() {
 	// Initialize rate limiting with Redis cache
 	middleware.InitRateLimitMiddleware(a.redisCache)
 
-	// Global rate limit: 120 requests per minute per IP to throttle scanners/bots
-	a.fiber.Use(middleware.GlobalRateLimit(120, time.Minute))
+	// Global rate limit per client IP to throttle scanners/bots. Health/liveness
+	// probes and loopback traffic are exempt (see middleware.isRateLimitExempt).
+	// The ceiling is generous because the SPA dashboard fires many parallel
+	// requests per page; it's an anti-abuse bound, not a per-user quota.
+	a.fiber.Use(middleware.GlobalRateLimit(600, time.Minute))
 
 	a.fiber.Use(middleware.RequestLogger(a.logger, a.config.App.Environment == "development"))
 }
