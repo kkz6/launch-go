@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/hibiken/asynq"
@@ -84,7 +85,7 @@ func (s *Base) EnqueueTask(task *asynq.Task) error {
 	}
 
 	_, err := s.Queue.EnqueueDefault(task)
-	return err
+	return ignoreDuplicateTask(err)
 }
 
 // EnqueueTaskWithOptions enqueues a task with custom options
@@ -94,6 +95,17 @@ func (s *Base) EnqueueTaskWithOptions(task *asynq.Task, opts ...asynq.Option) er
 	}
 
 	_, err := s.Queue.Enqueue(task, opts...)
+	return ignoreDuplicateTask(err)
+}
+
+// ignoreDuplicateTask treats asynq's de-duplication sentinels as success: a
+// task that was suppressed because an identical one is already enqueued
+// (asynq.Unique) or already exists by id (asynq.TaskID) means the work is
+// already on its way — not an error to surface to the caller as a 500.
+func ignoreDuplicateTask(err error) error {
+	if errors.Is(err, asynq.ErrDuplicateTask) || errors.Is(err, asynq.ErrTaskIDConflict) {
+		return nil
+	}
 	return err
 }
 
