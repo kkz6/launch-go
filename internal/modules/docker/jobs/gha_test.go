@@ -480,3 +480,23 @@ func TestResolveAppDockerfilePath(t *testing.T) {
 		assert.Equal(t, "Dockerfile", got)
 	})
 }
+
+// TestPerAppGHANaming locks in the per-app namespacing that lets multiple
+// applications share one repo without colliding on the deploy-token secret or
+// workflow file (the cross-app deploy 401, #83).
+func TestPerAppGHANaming(t *testing.T) {
+	id := "01ktkvme8k7asd426djt0xg8r7"
+
+	secret := appDeployTokenSecretName(id)
+	assert.Equal(t, "LAUNCH_DEPLOY_TOKEN_01KTKVME8K7ASD426DJT0XG8R7", secret)
+	// GitHub secret names: [A-Z0-9_], must not start with a digit.
+	assert.Regexp(t, `^[A-Z][A-Z0-9_]*$`, secret)
+
+	path := appWorkflowPath(id)
+	assert.Equal(t, ".github/workflows/launch-deploy-01ktkvme8k7asd426djt0xg8r7.yml", path)
+
+	// Two different apps get distinct secret + workflow names.
+	other := "01zzzzzzzzzzzzzzzzzzzzzzzz"
+	assert.NotEqual(t, secret, appDeployTokenSecretName(other))
+	assert.NotEqual(t, path, appWorkflowPath(other))
+}

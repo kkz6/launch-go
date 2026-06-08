@@ -28,10 +28,11 @@ const (
 
 func TestRenderApplicationWorkflow_GoldenStable(t *testing.T) {
 	got, err := RenderApplicationWorkflow(ApplicationWorkflowData{
-		Branch:         "main",
-		DockerfilePath: "Dockerfile",
-		LaunchBaseURL:  "https://launchctl.io",
-		AppID:          "01HJXVHGRGTQRX4P0G3Y8R6CK7",
+		Branch:            "main",
+		DockerfilePath:    "Dockerfile",
+		LaunchBaseURL:     "https://launchctl.io",
+		AppID:             "01HJXVHGRGTQRX4P0G3Y8R6CK7",
+		DeployTokenSecret: "LAUNCH_DEPLOY_TOKEN_TESTAPP",
 	})
 	require.NoError(t, err)
 	assertGolden(t, goldenApplication, got)
@@ -55,11 +56,12 @@ func TestRenderComposeWorkflow_GoldenStable(t *testing.T) {
 func TestRenderApplicationWorkflow_RespectsBuildType(t *testing.T) {
 	base := func(bt string) ApplicationWorkflowData {
 		return ApplicationWorkflowData{
-			Branch:         "main",
-			DockerfilePath: "Dockerfile",
-			BuildType:      bt,
-			LaunchBaseURL:  "https://launchctl.io",
-			AppID:          "01HJX",
+			Branch:            "main",
+			DockerfilePath:    "Dockerfile",
+			BuildType:         bt,
+			LaunchBaseURL:     "https://launchctl.io",
+			AppID:             "01HJX",
+			DeployTokenSecret: "LAUNCH_DEPLOY_TOKEN_TESTAPP",
 		}
 	}
 
@@ -89,11 +91,12 @@ func TestRenderApplicationWorkflow_RespectsBuildType(t *testing.T) {
 func TestRenderApplicationWorkflow_AutoDeployTrigger(t *testing.T) {
 	base := func(auto bool) ApplicationWorkflowData {
 		return ApplicationWorkflowData{
-			Branch:         "release",
-			DockerfilePath: "Dockerfile",
-			LaunchBaseURL:  "https://launchctl.io",
-			AppID:          "01HJX",
-			AutoDeploy:     auto,
+			Branch:            "release",
+			DockerfilePath:    "Dockerfile",
+			LaunchBaseURL:     "https://launchctl.io",
+			AppID:             "01HJX",
+			DeployTokenSecret: "LAUNCH_DEPLOY_TOKEN_TESTAPP",
+			AutoDeploy:        auto,
 		}
 	}
 
@@ -152,10 +155,11 @@ func TestRenderComposeWorkflow_RejectsMissingFields(t *testing.T) {
 // same input must produce byte-identical output.
 func TestRenderApplicationWorkflow_StableOnRepeat(t *testing.T) {
 	data := ApplicationWorkflowData{
-		Branch:         "main",
-		DockerfilePath: "Dockerfile",
-		LaunchBaseURL:  "https://launchctl.io",
-		AppID:          "01HJXVHGRGTQRX4P0G3Y8R6CK7",
+		Branch:            "main",
+		DockerfilePath:    "Dockerfile",
+		LaunchBaseURL:     "https://launchctl.io",
+		AppID:             "01HJXVHGRGTQRX4P0G3Y8R6CK7",
+		DeployTokenSecret: "LAUNCH_DEPLOY_TOKEN_TESTAPP",
 	}
 	a, errA := RenderApplicationWorkflow(data)
 	b, errB := RenderApplicationWorkflow(data)
@@ -172,10 +176,11 @@ func TestRenderApplicationWorkflow_StableOnRepeat(t *testing.T) {
 // sufficient for "did the input land in the right places."
 func TestRenderedYAMLContainsExpectedAnchors(t *testing.T) {
 	got, err := RenderApplicationWorkflow(ApplicationWorkflowData{
-		Branch:         "deploy-branch",
-		DockerfilePath: "deploy/Dockerfile",
-		LaunchBaseURL:  "https://my-launch.example",
-		AppID:          "01TESTAPP",
+		Branch:            "deploy-branch",
+		DockerfilePath:    "deploy/Dockerfile",
+		LaunchBaseURL:     "https://my-launch.example",
+		AppID:             "01TESTAPP",
+		DeployTokenSecret: "LAUNCH_DEPLOY_TOKEN_TESTAPP",
 	})
 	require.NoError(t, err)
 
@@ -217,11 +222,12 @@ func TestRenderedYAMLContainsExpectedAnchors(t *testing.T) {
 // keeping the no-secrets workflow clean.
 func TestRenderApplicationWorkflow_BuildSecretsRenderSecretsBlock(t *testing.T) {
 	got, err := RenderApplicationWorkflow(ApplicationWorkflowData{
-		Branch:           "main",
-		DockerfilePath:   "Dockerfile",
-		LaunchBaseURL:    "https://launchctl.io",
-		AppID:            "01HJX",
-		BuildSecretNames: []string{"NPM_TOKEN", "GH_PAT"},
+		Branch:            "main",
+		DockerfilePath:    "Dockerfile",
+		LaunchBaseURL:     "https://launchctl.io",
+		AppID:             "01HJX",
+		DeployTokenSecret: "LAUNCH_DEPLOY_TOKEN_TESTAPP",
+		BuildSecretNames:  []string{"NPM_TOKEN", "GH_PAT"},
 	})
 	require.NoError(t, err)
 
@@ -238,10 +244,11 @@ func TestRenderApplicationWorkflow_NoBuildSecretsOmitsBlock(t *testing.T) {
 	// would parse the empty multiline as "no secrets" but customers
 	// would see a confusing dangling YAML key.
 	got, err := RenderApplicationWorkflow(ApplicationWorkflowData{
-		Branch:         "main",
-		DockerfilePath: "Dockerfile",
-		LaunchBaseURL:  "https://launchctl.io",
-		AppID:          "01HJX",
+		Branch:            "main",
+		DockerfilePath:    "Dockerfile",
+		LaunchBaseURL:     "https://launchctl.io",
+		AppID:             "01HJX",
+		DeployTokenSecret: "LAUNCH_DEPLOY_TOKEN_TESTAPP",
 	})
 	require.NoError(t, err)
 	assert.NotContains(t, got, "secrets: |")

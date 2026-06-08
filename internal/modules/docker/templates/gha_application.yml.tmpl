@@ -168,7 +168,7 @@ jobs:
       - name: Notify Launch (success)
         id: notify
         env:
-          TOKEN: ${{ "{{" }} secrets.LAUNCH_DEPLOY_TOKEN {{ "}}" }}
+          TOKEN: ${{ "{{" }} secrets.{{.DeployTokenSecret}} {{ "}}" }}
           # Pass the bearer through an env var so jq's --arg gets it
           # verbatim — inlining via `${{ "{{" }} steps.* {{ "}}" }}`
           # in jq args invites shell-quote escapes on edge cases.
@@ -218,7 +218,7 @@ jobs:
         # than letting the run hang for the whole job budget.
         timeout-minutes: 22
         env:
-          TOKEN: ${{ "{{" }} secrets.LAUNCH_DEPLOY_TOKEN {{ "}}" }}
+          TOKEN: ${{ "{{" }} secrets.{{.DeployTokenSecret}} {{ "}}" }}
           DEPLOYMENT_ID: ${{ "{{" }} steps.notify.outputs.deployment_id {{ "}}" }}
         run: |
           set -uo pipefail
@@ -273,7 +273,7 @@ jobs:
         if: failure()
         timeout-minutes: 2
         env:
-          TOKEN: ${{ "{{" }} secrets.LAUNCH_DEPLOY_TOKEN {{ "}}" }}
+          TOKEN: ${{ "{{" }} secrets.{{.DeployTokenSecret}} {{ "}}" }}
         run: |
           curl -sS --connect-timeout 10 --max-time 30 -X POST \
             -H "Authorization: Bearer $TOKEN" \
