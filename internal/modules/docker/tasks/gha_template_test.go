@@ -32,6 +32,7 @@ func TestRenderApplicationWorkflow_GoldenStable(t *testing.T) {
 		DockerfilePath:    "Dockerfile",
 		LaunchBaseURL:     "https://launchctl.io",
 		AppID:             "01HJXVHGRGTQRX4P0G3Y8R6CK7",
+		ImageSlug:         "testapp",
 		DeployTokenSecret: "LAUNCH_DEPLOY_TOKEN_TESTAPP",
 	})
 	require.NoError(t, err)
@@ -61,6 +62,7 @@ func TestRenderApplicationWorkflow_RespectsBuildType(t *testing.T) {
 			BuildType:         bt,
 			LaunchBaseURL:     "https://launchctl.io",
 			AppID:             "01HJX",
+			ImageSlug:         "testapp",
 			DeployTokenSecret: "LAUNCH_DEPLOY_TOKEN_TESTAPP",
 		}
 	}
@@ -95,6 +97,7 @@ func TestRenderApplicationWorkflow_AutoDeployTrigger(t *testing.T) {
 			DockerfilePath:    "Dockerfile",
 			LaunchBaseURL:     "https://launchctl.io",
 			AppID:             "01HJX",
+			ImageSlug:         "testapp",
 			DeployTokenSecret: "LAUNCH_DEPLOY_TOKEN_TESTAPP",
 			AutoDeploy:        auto,
 		}
@@ -133,6 +136,7 @@ func TestRenderApplicationWorkflow_RejectsMissingFields(t *testing.T) {
 		{"no dockerfile", ApplicationWorkflowData{Branch: "main", LaunchBaseURL: "https://x", AppID: "A"}},
 		{"no base url", ApplicationWorkflowData{Branch: "main", DockerfilePath: "Dockerfile", AppID: "A"}},
 		{"no app id", ApplicationWorkflowData{Branch: "main", DockerfilePath: "Dockerfile", LaunchBaseURL: "https://x"}},
+		{"no image slug", ApplicationWorkflowData{Branch: "main", DockerfilePath: "Dockerfile", LaunchBaseURL: "https://x", AppID: "A", DeployTokenSecret: "S"}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -159,6 +163,7 @@ func TestRenderApplicationWorkflow_StableOnRepeat(t *testing.T) {
 		DockerfilePath:    "Dockerfile",
 		LaunchBaseURL:     "https://launchctl.io",
 		AppID:             "01HJXVHGRGTQRX4P0G3Y8R6CK7",
+		ImageSlug:         "testapp",
 		DeployTokenSecret: "LAUNCH_DEPLOY_TOKEN_TESTAPP",
 	}
 	a, errA := RenderApplicationWorkflow(data)
@@ -180,6 +185,7 @@ func TestRenderedYAMLContainsExpectedAnchors(t *testing.T) {
 		DockerfilePath:    "deploy/Dockerfile",
 		LaunchBaseURL:     "https://my-launch.example",
 		AppID:             "01TESTAPP",
+		ImageSlug:         "testapp",
 		DeployTokenSecret: "LAUNCH_DEPLOY_TOKEN_TESTAPP",
 	})
 	require.NoError(t, err)
@@ -226,6 +232,7 @@ func TestRenderApplicationWorkflow_BuildSecretsRenderSecretsBlock(t *testing.T) 
 		DockerfilePath:    "Dockerfile",
 		LaunchBaseURL:     "https://launchctl.io",
 		AppID:             "01HJX",
+		ImageSlug:         "testapp",
 		DeployTokenSecret: "LAUNCH_DEPLOY_TOKEN_TESTAPP",
 		BuildSecretNames:  []string{"NPM_TOKEN", "GH_PAT"},
 	})
@@ -248,6 +255,7 @@ func TestRenderApplicationWorkflow_NoBuildSecretsOmitsBlock(t *testing.T) {
 		DockerfilePath:    "Dockerfile",
 		LaunchBaseURL:     "https://launchctl.io",
 		AppID:             "01HJX",
+		ImageSlug:         "testapp",
 		DeployTokenSecret: "LAUNCH_DEPLOY_TOKEN_TESTAPP",
 	})
 	require.NoError(t, err)
