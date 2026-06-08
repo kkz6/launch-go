@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/hibiken/asynq"
 	gitcontracts "github.com/kkz6/launch-go/internal/modules/git/contracts"
@@ -64,9 +65,18 @@ func NewGHABootstrapWorkflowJob(p GHABootstrapWorkflowPayload) pkgjobs.Handler {
 	return &GHABootstrapWorkflowJob{Deps: deps, Payload: p}
 }
 
+// ghaBootstrapDedupTTL is how long a bootstrap enqueue de-dupes spam-clicks of
+// "Re-sync". A self-clearing Unique lock (released when the task completes, or
+// after this ttl) is used instead of a fixed asynq.TaskID: a fixed id collides
+// permanently with a prior task left in the queue — notably an archived run
+// that failed and exhausted retries — which surfaced as a 500
+// ("task ID conflicts with another task") and blocked the user from re-syncing.
+const ghaBootstrapDedupTTL = 2 * time.Minute
+
 // NewGHABootstrapWorkflowTask is the dispatch helper services call.
-// Deduplicated per workload so spam-clicking "Re-sync" doesn't queue
-// duplicate jobs.
+// De-duplicated per workload (Unique, self-clearing) so spam-clicking "Re-sync"
+// doesn't queue duplicate jobs, while still allowing a fresh re-sync once the
+// previous one finishes.
 func NewGHABootstrapWorkflowTask(kind, id string, rotate bool, baseURL string) (*asynq.Task, error) {
 	return pkgjobs.Task(
 		TypeGHABootstrapWorkflow,
@@ -76,7 +86,7 @@ func NewGHABootstrapWorkflowTask(kind, id string, rotate bool, baseURL string) (
 			RotateToken:   rotate,
 			LaunchBaseURL: baseURL,
 		},
-		asynq.TaskID(pkgjobs.Dedup("gha_bootstrap_workflow", kind, id)),
+		asynq.Unique(ghaBootstrapDedupTTL),
 	)
 }
 

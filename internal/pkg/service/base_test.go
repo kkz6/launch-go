@@ -3,8 +3,11 @@ package service
 import (
 	"bytes"
 	"context"
+	"errors"
+	"fmt"
 	"testing"
 
+	"github.com/hibiken/asynq"
 	"github.com/rs/zerolog"
 )
 
@@ -207,4 +210,27 @@ func (s *testSubject) GetID() string {
 
 func (s *testSubject) GetTeamID() string {
 	return "test-team-id"
+}
+
+func TestIgnoreDuplicateTask(t *testing.T) {
+	// nil passes through.
+	if err := ignoreDuplicateTask(nil); err != nil {
+		t.Fatalf("nil: got %v, want nil", err)
+	}
+	// asynq dedup sentinels are swallowed (a deduped task = work already queued).
+	if err := ignoreDuplicateTask(asynq.ErrDuplicateTask); err != nil {
+		t.Errorf("ErrDuplicateTask: got %v, want nil", err)
+	}
+	if err := ignoreDuplicateTask(asynq.ErrTaskIDConflict); err != nil {
+		t.Errorf("ErrTaskIDConflict: got %v, want nil", err)
+	}
+	// Wrapped sentinel is still matched via errors.Is.
+	if err := ignoreDuplicateTask(fmt.Errorf("enqueue: %w", asynq.ErrTaskIDConflict)); err != nil {
+		t.Errorf("wrapped ErrTaskIDConflict: got %v, want nil", err)
+	}
+	// A real error is preserved.
+	boom := errors.New("boom")
+	if err := ignoreDuplicateTask(boom); !errors.Is(err, boom) {
+		t.Errorf("real error: got %v, want boom", err)
+	}
 }
