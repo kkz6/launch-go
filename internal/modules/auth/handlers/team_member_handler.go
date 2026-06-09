@@ -139,34 +139,30 @@ func (h *TeamMemberHandler) GetInvitationDetails(c *fiber.Ctx) error {
 	}
 
 	return fiberctx.OK(c, "Invitation details", fiber.Map{
-		"email":     invitation.Email,
-		"team_name": teamName,
+		"email":       invitation.Email,
+		"team_name":   teamName,
+		"user_exists": h.Service().TeamMember.InvitationUserExists(c.Context(), invitation.Email),
 	})
 }
 
 // AcceptInvitationWithRegistration accepts an invitation by registering a new user account
 func (h *TeamMemberHandler) AcceptInvitationWithRegistration(c *fiber.Ctx, req *dto.AcceptInvitationRequest) error {
-	// Look up invitation to get the email
-	invitation, err := h.Service().TeamMember.GetInvitationByID(c.Context(), req.InvitationToken)
+	// One endpoint, both cases: a brand-new invitee registers, and an
+	// invitee who already has an account joins by entering their password
+	// (#71). AcceptTeamInvitation branches on whether the email exists.
+	result, err := h.Service().Auth.AcceptTeamInvitation(
+		c.Context(),
+		req.InvitationToken,
+		req.Name,
+		req.Password,
+		c.IP(),
+		c.Get("User-Agent"),
+	)
 	if err != nil {
 		return fiberctx.HandleError(c, err)
 	}
 
-	result, err := h.Service().Auth.Register(c.Context(), &dto.RegisterRequest{
-		Name:                 req.Name,
-		Email:                invitation.Email,
-		Password:             req.Password,
-		PasswordConfirmation: req.PasswordConfirmation,
-		InvitationID:         &req.InvitationToken,
-		CreatePersonalTeam:   false,
-		IPAddress:            c.IP(),
-		UserAgent:            c.Get("User-Agent"),
-	})
-	if err != nil {
-		return fiberctx.HandleError(c, err)
-	}
-
-	return fiberctx.Created(c, "Account created and invitation accepted", result)
+	return fiberctx.Created(c, "Invitation accepted", result)
 }
 
 // GetTeamInvitations retrieves all invitations for a team
