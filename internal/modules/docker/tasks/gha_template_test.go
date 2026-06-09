@@ -33,6 +33,7 @@ func TestRenderApplicationWorkflow_GoldenStable(t *testing.T) {
 		LaunchBaseURL:     "https://launchctl.io",
 		AppID:             "01HJXVHGRGTQRX4P0G3Y8R6CK7",
 		ImagePackage:      "kkz6/testapp",
+		Platform:          "linux/amd64",
 		DeployTokenSecret: "LAUNCH_DEPLOY_TOKEN_TESTAPP",
 	})
 	require.NoError(t, err)
@@ -46,6 +47,7 @@ func TestRenderComposeWorkflow_GoldenStable(t *testing.T) {
 		LaunchBaseURL:   "https://launchctl.io",
 		ComposeID:       "01HJXVHGRGTQRX4P0G3Y8R6CK8",
 		ImagePackage:    "kkz6/teststack",
+		Platform:        "linux/amd64",
 	})
 	require.NoError(t, err)
 	assertGolden(t, goldenCompose, got)
@@ -64,6 +66,7 @@ func TestRenderApplicationWorkflow_RespectsBuildType(t *testing.T) {
 			LaunchBaseURL:     "https://launchctl.io",
 			AppID:             "01HJX",
 			ImagePackage:      "kkz6/testapp",
+			Platform:          "linux/amd64",
 			DeployTokenSecret: "LAUNCH_DEPLOY_TOKEN_TESTAPP",
 		}
 	}
@@ -99,6 +102,7 @@ func TestRenderApplicationWorkflow_AutoDeployTrigger(t *testing.T) {
 			LaunchBaseURL:     "https://launchctl.io",
 			AppID:             "01HJX",
 			ImagePackage:      "kkz6/testapp",
+			Platform:          "linux/amd64",
 			DeployTokenSecret: "LAUNCH_DEPLOY_TOKEN_TESTAPP",
 			AutoDeploy:        auto,
 		}
@@ -120,7 +124,7 @@ func TestRenderApplicationWorkflow_AutoDeployTrigger(t *testing.T) {
 func TestRenderComposeWorkflow_AutoDeployTrigger(t *testing.T) {
 	on, err := RenderComposeWorkflow(ComposeWorkflowData{
 		Branch: "main", ComposeFilePath: "docker-compose.yml",
-		LaunchBaseURL: "https://launchctl.io", ComposeID: "01HJX", ImagePackage: "kkz6/teststack", AutoDeploy: true,
+		LaunchBaseURL: "https://launchctl.io", ComposeID: "01HJX", ImagePackage: "kkz6/teststack", Platform: "linux/amd64", AutoDeploy: true,
 	})
 	require.NoError(t, err)
 	assert.Contains(t, on, "push:")
@@ -165,6 +169,7 @@ func TestRenderApplicationWorkflow_StableOnRepeat(t *testing.T) {
 		LaunchBaseURL:     "https://launchctl.io",
 		AppID:             "01HJXVHGRGTQRX4P0G3Y8R6CK7",
 		ImagePackage:      "kkz6/testapp",
+		Platform:          "linux/amd64",
 		DeployTokenSecret: "LAUNCH_DEPLOY_TOKEN_TESTAPP",
 	}
 	a, errA := RenderApplicationWorkflow(data)
@@ -187,6 +192,7 @@ func TestRenderedYAMLContainsExpectedAnchors(t *testing.T) {
 		LaunchBaseURL:     "https://my-launch.example",
 		AppID:             "01TESTAPP",
 		ImagePackage:      "kkz6/testapp",
+		Platform:          "linux/amd64",
 		DeployTokenSecret: "LAUNCH_DEPLOY_TOKEN_TESTAPP",
 	})
 	require.NoError(t, err)
@@ -234,6 +240,7 @@ func TestRenderApplicationWorkflow_BuildSecretsRenderSecretsBlock(t *testing.T) 
 		LaunchBaseURL:     "https://launchctl.io",
 		AppID:             "01HJX",
 		ImagePackage:      "kkz6/testapp",
+		Platform:          "linux/amd64",
 		DeployTokenSecret: "LAUNCH_DEPLOY_TOKEN_TESTAPP",
 		BuildSecretNames:  []string{"NPM_TOKEN", "GH_PAT"},
 	})
@@ -257,6 +264,7 @@ func TestRenderApplicationWorkflow_NoBuildSecretsOmitsBlock(t *testing.T) {
 		LaunchBaseURL:     "https://launchctl.io",
 		AppID:             "01HJX",
 		ImagePackage:      "kkz6/testapp",
+		Platform:          "linux/amd64",
 		DeployTokenSecret: "LAUNCH_DEPLOY_TOKEN_TESTAPP",
 	})
 	require.NoError(t, err)
@@ -271,6 +279,7 @@ func TestRenderComposeWorkflow_BuildSecretsRenderSecretsBlock(t *testing.T) {
 		LaunchBaseURL:    "https://launchctl.io",
 		ComposeID:        "01HJX",
 		ImagePackage:     "kkz6/teststack",
+		Platform:         "linux/amd64",
 		BuildSecretNames: []string{"PIP_INDEX_URL"},
 	})
 	require.NoError(t, err)
@@ -299,4 +308,28 @@ func truncate(s string, n int) string {
 		return s
 	}
 	return s[:n] + "…"
+}
+
+// TestRenderApplicationWorkflow_ArmAddsQEMU verifies an arm64 target pulls
+// in docker/setup-qemu-action (cross-arch on the amd64 runner) and sets the
+// build platform; amd64 omits QEMU (#101).
+func TestRenderApplicationWorkflow_ArmAddsQEMU(t *testing.T) {
+	base := ApplicationWorkflowData{
+		Branch: "main", DockerfilePath: "Dockerfile", LaunchBaseURL: "https://x",
+		AppID: "01HJX", ImagePackage: "kkz6/testapp", DeployTokenSecret: "S",
+	}
+
+	arm := base
+	arm.Platform = "linux/arm64"
+	out, err := RenderApplicationWorkflow(arm)
+	require.NoError(t, err)
+	assert.Contains(t, out, "docker/setup-qemu-action@v3")
+	assert.Contains(t, out, "platforms: linux/arm64")
+
+	amd := base
+	amd.Platform = "linux/amd64"
+	out2, err := RenderApplicationWorkflow(amd)
+	require.NoError(t, err)
+	assert.NotContains(t, out2, "setup-qemu-action", "amd64 native build needs no QEMU")
+	assert.Contains(t, out2, "platforms: linux/amd64")
 }

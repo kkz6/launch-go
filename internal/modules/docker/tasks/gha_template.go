@@ -40,6 +40,11 @@ type ApplicationWorkflowData struct {
 	// (`ghcr.io/<ImagePackage>:launch-<sha>`) and the pull-token scope
 	// (`repository:<ImagePackage>:pull`).
 	ImagePackage string
+	// Platform is the docker build platform matching the TARGET server's
+	// architecture (#101) — "linux/amd64" or "linux/arm64". Built into the
+	// image so an arm64 server doesn't get a mismatched amd64-only image.
+	// Cross-arch (arm64 on the amd64 runner) pulls in QEMU automatically.
+	Platform string
 	// DeployTokenSecret is the per-app GitHub repo-secret NAME holding the
 	// deploy token (e.g. LAUNCH_DEPLOY_TOKEN_<APP_ID>). Namespaced per app so
 	// multiple apps can share a repo without overwriting each other's token.
@@ -70,6 +75,9 @@ type ComposeWorkflowData struct {
 	// per-service image tag (`ghcr.io/<ImagePackage>:launch-<service>-<sha>`)
 	// and the pull-token scope (`repository:<ImagePackage>:pull`).
 	ImagePackage string
+	// Platform is the docker build platform matching the target server's
+	// architecture (#101) — "linux/amd64" or "linux/arm64".
+	Platform string
 	// BuildSecretNames behave identically to ApplicationWorkflowData
 	// — one set of names available to every service's build step in
 	// the matrix.
@@ -124,6 +132,9 @@ func validateApplicationData(d ApplicationWorkflowData) error {
 	if d.ImagePackage == "" {
 		missing = append(missing, "ImagePackage")
 	}
+	if d.Platform == "" {
+		missing = append(missing, "Platform")
+	}
 	if d.DeployTokenSecret == "" {
 		missing = append(missing, "DeployTokenSecret")
 	}
@@ -149,6 +160,9 @@ func validateComposeData(d ComposeWorkflowData) error {
 	}
 	if d.ImagePackage == "" {
 		missing = append(missing, "ImagePackage")
+	}
+	if d.Platform == "" {
+		missing = append(missing, "Platform")
 	}
 	if len(missing) > 0 {
 		return fmt.Errorf("RenderComposeWorkflow: missing required field(s): %s", strings.Join(missing, ", "))

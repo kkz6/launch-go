@@ -59,6 +59,7 @@ jobs:
           context: .
           file: Dockerfile
           push: true
+          platforms: linux/amd64
           tags: ${{ steps.meta.outputs.image }}
           cache-from: type=gha
           cache-to: type=gha,mode=max

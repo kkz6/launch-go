@@ -3,6 +3,7 @@ package jobs
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -118,7 +119,11 @@ case "${KERNEL_ARCH}" in
     *)       ARCH="${KERNEL_ARCH}" ;;
 esac
 KERNEL="$(uname -r 2>/dev/null || echo "")"
-printf "%s|%s|%s|%s|%s" "${ID:-}" "${VERSION_ID:-}" "${VERSION_CODENAME:-}" "${ARCH}" "${KERNEL}"
+CPU_CORES="$(nproc 2>/dev/null || echo "")"
+MEM_KB="$(awk '/^MemTotal:/{print $2}' /proc/meminfo 2>/dev/null || echo "")"
+if [ -n "${MEM_KB}" ]; then MEM_MB="$(( MEM_KB / 1024 ))"; else MEM_MB=""; fi
+DISK_GB="$(df -BG / 2>/dev/null | awk 'NR==2{gsub(/G/,"",$2); print $2}' || echo "")"
+printf "%s|%s|%s|%s|%s|%s|%s|%s" "${ID:-}" "${VERSION_ID:-}" "${VERSION_CODENAME:-}" "${ARCH}" "${KERNEL}" "${CPU_CORES}" "${MEM_MB}" "${DISK_GB}"
 `
 
 	result, err := client.Run(dialCtx, cmd)
@@ -129,8 +134,8 @@ printf "%s|%s|%s|%s|%s" "${ID:-}" "${VERSION_ID:-}" "${VERSION_CODENAME:-}" "${A
 		return fmt.Errorf("remote script exited %d: %s", result.ExitCode, strings.TrimSpace(result.Stderr))
 	}
 
-	parts := strings.SplitN(strings.TrimSpace(result.Stdout), "|", 5)
-	for len(parts) < 5 {
+	parts := strings.SplitN(strings.TrimSpace(result.Stdout), "|", 8)
+	for len(parts) < 8 {
 		parts = append(parts, "")
 	}
 
@@ -141,6 +146,18 @@ printf "%s|%s|%s|%s|%s" "${ID:-}" "${VERSION_ID:-}" "${VERSION_CODENAME:-}" "${A
 		"detected_arch":                nilIfEmpty(parts[3]),
 		"detected_kernel":              nilIfEmpty(parts[4]),
 		"detected_at":                  time.Now(),
+	}
+	// Hardware facts read from the box itself (#102). Only overwrite when we
+	// actually parsed a positive value — never wipe an existing figure (e.g.
+	// from the provider API) with a blank read.
+	if n := positiveInt(parts[5]); n > 0 {
+		updates["cpu_cores"] = n
+	}
+	if n := positiveInt(parts[6]); n > 0 {
+		updates["memory_in_mb"] = n
+	}
+	if n := positiveInt(parts[7]); n > 0 {
+		updates["storage_in_gb"] = n
 	}
 	if err := j.Deps.DB.WithContext(ctx).
 		Model(&models.Server{}).
@@ -173,6 +190,16 @@ func nilIfEmpty(s string) *string {
 		return nil
 	}
 	return &s
+}
+
+// positiveInt parses a trimmed integer, returning 0 on empty/garbage so
+// callers can skip persisting a blank hardware reading (#102).
+func positiveInt(s string) int {
+	n, err := strconv.Atoi(strings.TrimSpace(s))
+	if err != nil || n < 0 {
+		return 0
+	}
+	return n
 }
 
 // NewBackfillDetectedOSTask creates an asynq task. Empty serverID
