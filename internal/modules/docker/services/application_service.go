@@ -616,6 +616,14 @@ func (s *ApplicationService) Deploy(
 		return nil, fiberutil.Conflict("A deployment is already in progress for this application")
 	}
 
+	// A new trigger supersedes any prior in-flight rows for this workload
+	// so a stale "Pending" placeholder (e.g. stranded by a cancelled GHA
+	// run) flips to Cancelled instead of lingering forever (#103).
+	// Best-effort — never block the deploy on it.
+	if _, err := s.Repos().Deployment().SupersedeInProgressForTarget(ctx, "application", applicationID); err != nil {
+		s.LogError(err, "supersede stale deployments", "application_id", applicationID)
+	}
+
 	// GitHub-Actions branch. When the application is configured to
 	// build via GHA, the "Deploy" button MUST NOT enqueue the legacy
 	// on-server docker:deploy_application job — that would clone the
@@ -631,7 +639,12 @@ func (s *ApplicationService) Deploy(
 	// acceptable for v1; we can dedupe later by claim-on-arrive if
 	// the duplicate-row UX bothers anyone.
 	if app.BuildLocation == dockertypes.BuildLocationGitHubActions {
-		return s.deployViaGitHubActions(ctx, app, serverID, teamID)
+		dep, err := s.deployViaGitHubActions(ctx, app, serverID, teamID)
+		if err != nil {
+			return nil, err
+		}
+		s.pruneDeploymentHistory(ctx, "application", applicationID)
+		return dep, nil
 	}
 
 	now := time.Now().UTC()
@@ -674,7 +687,16 @@ func (s *ApplicationService) Deploy(
 		"status":         "pending",
 	})
 
+	s.pruneDeploymentHistory(ctx, "application", applicationID)
 	return deployment, nil
+}
+
+// pruneDeploymentHistory caps the application's retained deployment rows
+// to deploymentHistoryKeep, deleting the oldest. Best-effort (#103).
+func (s *ApplicationService) pruneDeploymentHistory(ctx context.Context, targetType, targetID string) {
+	if err := s.Repos().Deployment().PruneForTarget(ctx, targetType, targetID, deploymentHistoryKeep); err != nil {
+		s.LogError(err, "prune deployment history", "target_id", targetID)
+	}
 }
 
 // UpdateAdvanced persists runtime knobs on the application by merging

@@ -3,10 +3,12 @@ package repositories
 import (
 	"context"
 	"errors"
+	"time"
 
 	"gorm.io/gorm"
 
 	"github.com/kkz6/launch-go/internal/modules/docker/models"
+	dockertypes "github.com/kkz6/launch-go/internal/modules/docker/types"
 	"github.com/kkz6/launch-go/internal/pkg/repository"
 )
 
@@ -47,6 +49,56 @@ func (r *DeploymentRepository) ListForTarget(
 		Limit(50). // a single workload's history shouldn't dump unboundedly
 		Find(&deployments).Error
 	return deployments, err
+}
+
+// SupersedeInProgressForTarget marks every non-terminal deployment for a
+// target (pending/building/deploying) as cancelled. Called when a newer
+// deploy is triggered so stale rows — e.g. a placeholder stranded by a
+// cancelled GitHub Actions run (#99) — don't linger as "Pending" forever.
+// Returns the number of rows superseded.
+func (r *DeploymentRepository) SupersedeInProgressForTarget(
+	ctx context.Context, targetType, targetID string,
+) (int64, error) {
+	now := time.Now().UTC()
+	res := r.DB.WithContext(ctx).Model(&models.Deployment{}).
+		Where("target_type = ? AND target_id = ? AND status IN ?",
+			targetType, targetID,
+			[]string{
+				string(dockertypes.DeploymentStatusPending),
+				string(dockertypes.DeploymentStatusBuilding),
+				string(dockertypes.DeploymentStatusDeploying),
+			}).
+		Updates(map[string]any{
+			"status":      dockertypes.DeploymentStatusCancelled,
+			"finished_at": now,
+			"error":       "Superseded by a newer deployment",
+		})
+	return res.RowsAffected, res.Error
+}
+
+// PruneForTarget keeps only the newest `keep` deployment rows for a target,
+// hard-deleting the rest. Deploy history is disposable, so we cap it (the
+// UI only needs the recent few). No-op when keep <= 0.
+func (r *DeploymentRepository) PruneForTarget(
+	ctx context.Context, targetType, targetID string, keep int,
+) error {
+	if keep <= 0 {
+		return nil
+	}
+	var keepIDs []string
+	if err := r.DB.WithContext(ctx).Model(&models.Deployment{}).
+		Where("target_type = ? AND target_id = ?", targetType, targetID).
+		Order("created_at DESC").
+		Limit(keep).
+		Pluck("id", &keepIDs).Error; err != nil {
+		return err
+	}
+	if len(keepIDs) == 0 {
+		return nil
+	}
+	return r.DB.WithContext(ctx).
+		Where("target_type = ? AND target_id = ? AND id NOT IN ?", targetType, targetID, keepIDs).
+		Delete(&models.Deployment{}).Error
 }
 
 // LatestImageRefForTarget returns the image_ref of the most recent

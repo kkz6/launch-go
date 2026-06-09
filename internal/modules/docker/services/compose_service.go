@@ -626,13 +626,24 @@ func (s *ComposeService) Deploy(
 		return nil, fiberutil.Conflict("A deployment is already in progress for this compose stack")
 	}
 
+	// Supersede any prior in-flight rows so stale "Pending" placeholders
+	// (e.g. from a cancelled GHA run) don't linger forever (#103).
+	if _, err := s.Repos().Deployment().SupersedeInProgressForTarget(ctx, "compose", composeID); err != nil {
+		s.LogError(err, "supersede stale deployments", "compose_id", composeID)
+	}
+
 	// GitHub-Actions branch — same rationale as
 	// ApplicationService.Deploy: when build_location=github_actions,
 	// fire a workflow_dispatch on the customer's repo instead of
 	// running the on-server compose build path. The eventual run
 	// notifies us back via /api/webhooks/docker/composes/.../deploy.
 	if c.BuildLocation == dockertypes.BuildLocationGitHubActions {
-		return s.deployViaGitHubActions(ctx, c, serverID, teamID)
+		dep, err := s.deployViaGitHubActions(ctx, c, serverID, teamID)
+		if err != nil {
+			return nil, err
+		}
+		s.pruneDeploymentHistory(ctx, "compose", composeID)
+		return dep, nil
 	}
 
 	now := time.Now().UTC()
@@ -673,7 +684,16 @@ func (s *ComposeService) Deploy(
 		"team_id":       teamID,
 		"status":        "pending",
 	})
+	s.pruneDeploymentHistory(ctx, "compose", composeID)
 	return deployment, nil
+}
+
+// pruneDeploymentHistory caps the compose stack's retained deployment
+// rows to deploymentHistoryKeep, deleting the oldest. Best-effort (#103).
+func (s *ComposeService) pruneDeploymentHistory(ctx context.Context, targetType, targetID string) {
+	if err := s.Repos().Deployment().PruneForTarget(ctx, targetType, targetID, deploymentHistoryKeep); err != nil {
+		s.LogError(err, "prune deployment history", "target_id", targetID)
+	}
 }
 
 // ListServices returns the docker compose service names currently
