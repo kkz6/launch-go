@@ -515,6 +515,49 @@ func (s *ComposeService) DeleteDeployment(
 	return s.Repos().Deployment().Delete(ctx, deploymentID)
 }
 
+// GetDeploymentGHASteps returns the GitHub Actions step timeline for a
+// compose deployment (#87). Same shape as the application path.
+func (s *ComposeService) GetDeploymentGHASteps(
+	ctx context.Context, composeID, projectID, serverID, teamID, deploymentID string,
+) (*dto.DeploymentGHASteps, error) {
+	if _, err := s.requireProjectScoped(ctx, projectID, serverID, teamID); err != nil {
+		return nil, err
+	}
+	c, err := s.Repos().Compose().FindByIDAndTeamServer(ctx, composeID, teamID, serverID)
+	if err != nil {
+		return nil, err
+	}
+	if c.ProjectID != projectID {
+		return nil, fiberutil.NotFound()
+	}
+	dep, err := s.Repos().Deployment().FindByID(ctx, deploymentID)
+	if err != nil {
+		return nil, err
+	}
+	if dep.TargetType != "compose" || dep.TargetID != composeID {
+		return nil, fiberutil.NotFound()
+	}
+
+	runURL := ""
+	if dep.GHARunURL != nil {
+		runURL = *dep.GHARunURL
+	}
+	if dep.GHARunID == nil || *dep.GHARunID == "" {
+		return &dto.DeploymentGHASteps{
+			DeploymentID: dep.ID,
+			RunURL:       runURL,
+			RunStatus:    "pending",
+			Jobs:         []dto.DeploymentGHAJob{},
+		}, nil
+	}
+
+	wfJobs, err := fetchGHARunSteps(ctx, s.DB(), s.GitProviders(), c.SourceConfig, *dep.GHARunID)
+	if err != nil {
+		return nil, err
+	}
+	return buildGHAStepsResponse(dep.ID, *dep.GHARunID, runURL, wfJobs), nil
+}
+
 // Reload recreates the compose stack with the current .env and NO
 // rebuild — `docker compose up -d --remove-orphans` reusing the images
 // already on the host — so saved runtime env changes apply fast.
