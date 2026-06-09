@@ -18,19 +18,24 @@ type AuthResponse struct {
 
 // UserResponse represents the user data in responses
 type UserResponse struct {
-	ID               string        `json:"id"`
-	Name             string        `json:"name"`
-	Email            string        `json:"email"`
-	EmailVerifiedAt  *string       `json:"email_verified_at,omitempty"`
-	ProfilePhotoURL  string        `json:"profile_photo_url"`
-	CurrentTeamID    *string       `json:"current_team_id,omitempty"`
-	CurrentTeam      *TeamResponse `json:"current_team,omitempty"`
-	Timezone         string        `json:"timezone"`
-	Onboarded        bool          `json:"onboarded"`
-	TwoFactorEnabled bool          `json:"two_factor_enabled"`
-	StaffRole        *string       `json:"staff_role,omitempty"`
-	Status           string        `json:"status"`
-	CreatedAt        string        `json:"created_at"`
+	ID              string        `json:"id"`
+	Name            string        `json:"name"`
+	Email           string        `json:"email"`
+	EmailVerifiedAt *string       `json:"email_verified_at,omitempty"`
+	ProfilePhotoURL string        `json:"profile_photo_url"`
+	CurrentTeamID   *string       `json:"current_team_id,omitempty"`
+	CurrentTeam     *TeamResponse `json:"current_team,omitempty"`
+	// Role is the caller's role in their current team (owner / admin /
+	// editor / member). Drives frontend UI gating; the backend remains
+	// the source of truth via middleware.Can(...). Omitted when the user
+	// has no current team.
+	Role             *string `json:"role,omitempty"`
+	Timezone         string  `json:"timezone"`
+	Onboarded        bool    `json:"onboarded"`
+	TwoFactorEnabled bool    `json:"two_factor_enabled"`
+	StaffRole        *string `json:"staff_role,omitempty"`
+	Status           string  `json:"status"`
+	CreatedAt        string  `json:"created_at"`
 }
 
 // TeamResponse represents the team data in responses

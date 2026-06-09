@@ -38,6 +38,10 @@ func NewModule(b *app.Builder, emailSender channels.EmailSender, redisCache cach
 		return nil, err
 	}
 
+	// Wire the shared team-membership cache so /auth/user can surface the
+	// caller's role in their current team (drives frontend UI gating).
+	service.SetMembershipCache(deps.MembershipCache)
+
 	// Build the shared authorization gate. The auth module owns it; other
 	// modules register their policies into it at boot via authModule.Gate().
 	gate := access.New()
