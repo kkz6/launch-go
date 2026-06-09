@@ -34,11 +34,12 @@ type ApplicationWorkflowData struct {
 	BuildType     string
 	LaunchBaseURL string
 	AppID         string
-	// ImageSlug is the per-application component of the GHCR image tag
-	// (`launch-<ImageSlug>-<sha>`). Required so two apps built from one
-	// repo don't render the same `launch-<sha>` tag and overwrite each
-	// other's image — the deploy would otherwise run one image for both.
-	ImageSlug string
+	// ImagePackage is the GHCR package path (`<owner>/<app-slug>`) this
+	// application publishes to — its own package, so apps from one repo are
+	// isolated into separate packages (#100). Drives the image tag
+	// (`ghcr.io/<ImagePackage>:launch-<sha>`) and the pull-token scope
+	// (`repository:<ImagePackage>:pull`).
+	ImagePackage string
 	// DeployTokenSecret is the per-app GitHub repo-secret NAME holding the
 	// deploy token (e.g. LAUNCH_DEPLOY_TOKEN_<APP_ID>). Namespaced per app so
 	// multiple apps can share a repo without overwriting each other's token.
@@ -64,12 +65,11 @@ type ComposeWorkflowData struct {
 	ComposeFilePath string
 	LaunchBaseURL   string
 	ComposeID       string
-	// ImageSlug is the per-stack component of the GHCR image tag
-	// (`launch-<ImageSlug>-<service>-<sha>`). Required so two compose
-	// stacks built from one repo that share a service name don't render
-	// the same `launch-<service>-<sha>` tag and overwrite each other's
-	// image.
-	ImageSlug string
+	// ImagePackage is the GHCR package path (`<owner>/<stack-slug>`) this
+	// compose stack publishes to — its own package (#100). Drives the
+	// per-service image tag (`ghcr.io/<ImagePackage>:launch-<service>-<sha>`)
+	// and the pull-token scope (`repository:<ImagePackage>:pull`).
+	ImagePackage string
 	// BuildSecretNames behave identically to ApplicationWorkflowData
 	// — one set of names available to every service's build step in
 	// the matrix.
@@ -121,8 +121,8 @@ func validateApplicationData(d ApplicationWorkflowData) error {
 	if d.AppID == "" {
 		missing = append(missing, "AppID")
 	}
-	if d.ImageSlug == "" {
-		missing = append(missing, "ImageSlug")
+	if d.ImagePackage == "" {
+		missing = append(missing, "ImagePackage")
 	}
 	if d.DeployTokenSecret == "" {
 		missing = append(missing, "DeployTokenSecret")
@@ -147,8 +147,8 @@ func validateComposeData(d ComposeWorkflowData) error {
 	if d.ComposeID == "" {
 		missing = append(missing, "ComposeID")
 	}
-	if d.ImageSlug == "" {
-		missing = append(missing, "ImageSlug")
+	if d.ImagePackage == "" {
+		missing = append(missing, "ImagePackage")
 	}
 	if len(missing) > 0 {
 		return fmt.Errorf("RenderComposeWorkflow: missing required field(s): %s", strings.Join(missing, ", "))

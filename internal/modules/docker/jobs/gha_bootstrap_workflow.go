@@ -145,12 +145,10 @@ func (j *GHABootstrapWorkflowJob) handleApplication(ctx context.Context) error {
 	// "docker/Dockerfile" is silently ignored.
 	cfg.DockerfilePath = resolveAppDockerfilePath(app.BuildConfig, cfg.DockerfilePath)
 
-	// Namespace the GHCR image tag per application. Without this, two apps
-	// built from the same repo at the same commit both render
-	// `ghcr.io/<owner>/<repo>:launch-<sha>` — the identical ref — so the
-	// second build overwrites the first and both deploy the same image
-	// (#94). The slug keys the tag on the app so they stay distinct.
-	cfg.ImageSlug = workloadImageSlug(app.Name, app.ID)
+	// Give this application its OWN GHCR package (#100), so two apps from
+	// one repo are isolated into separate packages rather than sharing the
+	// repo's package. The package path is `<owner>/<app-slug>`.
+	cfg.ImagePackage = imagePackagePath(cfg.Owner, app.Name, app.ID)
 
 	// Namespace the deploy-token secret and the workflow file per application so
 	// multiple apps can share one repo without clobbering each other's token /
@@ -199,7 +197,7 @@ func (j *GHABootstrapWorkflowJob) handleApplication(ctx context.Context) error {
 			"gha_workflow_sha":       cfg.LastCommitSHA,
 			"gha_workflow_path":      cfg.WorkflowPath,
 			"gha_deploy_secret_name": cfg.DeployTokenSecret,
-			"gha_image_repository":   ghcrImageRepository(cfg.Owner, cfg.Repo),
+			"gha_image_repository":   "ghcr.io/" + cfg.ImagePackage,
 			// Success clears any previous failure state so a retry
 			// after the customer grants permissions flips the banner
 			// off without the UI having to track it separately.
@@ -549,11 +547,11 @@ func (j *GHABootstrapWorkflowJob) handleCompose(ctx context.Context) error {
 	}
 
 	// Namespace the GHCR image tag per compose stack. The compose template
-	// already keys the tag on the service name, but two stacks built from
-	// one repo that share a service name (e.g. both have "web") would still
-	// render the identical `launch-web-<sha>` ref and overwrite each other
-	// (#96). The slug keys the tag on the stack so they stay distinct.
-	cfg.ImageSlug = workloadImageSlug(compose.Name, compose.ID)
+	// already keys the tag on the service name. Give the whole stack its
+	// OWN GHCR package (#100) — `<owner>/<stack-slug>` — so two stacks from
+	// one repo are isolated into separate packages; services share the
+	// stack's package via per-service tags.
+	cfg.ImagePackage = imagePackagePath(cfg.Owner, compose.Name, compose.ID)
 
 	// Compose keeps the shared LAUNCH_DEPLOY_TOKEN secret (no per-app
 	// namespacing yet), so no forced re-push.
@@ -571,7 +569,7 @@ func (j *GHABootstrapWorkflowJob) handleCompose(ctx context.Context) error {
 	updates := map[string]any{
 		"source_config": appendSourceConfig(compose.SourceConfig, map[string]any{
 			"gha_workflow_sha":     cfg.LastCommitSHA,
-			"gha_image_repository": ghcrImageRepository(cfg.Owner, cfg.Repo),
+			"gha_image_repository": "ghcr.io/" + cfg.ImagePackage,
 			"gha_install_status":   string(dockertypes.GHAInstallStatusOK),
 		}),
 	}
@@ -631,13 +629,13 @@ type ghaSourceConfig struct {
 	// from PutContents. Read back into the row's source_config so the
 	// next re-sync can detect drift.
 	LastCommitSHA string
-	// ImageSlug is the per-application component baked into the GHCR image
-	// tag (`launch-<ImageSlug>-<sha>`) so multiple apps built from one repo
-	// don't collide on a single `launch-<sha>` tag and overwrite each
-	// other's image. Empty for compose (its template keys the tag on the
-	// matrix service name instead). Set from the application row in
-	// handleApplication, not parsed from source_config.
-	ImageSlug string
+	// ImagePackage is the GHCR package path (`<owner>/<workload-slug>`)
+	// this workload publishes to — its OWN package, so apps/stacks from one
+	// repo are isolated into separate packages (#100). Drives both the
+	// image tag (`ghcr.io/<ImagePackage>:launch-...`) and the pull-token
+	// scope (`repository:<ImagePackage>:pull`). Set from the workload row
+	// in handleApplication/handleCompose, not parsed from source_config.
+	ImagePackage string
 }
 
 // resolveAppDockerfilePath returns the Dockerfile path for an application's
@@ -748,6 +746,19 @@ func workloadImageSlug(name, id string) string {
 		return slug
 	}
 	return slug + "-" + idFrag
+}
+
+// imagePackagePath is the GHCR package path (the part after "ghcr.io/")
+// for a workload — `<owner>/<workload-slug>`, e.g.
+// "kkz6/signfly-web-3y8r6ck7". Each application and compose stack gets its
+// OWN package so two workloads from one repo are isolated into separate
+// packages instead of sharing the repo's package with namespaced tags
+// (#100). Lowercased throughout — GHCR rejects mixed-case image refs.
+//
+// The full image repository is "ghcr.io/" + this; the GHCR pull-token
+// scope is "repository:" + this + ":pull".
+func imagePackagePath(owner, name, id string) string {
+	return strings.ToLower(owner) + "/" + workloadImageSlug(name, id)
 }
 
 // looksLikeGitURL is true when s isn't a bare repo name — i.e. it
@@ -990,7 +1001,7 @@ func (j *GHABootstrapWorkflowJob) renderWorkflow(
 			BuildType:         cfg.BuildType,
 			LaunchBaseURL:     j.Payload.LaunchBaseURL,
 			AppID:             id,
-			ImageSlug:         cfg.ImageSlug,
+			ImagePackage:      cfg.ImagePackage,
 			DeployTokenSecret: cfg.DeployTokenSecret,
 			BuildSecretNames:  buildSecretNames,
 			AutoDeploy:        cfg.AutoDeploy,
@@ -1001,7 +1012,7 @@ func (j *GHABootstrapWorkflowJob) renderWorkflow(
 			ComposeFilePath:  cfg.ComposeFilePath,
 			LaunchBaseURL:    j.Payload.LaunchBaseURL,
 			ComposeID:        id,
-			ImageSlug:        cfg.ImageSlug,
+			ImagePackage:     cfg.ImagePackage,
 			BuildSecretNames: buildSecretNames,
 			AutoDeploy:       cfg.AutoDeploy,
 		})
