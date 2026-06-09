@@ -542,6 +542,51 @@ func (s *ApplicationService) DeleteDeployment(
 	return s.Repos().Deployment().Delete(ctx, deploymentID)
 }
 
+// GetDeploymentGHASteps returns the GitHub Actions step timeline for a
+// deployment (#87). Returns an empty, "pending" payload until the run id
+// has been reported (the live deployment.gha_steps WS event covers that
+// window); once known, it live-fetches the run's jobs/steps from GitHub.
+func (s *ApplicationService) GetDeploymentGHASteps(
+	ctx context.Context, applicationID, projectID, serverID, teamID, deploymentID string,
+) (*dto.DeploymentGHASteps, error) {
+	if _, err := s.requireProject(ctx, projectID, serverID, teamID); err != nil {
+		return nil, err
+	}
+	app, err := s.Repos().Application().FindByIDAndTeamServer(ctx, applicationID, teamID, serverID)
+	if err != nil {
+		return nil, err
+	}
+	if app.ProjectID != projectID {
+		return nil, fiberutil.NotFound()
+	}
+	dep, err := s.Repos().Deployment().FindByID(ctx, deploymentID)
+	if err != nil {
+		return nil, err
+	}
+	if dep.TargetType != "application" || dep.TargetID != applicationID {
+		return nil, fiberutil.NotFound()
+	}
+
+	runURL := ""
+	if dep.GHARunURL != nil {
+		runURL = *dep.GHARunURL
+	}
+	if dep.GHARunID == nil || *dep.GHARunID == "" {
+		return &dto.DeploymentGHASteps{
+			DeploymentID: dep.ID,
+			RunURL:       runURL,
+			RunStatus:    "pending",
+			Jobs:         []dto.DeploymentGHAJob{},
+		}, nil
+	}
+
+	wfJobs, err := fetchGHARunSteps(ctx, s.DB(), s.GitProviders(), app.SourceConfig, *dep.GHARunID)
+	if err != nil {
+		return nil, err
+	}
+	return buildGHAStepsResponse(dep.ID, *dep.GHARunID, runURL, wfJobs), nil
+}
+
 // Deploy enqueues a deployment for the application. Creates a
 // deployments row in `pending`, then asynchronously dispatches the
 // docker:deploy_application asynq job which runs the SSH script.

@@ -241,6 +241,29 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 		return fiberutil.OK(c, "Deployment deleted", nil)
 	})
 
+	// Live GitHub Actions step timeline for a deployment (#87). Read-only:
+	// returns the run's jobs/steps so the deployment view can render a
+	// timeline; the live updates stream over the deployment.gha_steps WS
+	// event while a build is in progress.
+	apps.Get("/:id/deployments/:deploymentId/gha-steps", func(c *gofiber.Ctx) error {
+		teamID, err := fiberutil.MustGetTeamID(c)
+		if err != nil {
+			return err
+		}
+		steps, err := applicationSvc.GetDeploymentGHASteps(
+			c.Context(),
+			c.Params("id"),
+			c.Params("projectId"),
+			c.Params("serverId"),
+			teamID,
+			c.Params("deploymentId"),
+		)
+		if err != nil {
+			return err
+		}
+		return fiberutil.OK(c, "GitHub Actions steps retrieved", steps)
+	})
+
 	apps.Post("/:id/deploy", middleware.Can("docker.application.deploy"), func(c *gofiber.Ctx) error {
 		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
 		if err != nil {
@@ -1150,6 +1173,26 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 			return err
 		}
 		return fiberutil.OK(c, "Deployment deleted", nil)
+	})
+
+	// Live GitHub Actions step timeline for a compose deployment (#87).
+	composes.Get("/:id/deployments/:deploymentId/gha-steps", func(c *gofiber.Ctx) error {
+		teamID, err := fiberutil.MustGetTeamID(c)
+		if err != nil {
+			return err
+		}
+		steps, err := composeSvc.GetDeploymentGHASteps(
+			c.Context(),
+			c.Params("id"),
+			c.Params("projectId"),
+			c.Params("serverId"),
+			teamID,
+			c.Params("deploymentId"),
+		)
+		if err != nil {
+			return err
+		}
+		return fiberutil.OK(c, "GitHub Actions steps retrieved", steps)
 	})
 
 	composes.Post("/:id/deploy", middleware.Can("docker.compose.deploy"), func(c *gofiber.Ctx) error {

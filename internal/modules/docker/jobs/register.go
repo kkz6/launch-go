@@ -43,4 +43,5 @@ func Register(
 	pkgjobs.RegisterTyped(mux, TypeRunBackup, NewRunBackupJob)
 	pkgjobs.RegisterTyped(mux, TypePollDueBackups, NewPollDueBackupsJob)
 	pkgjobs.RegisterTyped(mux, TypeGHABootstrapWorkflow, NewGHABootstrapWorkflowJob)
+	pkgjobs.RegisterTyped(mux, TypePollGHASteps, NewPollGHAStepsJob)
 }

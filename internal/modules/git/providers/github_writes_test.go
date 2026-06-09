@@ -122,6 +122,40 @@ func (f *fakeGitHub) serve(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 	case r.Method == http.MethodDelete && strings.Contains(r.URL.Path, "/actions/variables/"):
 		w.WriteHeader(http.StatusNoContent)
+	case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/jobs"):
+		// GET /repos/{o}/{r}/actions/runs/{id}/jobs — used by the live
+		// step timeline (ListWorkflowRunJobs).
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"total_count": 1,
+			"jobs": []map[string]any{{
+				"id":         99,
+				"name":       "build-and-deploy",
+				"status":     "in_progress",
+				"conclusion": nil,
+				"html_url":   "https://github.com/o/r/actions/runs/5/jobs/99",
+				"steps": []map[string]any{
+					{"name": "Set up job", "status": "completed", "conclusion": "success", "number": 1},
+					{"name": "Build (Dockerfile)", "status": "in_progress", "conclusion": nil, "number": 4},
+				},
+			}},
+		})
+	case r.Method == http.MethodGet && strings.Contains(r.URL.Path, "/actions/workflows/") && strings.HasSuffix(r.URL.Path, "/runs"):
+		// GET /repos/{o}/{r}/actions/workflows/{file}/runs — run discovery
+		// (FindLatestWorkflowRun).
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"total_count": 1,
+			"workflow_runs": []map[string]any{{
+				"id":          12345,
+				"status":      "in_progress",
+				"conclusion":  nil,
+				"html_url":    "https://github.com/o/r/actions/runs/12345",
+				"created_at":  "2026-06-09T00:00:00Z",
+				"event":       "workflow_dispatch",
+				"head_branch": "main",
+			}},
+		})
 	default:
 		f.t.Logf("fakeGitHub: unexpected %s %s", r.Method, r.URL.Path)
 		w.WriteHeader(http.StatusNotFound)

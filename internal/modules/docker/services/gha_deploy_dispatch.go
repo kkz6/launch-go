@@ -6,8 +6,11 @@ import (
 	"path"
 	"time"
 
+	"github.com/hibiken/asynq"
 	"gorm.io/gorm"
 
+	"github.com/kkz6/launch-go/internal/modules/docker/dto"
+	"github.com/kkz6/launch-go/internal/modules/docker/jobs"
 	"github.com/kkz6/launch-go/internal/modules/docker/models"
 	dockertypes "github.com/kkz6/launch-go/internal/modules/docker/types"
 	gitmodels "github.com/kkz6/launch-go/internal/modules/git/models"
@@ -350,6 +353,11 @@ func (s *ApplicationService) deployViaGitHubActions(
 		"status":         "pending",
 		"trigger_source": string(dockertypes.DeploymentTriggerGitHubActions),
 	})
+	if task, err := newGHAStepsPollerTask(deployment); err == nil {
+		if err := s.EnqueueTask(task); err != nil {
+			s.LogError(err, "enqueue gha steps poller", "application_id", app.ID)
+		}
+	}
 	return deployment, nil
 }
 
@@ -390,5 +398,119 @@ func (s *ComposeService) deployViaGitHubActions(
 		"status":         "pending",
 		"trigger_source": string(dockertypes.DeploymentTriggerGitHubActions),
 	})
+	if task, err := newGHAStepsPollerTask(deployment); err == nil {
+		if err := s.EnqueueTask(task); err != nil {
+			s.LogError(err, "enqueue gha steps poller", "compose_id", c.ID)
+		}
+	}
 	return deployment, nil
+}
+
+// fetchGHARunSteps loads the jobs/steps of a GitHub Actions run for the
+// deployment step timeline (#87). Resolves owner/repo + installation from
+// the workload's source_config, exactly like deleteGHAWorkflowRun, then
+// hits the read-only jobs endpoint. A deleted/not-yet-visible run comes
+// back as an empty slice (ListWorkflowRunJobs maps 404 → nil).
+func fetchGHARunSteps(
+	ctx context.Context,
+	db *gorm.DB,
+	factory *gitproviders.ProviderFactory,
+	sourceConfig map[string]any,
+	runID string,
+) ([]gitproviders.WorkflowJob, error) {
+	fields, err := parseGHADispatchFields(sourceConfig)
+	if err != nil {
+		return nil, fiberutil.Validation(err.Error())
+	}
+	installationID, err := resolveGitHubInstallationID(ctx, db, fields.SourceControlID)
+	if err != nil {
+		return nil, err
+	}
+	if factory == nil {
+		return nil, fiberutil.Validation("GitHub provider is not configured on this Launch deployment.")
+	}
+	provider, err := factory.GetProvider(gitproviders.GitProviderType(gittypes.GitProviderGitHub))
+	if err != nil {
+		return nil, fiberutil.Validation("GitHub provider is not configured on this Launch deployment.")
+	}
+	gh, ok := provider.(*gitproviders.GitHubProvider)
+	if !ok {
+		return nil, errors.New("git provider factory returned a non-GitHub provider for the github type")
+	}
+	return gh.ListWorkflowRunJobs(ctx, installationID, fields.Owner, fields.Repo, runID)
+}
+
+// buildGHAStepsResponse maps a deployment row + freshly fetched run jobs
+// into the read-endpoint DTO. Pulled out so the application and compose
+// services share one mapping.
+func buildGHAStepsResponse(deploymentID, runID, runURL string, wfJobs []gitproviders.WorkflowJob) *dto.DeploymentGHASteps {
+	resp := &dto.DeploymentGHASteps{
+		DeploymentID: deploymentID,
+		RunID:        runID,
+		RunURL:       runURL,
+		RunStatus:    ghaOverallRunStatus(wfJobs),
+		Jobs:         make([]dto.DeploymentGHAJob, 0, len(wfJobs)),
+	}
+	for _, jb := range wfJobs {
+		steps := make([]dto.DeploymentGHAStep, 0, len(jb.Steps))
+		for _, s := range jb.Steps {
+			steps = append(steps, dto.DeploymentGHAStep{
+				Name:        s.Name,
+				Status:      s.Status,
+				Conclusion:  s.Conclusion,
+				Number:      s.Number,
+				StartedAt:   s.StartedAt,
+				CompletedAt: s.CompletedAt,
+			})
+		}
+		resp.Jobs = append(resp.Jobs, dto.DeploymentGHAJob{
+			Name:       jb.Name,
+			Status:     jb.Status,
+			Conclusion: jb.Conclusion,
+			HTMLURL:    jb.HTMLURL,
+			Steps:      steps,
+		})
+	}
+	return resp
+}
+
+// ghaOverallRunStatus rolls per-job statuses into one run-level value.
+func ghaOverallRunStatus(wfJobs []gitproviders.WorkflowJob) string {
+	if len(wfJobs) == 0 {
+		return "queued"
+	}
+	allCompleted := true
+	anyInProgress := false
+	for _, jb := range wfJobs {
+		if jb.Status != "completed" {
+			allCompleted = false
+		}
+		if jb.Status == "in_progress" {
+			anyInProgress = true
+		}
+	}
+	switch {
+	case allCompleted:
+		return "completed"
+	case anyInProgress:
+		return "in_progress"
+	default:
+		return "queued"
+	}
+}
+
+// newGHAStepsPollerTask builds the live step-timeline poller task (#87)
+// for a freshly dispatched GHA deploy. Returns an error (which callers
+// treat as "skip — no live timeline") when the placeholder row has no id
+// yet, since the poller keys everything off the deployment id.
+func newGHAStepsPollerTask(deployment *models.Deployment) (*asynq.Task, error) {
+	if deployment == nil || deployment.ID == "" {
+		return nil, errors.New("deployment has no id; cannot start gha steps poller")
+	}
+	return jobs.NewPollGHAStepsTask(jobs.PollGHAStepsPayload{
+		TargetType:       deployment.TargetType,
+		TargetID:         deployment.TargetID,
+		DeploymentID:     deployment.ID,
+		DispatchedAtUnix: time.Now().UTC().Unix(),
+	})
 }
