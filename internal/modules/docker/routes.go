@@ -1917,6 +1917,52 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 		return fiberutil.NoContent(c)
 	})
 
+	// Manage the individual databases INSIDE a managed instance (#75) —
+	// list / create / drop, run live against the container via docker exec.
+	databases.Get("/:id/databases", func(c *gofiber.Ctx) error {
+		teamID, err := fiberutil.MustGetTeamID(c)
+		if err != nil {
+			return err
+		}
+		names, err := databaseSvc.ListInstanceDatabases(
+			c.Context(), c.Params("id"), c.Params("projectId"), c.Params("serverId"), teamID,
+		)
+		if err != nil {
+			return err
+		}
+		return fiberutil.OK(c, "Databases retrieved", names)
+	})
+
+	databases.Post("/:id/databases", middleware.Can("docker.database.lifecycle"), func(c *gofiber.Ctx) error {
+		teamID, err := fiberutil.MustGetTeamID(c)
+		if err != nil {
+			return err
+		}
+		req, err := fiberutil.MustParseAndValidate[dto.CreateInstanceDatabaseRequest](c)
+		if err != nil {
+			return err
+		}
+		if err := databaseSvc.CreateInstanceDatabase(
+			c.Context(), c.Params("id"), c.Params("projectId"), c.Params("serverId"), teamID, req.Name,
+		); err != nil {
+			return err
+		}
+		return fiberutil.Created(c, "Database created", nil)
+	})
+
+	databases.Delete("/:id/databases/:name", middleware.Can("docker.database.lifecycle"), func(c *gofiber.Ctx) error {
+		teamID, err := fiberutil.MustGetTeamID(c)
+		if err != nil {
+			return err
+		}
+		if err := databaseSvc.DropInstanceDatabase(
+			c.Context(), c.Params("id"), c.Params("projectId"), c.Params("serverId"), teamID, c.Params("name"),
+		); err != nil {
+			return err
+		}
+		return fiberutil.NoContent(c)
+	})
+
 	// Database backup routes. /backup is singleton (one config per
 	// database); /backup/runs is the history list; /backup/run is the
 	// "run now" entrypoint; /backup/restore replays a past run.
