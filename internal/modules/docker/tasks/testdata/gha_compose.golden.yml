@@ -48,8 +48,7 @@ jobs:
       - name: Compute image tag
         id: meta
         run: |
-          REPO_LC="${GITHUB_REPOSITORY,,}"
-          echo "image=ghcr.io/${REPO_LC}:launch-teststack-${{ matrix.service }}-${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
+          echo "image=ghcr.io/kkz6/teststack:launch-${{ matrix.service }}-${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
 
       - name: Log in to GHCR
         uses: docker/login-action@v3
@@ -120,7 +119,7 @@ jobs:
           set -euo pipefail
           bearer=$(curl -fsSL \
             -u "${GITHUB_ACTOR}:${GITHUB_TOKEN}" \
-            "https://ghcr.io/token?service=ghcr.io&scope=repository:${GITHUB_REPOSITORY,,}:pull" \
+            "https://ghcr.io/token?service=ghcr.io&scope=repository:kkz6/teststack:pull" \
             | jq -r '.token // empty')
           if [ -z "$bearer" ]; then
             echo "::error::Failed to mint GHCR pull token"

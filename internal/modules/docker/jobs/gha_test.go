@@ -301,6 +301,17 @@ func TestWorkloadImageSlug_DistinctPerWorkload(t *testing.T) {
 	assert.NotEqual(t, web, api)
 }
 
+// TestImagePackagePath gives each workload its OWN GHCR package path
+// (#100): `<lower(owner)>/<slug>`. Two workloads from one repo land in
+// separate packages, not the repo's shared package.
+func TestImagePackagePath(t *testing.T) {
+	web := imagePackagePath("kkz6", "signfly web", "01HJXVHGRGTQRX4P0G3Y8R6CK7")
+	api := imagePackagePath("KKZ6", "signfly api", "01HJXVHGRGTQRX4P0G3Y8R6CK8")
+	assert.Equal(t, "kkz6/signfly-web-3y8r6ck7", web)
+	assert.Equal(t, "kkz6/signfly-api-3y8r6ck8", api, "owner lowercased; per-app package")
+	assert.NotEqual(t, web, api, "two apps from one repo get separate packages")
+}
+
 func TestParseGHASourceConfig_UnparseableRepo(t *testing.T) {
 	_, err := parseGHASourceConfig(map[string]any{
 		"repo":              "not-a-url",
