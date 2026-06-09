@@ -11,6 +11,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/auth/models"
 	"github.com/kkz6/launch-go/internal/modules/notification/channels"
 	"github.com/kkz6/launch-go/internal/pkg/cache"
+	launchcache "github.com/kkz6/launch-go/internal/pkg/launch/cache"
 )
 
 // Service aggregates all auth-related services.
@@ -25,9 +26,32 @@ type Service struct {
 	TeamMember        *TeamMemberService
 	Passkey           *PasskeyService
 
-	repos  contracts.RepositoryRegistry
-	config *config.Config
-	logger *zerolog.Logger
+	repos           contracts.RepositoryRegistry
+	config          *config.Config
+	logger          *zerolog.Logger
+	membershipCache *launchcache.TeamMembershipCache
+}
+
+// SetMembershipCache wires the team-membership cache used to resolve the
+// caller's role in their current team. Set during module bootstrap; when
+// nil (e.g. in unit tests) CurrentTeamRole returns an empty string.
+func (s *Service) SetMembershipCache(c *launchcache.TeamMembershipCache) {
+	s.membershipCache = c
+}
+
+// CurrentTeamRole returns the user's role in the given team (owner / admin
+// / editor / member), or an empty string when there's no team or the
+// membership cache isn't wired. Drives frontend UI gating only — the
+// backend remains the authorization source of truth.
+func (s *Service) CurrentTeamRole(ctx context.Context, userID, teamID string) string {
+	if s.membershipCache == nil || teamID == "" {
+		return ""
+	}
+	role, err := s.membershipCache.GetRole(ctx, userID, teamID)
+	if err != nil {
+		return ""
+	}
+	return role
 }
 
 // NewService creates a new Service instance

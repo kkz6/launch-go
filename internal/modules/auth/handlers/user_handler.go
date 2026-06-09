@@ -36,7 +36,14 @@ func (h *UserHandler) User(c *fiber.Ctx) error {
 
 	isSubscribed := h.Service().IsUserSubscribed(c.Context(), user)
 
-	return fiberctx.OK(c, "User retrieved", dto.ToUserResponseWithStatus(user, isSubscribed, user.Onboarded))
+	resp := dto.ToUserResponseWithStatus(user, isSubscribed, user.Onboarded)
+	if user.CurrentTeamID != nil {
+		if role := h.Service().CurrentTeamRole(c.Context(), user.ID, *user.CurrentTeamID); role != "" {
+			resp.Role = &role
+		}
+	}
+
+	return fiberctx.OK(c, "User retrieved", resp)
 }
 
 // UpdateProfile updates the user's profile
