@@ -2,9 +2,6 @@
 name: Launch Deploy
 
 on:
-  # Auto-deploy is OFF: deploys are triggered explicitly from Launch
-  # (the Deploy button → workflow_dispatch). Pushing code or syncing this
-  # workflow file must never kick off a deploy on its own.
   workflow_dispatch:
 
 concurrency:
@@ -20,11 +17,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # yq extracts services with a `build:` directive. The result is a
-      # JSON array of service names, fed into the matrix below. If the
-      # compose file declares no `build:` (everything is `image:`), the
-      # matrix is empty and the build job is skipped — the user picked
-      # an all-prebuilt-images compose so there's nothing for GHA to do.
       - name: Install yq
         run: sudo snap install yq || (sudo curl -fsSL https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -o /usr/local/bin/yq && sudo chmod +x /usr/local/bin/yq)
 
@@ -51,28 +43,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # buildx docker-container driver required for `cache-from/to:
-      # type=gha`. The runner's default `docker` driver doesn't
-      # support gha cache backends — without this step the build
-      # dies with "Cache export is not supported for the docker
-      # driver."
       - uses: docker/setup-buildx-action@v3
 
       - name: Compute image tag
         id: meta
         run: |
-          # GHCR rejects tags with uppercase letters in the repository
-          # path ("repository name must be lowercase"). github.repository
-          # preserves the original case (e.g. GlobalJapan/gj-hrms-api),
-          # so we lowercase explicitly via bash ${VAR,,}. Keep this in
-          # lock-step with the token-exchange step's
-          # ${GITHUB_REPOSITORY,,} below.
           REPO_LC="${GITHUB_REPOSITORY,,}"
-          # The "teststack" component namespaces the tag per Launch
-          # compose stack, so two stacks built from this same repo that
-          # share a service name don't both push "launch-<service>-<sha>"
-          # and overwrite each other's image — each stack gets its own
-          # "launch-<stack-slug>-<service>-<sha>" tag in the package.
           echo "image=ghcr.io/${REPO_LC}:launch-teststack-${{ matrix.service }}-${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
 
       - name: Log in to GHCR
@@ -100,9 +76,6 @@ jobs:
           cache-from: type=gha,scope=${{ matrix.service }}
           cache-to: type=gha,mode=max,scope=${{ matrix.service }}
 
-      # Each matrix shard appends its (service, image) pair to a shared
-      # artifact. The collect job downstream rolls them into the JSON
-      # map the notify call posts to Launch.
       - name: Record image
         run: |
           mkdir -p .gha-launch-images
@@ -117,14 +90,7 @@ jobs:
   collect-and-notify:
     needs: build
     runs-on: ubuntu-latest
-    # 30 min (was 5): this job now blocks on the deploy itself via the
-    # "Wait for Launch deploy to finish" step below, which holds the job
-    # — and therefore the short-lived GHCR pull token it minted — open
-    # until Launch's worker has finished pulling + deploying.
     timeout-minutes: 30
-    # `packages: read` so the GHCR token-exchange step below can
-    # mint a pull bearer. The build job has `packages: write` for
-    # the per-service push; collect-and-notify only needs read.
     permissions:
       contents: read
       packages: read
@@ -146,19 +112,12 @@ jobs:
           done
           echo "service_images=$(echo "$map" | jq -c .)" >> $GITHUB_OUTPUT
 
-      # Short-lived (~1h) GHCR pull bearer for the deploy host. See
-      # the application template for the longer-form rationale; the
-      # compose case publishes one package per service but they all
-      # live under the same `<owner>/<repo>` GHCR namespace so one
-      # bearer covers every service image.
       - name: Mint GHCR pull token
         id: ghcr_token
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          # Docker Registry v2 Basic auth — see the application
-          # template for the longer-form rationale.
           bearer=$(curl -fsSL \
             -u "${GITHUB_ACTOR}:${GITHUB_TOKEN}" \
             "https://ghcr.io/token?service=ghcr.io&scope=repository:${GITHUB_REPOSITORY,,}:pull" \
@@ -204,16 +163,7 @@ jobs:
           fi
           echo "deployment_id=$deployment_id" >> "$GITHUB_OUTPUT"
 
-      # Block until the deploy lands. The relayed GHCR bearer is only
-      # valid while this job runs (GitHub revokes the run's GITHUB_TOKEN
-      # — and tokens minted from it — when the job ends), so we must hold
-      # the job open until the worker has pulled every service image.
-      # Without this the async pull races job-teardown and fails with
-      # "unauthenticated: User cannot be authenticated with the token
-      # provided." See the application template for the full rationale.
       - name: Wait for Launch deploy to finish
-        # Hard wall-clock cap regardless of the loop — a wedged poll must
-        # not hold the runner for the whole job budget.
         timeout-minutes: 22
         env:
           TOKEN: ${{ secrets.LAUNCH_DEPLOY_TOKEN }}
@@ -221,12 +171,7 @@ jobs:
         run: |
           set -uo pipefail
           url="${{ vars.LAUNCH_WEBHOOK_URL }}/api/webhooks/docker/composes/01HJXVHGRGTQRX4P0G3Y8R6CK8/deployments/${DEPLOYMENT_ID}"
-          # Upper bound on a healthy-but-slow deploy; under the step timeout
-          # so the loop exits cleanly with a message first.
-          deadline=$(( $(date +%s) + 1200 ))   # 20 min
-          # Fail FAST if Launch itself is unreachable/erroring — a broken
-          # backend must not keep this Action alive for the whole window.
-          # Brief blips are tolerated; a sustained outage bails.
+          deadline=$(( $(date +%s) + 1200 ))
           fails=0
           max_fails=10
           while :; do

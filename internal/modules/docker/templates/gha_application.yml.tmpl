@@ -3,14 +3,8 @@ name: Launch Deploy
 
 on:
 {{- if .AutoDeploy }}
-  # Auto-deploy is ON: a push to the deploy branch builds and deploys.
-  # Manual deploys (Launch's Deploy button) still work via workflow_dispatch.
   push:
     branches: [{{ .Branch }}]
-{{- else }}
-  # Auto-deploy is OFF: deploys are triggered explicitly from Launch
-  # (the Deploy button → workflow_dispatch). Pushing code or syncing this
-  # workflow file must never kick off a deploy on its own.
 {{- end }}
   workflow_dispatch:
 
@@ -28,29 +22,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Set up the buildx docker-container driver. The default driver
-      # baked into the runner is plain `docker` which does NOT support
-      # `cache-from: type=gha` / `cache-to: type=gha,mode=max` — without
-      # this step the dockerfile build below dies with
-      # "Cache export is not supported for the docker driver."
       - uses: docker/setup-buildx-action@v3
 
       - name: Compute image tag
         id: meta
         run: |
-          # GHCR rejects tags with uppercase letters in the repository
-          # path ("repository name must be lowercase"). github.repository
-          # preserves the original case (e.g. GlobalJapan/gj-hrms-api),
-          # so we lowercase explicitly via bash ${VAR,,}. The token-
-          # exchange step below already uses ${GITHUB_REPOSITORY,,} for
-          # the same reason — keep the two in lock-step or buildx will
-          # fail with "invalid tag: repository name must be lowercase"
-          # before we ever reach the registry.
           REPO_LC="${GITHUB_REPOSITORY,,}"
-          # The "{{.ImageSlug}}" component namespaces the tag per Launch
-          # application, so multiple apps built from this same repo don't
-          # all push "launch-<sha>" and overwrite each other's image — each
-          # gets its own "launch-<app-slug>-<sha>" tag in the package.
           echo "image=ghcr.io/${REPO_LC}:launch-{{.ImageSlug}}-${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
 
       - name: Log in to GHCR
@@ -63,12 +40,6 @@ jobs:
       - name: Detect builder
         id: builder
         run: |
-          # Honour the build method chosen in Launch. Only "auto" (an
-          # empty BuildType) falls back to detecting by Dockerfile
-          # presence — an explicit choice is respected so e.g. a
-          # "dockerfile" app fails LOUDLY when its Dockerfile is missing
-          # instead of silently building with Nixpacks (and producing a
-          # surprising image).
           case "{{.BuildType}}" in
             dockerfile)
               if [ ! -f "{{.DockerfilePath}}" ]; then
@@ -97,26 +68,12 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
           {{- if .BuildSecretNames}}
-          # Build-time secrets — values come from per-name repo secrets
-          # (LAUNCH_BUILD_<NAME>) that Launch pushes alongside this
-          # workflow. Each maps to a Dockerfile reference like:
-          #   RUN --mount=type=secret,id=<NAME> cat /run/secrets/<NAME>
-          # Adding/removing a build secret in Launch re-syncs this
-          # workflow file so the list stays current.
           secrets: |
 {{- range .BuildSecretNames}}
             {{.}}=${{ "{{" }} secrets.LAUNCH_BUILD_{{.}} {{ "}}" }}
 {{- end}}
           {{- end}}
 
-      # Nixpacks via shell. The previous template used
-      # iloveitaly/nixpacks-action, which no longer exists in the
-      # GHA Marketplace — GitHub resolves every `uses:` reference
-      # during "Set up job" before any `if:` runs, so even though
-      # the Dockerfile path wins for most workloads, an unresolvable
-      # action ID killed the whole job. Inline the install + build
-      # script instead so the workflow only depends on actions that
-      # actually exist (checkout, login-action, build-push-action).
       - name: Build (Nixpacks)
         if: steps.builder.outputs.kind == 'nixpacks'
         env:
@@ -127,32 +84,12 @@ jobs:
           nixpacks build . --name "$IMAGE"
           docker push "$IMAGE"
 
-      # Mint a short-lived (~1h) GHCR pull bearer scoped to THIS repo
-      # via the standard token-exchange endpoint. The Launch deploy
-      # worker uses this for `docker login ghcr.io` on the target host
-      # so private GHCR packages pull cleanly — no Personal Access
-      # Token, no public-package workaround, no GitHub App
-      # installation-token quirk (App tokens can't pull private GHCR
-      # packages regardless of permissions).
-      #
-      # ::add-mask::$bearer is critical — without it any future
-      # step that echoes the bearer would expose it in the workflow
-      # log. With it, GitHub redacts the literal string in all
-      # subsequent log output.
       - name: Mint GHCR pull token
         id: ghcr_token
         env:
           GITHUB_TOKEN: ${{ "{{" }} secrets.GITHUB_TOKEN {{ "}}" }}
         run: |
           set -euo pipefail
-          # GHCR's /token endpoint uses Docker Registry v2 Basic auth,
-          # NOT Bearer — the username can be any non-empty placeholder
-          # (we use github.actor for symmetry with the docker login
-          # step above), password is the workflow's GITHUB_TOKEN. The
-          # response is a fresh ~1h JWT scoped to repository:<owner>/
-          # <repo>:pull, suitable for `docker login` as the password
-          # on the deploy host. Repo name lowercased — GHCR requires
-          # it even when the GitHub repo name has uppercase letters.
           bearer=$(curl -fsSL \
             -u "${GITHUB_ACTOR}:${GITHUB_TOKEN}" \
             "https://ghcr.io/token?service=ghcr.io&scope=repository:${GITHUB_REPOSITORY,,}:pull" \
@@ -173,9 +110,6 @@ jobs:
         id: notify
         env:
           TOKEN: ${{ "{{" }} secrets.{{.DeployTokenSecret}} {{ "}}" }}
-          # Pass the bearer through an env var so jq's --arg gets it
-          # verbatim — inlining via `${{ "{{" }} steps.* {{ "}}" }}`
-          # in jq args invites shell-quote escapes on edge cases.
           GHCR_BEARER: ${{ "{{" }} steps.ghcr_token.outputs.bearer {{ "}}" }}
           GHCR_BEARER_MINTED_AT: ${{ "{{" }} steps.ghcr_token.outputs.minted_at {{ "}}" }}
         run: |
@@ -194,8 +128,6 @@ jobs:
             "${{ "{{" }} vars.LAUNCH_WEBHOOK_URL {{ "}}" }}/api/webhooks/docker/applications/{{.AppID}}/deploy") \
             || { echo "::error::Launch rejected the deploy notify"; echo "$resp"; exit 1; }
           echo "$resp"
-          # Capture the deployment id so the next step can poll it. This
-          # is what lets us hold the job open until the deploy finishes.
           deployment_id=$(printf '%s' "$resp" | jq -r '.data.deployment_id // empty')
           if [ -z "$deployment_id" ]; then
             echo "::error::Launch accepted the notify but returned no deployment_id; cannot wait for completion"
@@ -203,23 +135,7 @@ jobs:
           fi
           echo "deployment_id=$deployment_id" >> "$GITHUB_OUTPUT"
 
-      # Block until Launch's worker has actually pulled + deployed.
-      #
-      # This is load-bearing, not cosmetic: the deploy worker pulls the
-      # private image from GHCR using the bearer we minted + relayed
-      # above, and that bearer is only valid WHILE THIS JOB IS RUNNING —
-      # GitHub revokes the run's GITHUB_TOKEN (and any registry token
-      # minted from it) the instant the job ends. If the job finished at
-      # "Notify Launch", the async pull raced job-teardown and died with
-      # "unauthenticated: User cannot be authenticated with the token
-      # provided." Polling keeps the token alive until the pull is done.
-      #
-      # Bonus: the run now goes red when the deploy fails, instead of
-      # reporting success for a build whose deploy never landed.
       - name: Wait for Launch deploy to finish
-        # Hard wall-clock cap on this step regardless of what the loop
-        # below does — if anything wedges, GitHub kills the step rather
-        # than letting the run hang for the whole job budget.
         timeout-minutes: 22
         env:
           TOKEN: ${{ "{{" }} secrets.{{.DeployTokenSecret}} {{ "}}" }}
@@ -227,20 +143,10 @@ jobs:
         run: |
           set -uo pipefail
           url="${{ "{{" }} vars.LAUNCH_WEBHOOK_URL {{ "}}" }}/api/webhooks/docker/applications/{{.AppID}}/deployments/${DEPLOYMENT_ID}"
-          # Upper bound on a healthy-but-slow deploy; sits just under the
-          # step timeout so we exit cleanly with a message first.
-          deadline=$(( $(date +%s) + 1200 ))   # 20 min
-          # Fail FAST if Launch itself is unreachable or erroring — a
-          # broken backend must NOT keep this Action (and its runner)
-          # alive for the whole window. Brief blips (e.g. an API container
-          # restarting mid-deploy) are tolerated; a sustained outage bails.
+          deadline=$(( $(date +%s) + 1200 ))
           fails=0
           max_fails=10
           while :; do
-            # --connect-timeout / --max-time so a hung backend can't make a
-            # single poll block forever. -w appends the HTTP status as the
-            # last line so we can tell "deploy in progress" from "backend
-            # broke".
             resp=$(curl -sS --connect-timeout 10 --max-time 20 -w $'\n%{http_code}' \
               -H "Authorization: Bearer $TOKEN" "$url" || true)
             http=$(printf '%s' "$resp" | tail -n1); http=${http:-000}
