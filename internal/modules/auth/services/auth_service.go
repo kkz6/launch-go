@@ -453,6 +453,105 @@ func (s *AuthService) handleInvitation(ctx context.Context, tx *gorm.DB, user *m
 	return nil
 }
 
+// AcceptTeamInvitation accepts a team invitation from the public accept
+// page, handling BOTH cases the page serves:
+//
+//   - the invitee has no account yet → register a new user (name +
+//     password) and add them to the team via handleInvitation;
+//   - the invitee already has an account → verify their existing password
+//     and add that account to the team.
+//
+// Returns an auth response (tokens + user) in both cases so the page can
+// log the invitee straight in. This is the fix for invited members never
+// being allocated to the team when they already had an account (#71).
+func (s *AuthService) AcceptTeamInvitation(
+	ctx context.Context, invitationToken, name, password, ip, userAgent string,
+) (*dto.AuthResponse, error) {
+	invitation, err := s.repos.TeamInvitation().FindByID(ctx, invitationToken)
+	if err != nil {
+		return nil, err
+	}
+	if invitation == nil {
+		return nil, fiberutil.NotFound()
+	}
+
+	existing, err := s.repos.User().FindByEmail(ctx, invitation.Email)
+	if err != nil {
+		return nil, err
+	}
+
+	if existing != nil {
+		return s.acceptTeamInvitationExistingUser(ctx, invitation, existing, password, ip, userAgent)
+	}
+
+	// New invitee — registration requires a name. (The DTO leaves it
+	// optional so existing users can submit just a password.)
+	if strings.TrimSpace(name) == "" {
+		return nil, fiberutil.Validation("Name is required to create your account")
+	}
+	return s.Register(ctx, &dto.RegisterRequest{
+		Name:                 name,
+		Email:                invitation.Email,
+		Password:             password,
+		PasswordConfirmation: password,
+		InvitationID:         &invitationToken,
+		CreatePersonalTeam:   false,
+		IPAddress:            ip,
+		UserAgent:            userAgent,
+	})
+}
+
+// acceptTeamInvitationExistingUser authenticates an already-registered
+// invitee by password and adds that account to the invitation's team,
+// then issues a session. Idempotent if they're somehow already a member.
+func (s *AuthService) acceptTeamInvitationExistingUser(
+	ctx context.Context, invitation *models.TeamInvitation, user *models.User, password, ip, userAgent string,
+) (*dto.AuthResponse, error) {
+	if user.IsSuspended() {
+		return nil, fiberutil.Forbidden("Account suspended")
+	}
+	if !security.VerifyPassword(user.Password, password) {
+		return nil, fiberutil.Unauthorized()
+	}
+
+	role := "member"
+	if invitation.Role != nil {
+		role = *invitation.Role
+	}
+
+	err := s.repos.DB().WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var count int64
+		if err := tx.Model(&models.TeamMember{}).
+			Where("team_id = ? AND user_id = ?", invitation.TeamID, user.ID).
+			Count(&count).Error; err != nil {
+			return err
+		}
+		if count == 0 {
+			if err := tx.Create(&models.TeamMember{
+				TeamID: invitation.TeamID,
+				UserID: user.ID,
+				Role:   &role,
+			}).Error; err != nil {
+				return fmt.Errorf("failed to add user to team: %w", err)
+			}
+		}
+		if err := tx.Model(user).Update("current_team_id", invitation.TeamID).Error; err != nil {
+			return fmt.Errorf("failed to set current team: %w", err)
+		}
+		return tx.Delete(invitation).Error
+	})
+	if err != nil {
+		return nil, err
+	}
+	user.CurrentTeamID = &invitation.TeamID
+
+	sessionID, err := s.createSession(ctx, user.ID, ip, userAgent)
+	if err != nil {
+		return nil, err
+	}
+	return s.buildAuthResponse(ctx, user, sessionID)
+}
+
 // createPersonalTeam creates a personal team for a new user
 func (s *AuthService) createPersonalTeam(_ context.Context, tx *gorm.DB, user *models.User) error {
 	team := &models.Team{

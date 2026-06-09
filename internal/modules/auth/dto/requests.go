@@ -157,12 +157,17 @@ func (r *CheckUserStatusRequest) Normalize() {
 	pkgdto.NormalizeEmail(&r.Email)
 }
 
-// AcceptInvitationRequest represents a request to accept an invitation by registering a new account
+// AcceptInvitationRequest represents a request to accept a team invitation.
+// One endpoint serves two cases: a brand-new invitee registers (name +
+// password + confirmation), and an invitee who already has an account
+// joins by entering just their existing password. Name + confirmation are
+// therefore optional at the DTO level and enforced per-case in the service
+// (name is required only when registering a new account).
 type AcceptInvitationRequest struct {
 	InvitationToken      string `json:"invitation_token" validate:"required"`
-	Name                 string `json:"name" validate:"required,min=2,max=255"`
+	Name                 string `json:"name" validate:"omitempty,min=2,max=255"`
 	Password             string `json:"password" validate:"required,min=8"`
-	PasswordConfirmation string `json:"password_confirmation" validate:"required,eqfield=Password"`
+	PasswordConfirmation string `json:"password_confirmation" validate:"omitempty,eqfield=Password"`
 }
 
 // Normalize normalizes the name

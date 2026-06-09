@@ -323,6 +323,17 @@ func (s *TeamMemberService) GetInvitationByID(ctx context.Context, invitationID 
 	return invitation, nil
 }
 
+// InvitationUserExists reports whether the invited email already has an
+// account, so the accept page can show "log in to join" (existing user)
+// vs "create your account" (new user) — #71.
+func (s *TeamMemberService) InvitationUserExists(ctx context.Context, email string) bool {
+	user, err := s.repos.User().FindByEmail(ctx, email)
+	if err != nil {
+		return false
+	}
+	return user != nil
+}
+
 // GenerateInvitationURL generates a permanent signed URL for accepting a team invitation
 // Team invitations don't expire - they remain valid until cancelled
 func (s *TeamMemberService) GenerateInvitationURL(invitationID string) string {
