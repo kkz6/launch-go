@@ -415,6 +415,12 @@ type UpdateApplicationTraefikConfigRequest struct {
 // touching its source. All fields are optional; present keys are
 // applied to the application's build_config and take effect on the
 // next deploy.
+// CreateInstanceDatabaseRequest creates a database inside a managed DB
+// instance (#75). Name is restricted to a safe identifier charset.
+type CreateInstanceDatabaseRequest struct {
+	Name string `json:"name" validate:"required,min=1,max=64"`
+}
+
 type UpdateAdvancedRequest struct {
 	// InternalPort is the container port the app listens on. Nil = leave
 	// unchanged. Takes effect on the next deploy (the run/proxy config is
