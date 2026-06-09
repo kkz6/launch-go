@@ -46,6 +46,10 @@ jobs:
       image_map: ${{ "{{" }} steps.collect.outputs.image_map {{ "}}" }}
     steps:
       - uses: actions/checkout@v4
+{{- if ne .Platform "linux/amd64" }}
+
+      - uses: docker/setup-qemu-action@v3
+{{- end }}
 
       - uses: docker/setup-buildx-action@v3
 
@@ -75,6 +79,7 @@ jobs:
           context: ${{ "{{" }} steps.ctx.outputs.context {{ "}}" }}
           file: ${{ "{{" }} steps.ctx.outputs.context {{ "}}" }}/${{ "{{" }} steps.ctx.outputs.dockerfile {{ "}}" }}
           push: true
+          platforms: {{.Platform}}
           tags: ${{ "{{" }} steps.meta.outputs.image {{ "}}" }}
           cache-from: type=gha,scope=${{ "{{" }} matrix.service {{ "}}" }}
           cache-to: type=gha,mode=max,scope=${{ "{{" }} matrix.service {{ "}}" }}

@@ -149,6 +149,7 @@ func (j *GHABootstrapWorkflowJob) handleApplication(ctx context.Context) error {
 	// one repo are isolated into separate packages rather than sharing the
 	// repo's package. The package path is `<owner>/<app-slug>`.
 	cfg.ImagePackage = imagePackagePath(cfg.Owner, app.Name, app.ID)
+	cfg.Platform = j.resolveBuildPlatform(ctx, app.ServerID)
 
 	// Namespace the deploy-token secret and the workflow file per application so
 	// multiple apps can share one repo without clobbering each other's token /
@@ -552,6 +553,7 @@ func (j *GHABootstrapWorkflowJob) handleCompose(ctx context.Context) error {
 	// one repo are isolated into separate packages; services share the
 	// stack's package via per-service tags.
 	cfg.ImagePackage = imagePackagePath(cfg.Owner, compose.Name, compose.ID)
+	cfg.Platform = j.resolveBuildPlatform(ctx, compose.ServerID)
 
 	// Compose keeps the shared LAUNCH_DEPLOY_TOKEN secret (no per-app
 	// namespacing yet), so no forced re-push.
@@ -636,6 +638,32 @@ type ghaSourceConfig struct {
 	// scope (`repository:<ImagePackage>:pull`). Set from the workload row
 	// in handleApplication/handleCompose, not parsed from source_config.
 	ImagePackage string
+	// Platform is the docker build platform matching the target server's
+	// architecture (#101) — "linux/amd64" or "linux/arm64". Resolved from
+	// the server's detected_arch in handleApplication/handleCompose.
+	Platform string
+}
+
+// resolveBuildPlatform maps the target server's detected architecture to a
+// docker build platform (#101). Defaults to linux/amd64 when unknown — the
+// safe choice for the amd64 GitHub runners and the most common server arch.
+func (j *GHABootstrapWorkflowJob) resolveBuildPlatform(ctx context.Context, serverID string) string {
+	var row struct{ DetectedArch *string }
+	_ = j.Deps.DB.WithContext(ctx).
+		Table("servers").
+		Select("detected_arch").
+		Where("id = ?", serverID).
+		Scan(&row).Error
+	arch := ""
+	if row.DetectedArch != nil {
+		arch = *row.DetectedArch
+	}
+	switch strings.ToLower(strings.TrimSpace(arch)) {
+	case "arm64", "aarch64":
+		return "linux/arm64"
+	default:
+		return "linux/amd64"
+	}
 }
 
 // resolveAppDockerfilePath returns the Dockerfile path for an application's
@@ -1002,6 +1030,7 @@ func (j *GHABootstrapWorkflowJob) renderWorkflow(
 			LaunchBaseURL:     j.Payload.LaunchBaseURL,
 			AppID:             id,
 			ImagePackage:      cfg.ImagePackage,
+			Platform:          cfg.Platform,
 			DeployTokenSecret: cfg.DeployTokenSecret,
 			BuildSecretNames:  buildSecretNames,
 			AutoDeploy:        cfg.AutoDeploy,
@@ -1013,6 +1042,7 @@ func (j *GHABootstrapWorkflowJob) renderWorkflow(
 			LaunchBaseURL:    j.Payload.LaunchBaseURL,
 			ComposeID:        id,
 			ImagePackage:     cfg.ImagePackage,
+			Platform:         cfg.Platform,
 			BuildSecretNames: buildSecretNames,
 			AutoDeploy:       cfg.AutoDeploy,
 		})

@@ -788,9 +788,16 @@ func (s *ApplicationService) UpdateAdvanced(
 		}
 	}
 
-	if err := s.Repos().Application().UpdateFields(ctx, app.ID, map[string]any{
+	fields := map[string]any{
 		"build_config": dbtype.JSONMap(cfg),
-	}); err != nil {
+	}
+	// InternalPort is a top-level column, not a build_config knob (#78).
+	// Persist it when supplied so the next deploy regenerates the run/proxy
+	// config on the new port.
+	if req.InternalPort != nil && *req.InternalPort > 0 {
+		fields["internal_port"] = *req.InternalPort
+	}
+	if err := s.Repos().Application().UpdateFields(ctx, app.ID, fields); err != nil {
 		return dto.ApplicationResponse{}, err
 	}
 

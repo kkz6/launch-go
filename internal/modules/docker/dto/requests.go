@@ -416,6 +416,10 @@ type UpdateApplicationTraefikConfigRequest struct {
 // applied to the application's build_config and take effect on the
 // next deploy.
 type UpdateAdvancedRequest struct {
+	// InternalPort is the container port the app listens on. Nil = leave
+	// unchanged. Takes effect on the next deploy (the run/proxy config is
+	// regenerated from it), so changing it should be followed by a deploy.
+	InternalPort *int `json:"internal_port,omitempty" validate:"omitempty,min=1,max=65535"`
 	// CPULimit in docker --cpus format (e.g. "0.5", "2"). Empty string clears.
 	CPULimit *string `json:"cpu_limit,omitempty" validate:"omitempty,max=32"`
 	// MemoryLimit in docker -m format (e.g. "512m", "2g"). Empty clears.

@@ -71,6 +71,7 @@ jobs:
           context: ${{ steps.ctx.outputs.context }}
           file: ${{ steps.ctx.outputs.context }}/${{ steps.ctx.outputs.dockerfile }}
           push: true
+          platforms: linux/amd64
           tags: ${{ steps.meta.outputs.image }}
           cache-from: type=gha,scope=${{ matrix.service }}
           cache-to: type=gha,mode=max,scope=${{ matrix.service }}
