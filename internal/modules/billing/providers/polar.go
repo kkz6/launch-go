@@ -62,9 +62,15 @@ func NewPolarClient(config *PolarConfig, logger *zerolog.Logger) *PolarClient {
 
 	// Build the Standard Webhooks verifier once. Polar signs webhooks with the
 	// Standard Webhooks spec (webhook-id / webhook-signature / webhook-timestamp).
-	// The secret is whatever the Polar dashboard issued for the endpoint.
+	//
+	// Polar's secret (e.g. "polar_whs_…") is a PLAIN string, not the base64
+	// secret the Standard Webhooks spec assumes. Polar's own SDKs base64-encode
+	// it before handing it to the verifier, so the effective HMAC key is the
+	// raw secret-string bytes. NewWebhook would base64-decode the secret (and
+	// outright error on the "_" in the prefix), rejecting every webhook — so we
+	// use NewWebhookRaw with the secret bytes to match how Polar signs.
 	if config.WebhookSecret != "" {
-		c.webhook, c.webhkErr = standardwebhooks.NewWebhook(config.WebhookSecret)
+		c.webhook, c.webhkErr = standardwebhooks.NewWebhookRaw([]byte(config.WebhookSecret))
 	}
 
 	return c
