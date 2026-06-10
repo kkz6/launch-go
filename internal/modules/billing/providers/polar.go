@@ -175,14 +175,13 @@ func (c *PolarClient) ValidateWebhook(payload []byte, headers http.Header) error
 // `billing:polar-setup` console command.
 func (c *PolarClient) CreateProduct(ctx context.Context, name string, priceCents int64) (string, error) {
 	usd := components.PresentmentCurrencyUsd
-	var orgID *string
-	if c.config.OrganizationID != "" {
-		orgID = &c.config.OrganizationID
-	}
 
+	// Note: we intentionally do NOT set OrganizationID here. POLAR_ACCESS_TOKEN
+	// is an organization access token (polar_oat_…), which is already scoped to
+	// one org — Polar rejects an explicit organization_id in that case and
+	// infers it from the token.
 	req := components.CreateProductCreateProductCreateRecurring(components.ProductCreateRecurring{
 		Name:              name,
-		OrganizationID:    orgID,
 		RecurringInterval: components.SubscriptionRecurringIntervalMonth,
 		Prices: []components.ProductCreateRecurringPrices{
 			components.CreateProductCreateRecurringPricesFixed(components.ProductPriceFixedCreate{

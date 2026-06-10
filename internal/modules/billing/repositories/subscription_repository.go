@@ -3,6 +3,7 @@ package repositories
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"gorm.io/gorm"
 
@@ -116,13 +117,19 @@ func (r *SubscriptionRepository) Delete(ctx context.Context, id string) error {
 // CountActiveByTeam counts active subscriptions for a team
 func (r *SubscriptionRepository) CountActiveByTeam(ctx context.Context, teamID string) (int64, error) {
 	var count int64
+	// A team is subscribed when it has an active or on-trial subscription, OR a
+	// cancelled one still within its grace period (ends_at in the future). The
+	// latter matches Subscription.OnGracePeriod() and Polar's lifecycle, where a
+	// cancel-at-period-end keeps access until `subscription.revoked` arrives.
 	err := r.DB.WithContext(ctx).
 		Model(&models.Subscription{}).
 		Where("billable_type IN ? AND billable_id = ?", models.TeamBillableTypes(), teamID).
-		Where("status IN ?", []billingtypes.SubscriptionStatus{
-			billingtypes.SubscriptionStatusActive,
-			billingtypes.SubscriptionStatusOnTrial,
-		}).
+		Where(
+			r.DB.Where("status IN ?", []billingtypes.SubscriptionStatus{
+				billingtypes.SubscriptionStatusActive,
+				billingtypes.SubscriptionStatusOnTrial,
+			}).Or("status = ? AND ends_at > ?", billingtypes.SubscriptionStatusCancelled, time.Now()),
+		).
 		Count(&count).Error
 
 	return count, err
