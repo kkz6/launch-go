@@ -38,10 +38,6 @@ func (s *Service) monthlyEquivMap() map[string]int64 {
 		if plan.MonthlyID != "" {
 			built[plan.MonthlyID] = plan.MonthlyPricing
 		}
-
-		if plan.YearlyID != "" {
-			built[plan.YearlyID] = plan.YearlyPricing / monthsPerYear
-		}
 	}
 
 	s.monthlyEquivByProduct = built

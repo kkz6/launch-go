@@ -12,7 +12,7 @@ type Subscription struct {
 	BillableType           string                          `gorm:"size:255;not null;index:idx_billable" json:"billable_type"`
 	BillableID             string                          `gorm:"size:26;not null;index:idx_billable" json:"billable_id"`
 	Type                   string                          `gorm:"size:255;not null" json:"type"`
-	Provider               string                          `gorm:"size:50;not null;default:dodo_payments" json:"provider"`
+	Provider               string                          `gorm:"size:50;not null;default:polar" json:"provider"`
 	ProviderSubscriptionID string                          `gorm:"size:255;uniqueIndex;not null" json:"provider_subscription_id"`
 	CustomerID             string                          `gorm:"size:255" json:"-"`
 	Status                 billingtypes.SubscriptionStatus `gorm:"size:50;not null" json:"status"`
@@ -35,8 +35,8 @@ const BillableTypeTeam = "Modules\\Auth\\Models\\Team"
 // BillableTypeTeamLegacy is the legacy billable type (before Laravel modules migration)
 const BillableTypeTeamLegacy = "App\\Models\\Team"
 
-// ProviderDodoPayments is the billing provider constant for DodoPayments
-const ProviderDodoPayments = "dodo_payments"
+// ProviderPolar is the billing provider constant for Polar.sh
+const ProviderPolar = "polar"
 
 // TeamBillableTypes returns all valid billable types for teams (current + legacy)
 func TeamBillableTypes() []string {

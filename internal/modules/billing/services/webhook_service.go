@@ -4,14 +4,14 @@ import (
 	"context"
 	"time"
 
-	"github.com/dodopayments/dodopayments-go"
-
 	"github.com/kkz6/launch-go/internal/modules/billing/models"
 	"github.com/kkz6/launch-go/internal/modules/billing/repositories"
 	billingtypes "github.com/kkz6/launch-go/internal/modules/billing/types"
 )
 
-// WebhookService handles webhook event processing
+// WebhookService handles webhook event processing. It is provider-agnostic:
+// the webhook handler parses the provider payload into the internal DTOs below
+// and calls these methods, so this layer never imports a payment SDK.
 type WebhookService struct {
 	repos *repositories.Registry
 }
@@ -19,6 +19,33 @@ type WebhookService struct {
 // NewWebhookService creates a new webhook service
 func NewWebhookService(repos *repositories.Registry) *WebhookService {
 	return &WebhookService{repos: repos}
+}
+
+// WebhookSubscription is the provider-agnostic subscription snapshot a webhook
+// carries. Status is already mapped to our internal enum by the handler.
+type WebhookSubscription struct {
+	ProviderSubscriptionID string
+	CustomerID             string
+	ProductID              string
+	Status                 billingtypes.SubscriptionStatus
+	RenewsAt               *time.Time
+	EndsAt                 *time.Time
+}
+
+// WebhookOrder is the provider-agnostic order snapshot a webhook carries.
+type WebhookOrder struct {
+	ProviderOrderID string
+	CustomerID      string
+	ProductID       string
+	SubscriptionID  string
+	Currency        string
+	Subtotal        int64
+	Tax             int64
+	Total           int64
+	ReceiptURL      *string
+	OrderedAt       time.Time
+	CardBrand       string
+	CardLastFour    string
 }
 
 // CreateWebhookEvent stores a new webhook event
@@ -47,67 +74,62 @@ func (s *WebhookService) DeleteOldProcessedWebhookEvents(ctx context.Context, ol
 }
 
 // CreateOrUpdateSubscription creates a new subscription or updates an existing one
-func (s *WebhookService) CreateOrUpdateSubscription(ctx context.Context, teamID, providerSubscriptionID string, sub *dodopayments.Subscription) error {
-	existing, err := s.repos.Subscription().FindByProviderSubscriptionID(ctx, providerSubscriptionID)
+func (s *WebhookService) CreateOrUpdateSubscription(ctx context.Context, teamID string, sub WebhookSubscription) error {
+	existing, err := s.repos.Subscription().FindByProviderSubscriptionID(ctx, sub.ProviderSubscriptionID)
 	if err == nil && existing != nil {
-		return s.updateSubscriptionFromWebhook(ctx, existing, sub)
+		return s.applySubscription(ctx, existing, sub)
 	}
-
-	status := MapDodoPaymentsStatus(string(sub.Status))
-
-	nextBillingDate := sub.NextBillingDate
-	cancelledAt := sub.CancelledAt
 
 	subscription := &models.Subscription{
 		BillableType:           models.BillableTypeTeam,
 		BillableID:             teamID,
 		Type:                   "default",
-		Provider:               models.ProviderDodoPayments,
-		ProviderSubscriptionID: providerSubscriptionID,
-		CustomerID:             sub.Customer.CustomerID,
+		Provider:               models.ProviderPolar,
+		ProviderSubscriptionID: sub.ProviderSubscriptionID,
+		CustomerID:             sub.CustomerID,
 		ProductID:              sub.ProductID,
-		VariantID:              sub.ProductID, // DodoPayments uses ProductID, no separate variant
-		Status:                 status,
-		RenewsAt:               &nextBillingDate,
-		EndsAt:                 timeOrNil(cancelledAt),
+		VariantID:              sub.ProductID,
+		Status:                 sub.Status,
+		RenewsAt:               sub.RenewsAt,
+		EndsAt:                 sub.EndsAt,
 	}
 
 	return s.repos.Subscription().Create(ctx, subscription)
 }
 
-// updateSubscriptionFromWebhook updates an existing subscription from webhook data
-func (s *WebhookService) updateSubscriptionFromWebhook(ctx context.Context, subscription *models.Subscription, sub *dodopayments.Subscription) error {
+// applySubscription updates an existing subscription row from webhook data
+func (s *WebhookService) applySubscription(ctx context.Context, subscription *models.Subscription, sub WebhookSubscription) error {
 	subscription.ProductID = sub.ProductID
 	subscription.VariantID = sub.ProductID
-	subscription.CustomerID = sub.Customer.CustomerID
-	subscription.Status = MapDodoPaymentsStatus(string(sub.Status))
-
-	nextBillingDate := sub.NextBillingDate
-	subscription.RenewsAt = &nextBillingDate
-	subscription.EndsAt = timeOrNil(sub.CancelledAt)
+	if sub.CustomerID != "" {
+		subscription.CustomerID = sub.CustomerID
+	}
+	subscription.Status = sub.Status
+	subscription.RenewsAt = sub.RenewsAt
+	subscription.EndsAt = sub.EndsAt
 
 	return s.repos.Subscription().Update(ctx, subscription)
 }
 
 // UpdateSubscription updates an existing subscription
-func (s *WebhookService) UpdateSubscription(ctx context.Context, providerSubscriptionID string, sub *dodopayments.Subscription) error {
-	subscription, err := s.repos.Subscription().FindByProviderSubscriptionID(ctx, providerSubscriptionID)
+func (s *WebhookService) UpdateSubscription(ctx context.Context, sub WebhookSubscription) error {
+	subscription, err := s.repos.Subscription().FindByProviderSubscriptionID(ctx, sub.ProviderSubscriptionID)
 	if err != nil {
 		return err
 	}
 
-	return s.updateSubscriptionFromWebhook(ctx, subscription, sub)
+	return s.applySubscription(ctx, subscription, sub)
 }
 
 // CancelSubscriptionByWebhook marks a subscription as cancelled from webhook
-func (s *WebhookService) CancelSubscriptionByWebhook(ctx context.Context, providerSubscriptionID string, cancelledAt time.Time) error {
+func (s *WebhookService) CancelSubscriptionByWebhook(ctx context.Context, providerSubscriptionID string, endsAt *time.Time) error {
 	subscription, err := s.repos.Subscription().FindByProviderSubscriptionID(ctx, providerSubscriptionID)
 	if err != nil {
 		return err
 	}
 
 	subscription.Status = billingtypes.SubscriptionStatusCancelled
-	subscription.EndsAt = timeOrNil(cancelledAt)
+	subscription.EndsAt = endsAt
 
 	return s.repos.Subscription().Update(ctx, subscription)
 }
@@ -119,46 +141,18 @@ func (s *WebhookService) ExpireSubscription(ctx context.Context, providerSubscri
 
 // HandleSubscriptionFailed handles a failed subscription
 func (s *WebhookService) HandleSubscriptionFailed(ctx context.Context, providerSubscriptionID string) error {
-	return s.repos.Subscription().UpdateStatusByProviderSubscriptionID(ctx, providerSubscriptionID, billingtypes.SubscriptionStatusUnpaid)
-}
-
-// PauseSubscription pauses a subscription
-func (s *WebhookService) PauseSubscription(ctx context.Context, providerSubscriptionID string) error {
-	subscription, err := s.repos.Subscription().FindByProviderSubscriptionID(ctx, providerSubscriptionID)
-	if err != nil {
-		return err
-	}
-
-	pauseMode := "on_hold"
-	subscription.Status = billingtypes.SubscriptionStatusPaused
-	subscription.PauseMode = &pauseMode
-
-	return s.repos.Subscription().Update(ctx, subscription)
-}
-
-// UnpauseSubscription unpauses a subscription
-func (s *WebhookService) UnpauseSubscription(ctx context.Context, providerSubscriptionID string) error {
-	subscription, err := s.repos.Subscription().FindByProviderSubscriptionID(ctx, providerSubscriptionID)
-	if err != nil {
-		return err
-	}
-
-	subscription.Status = billingtypes.SubscriptionStatusActive
-	subscription.PauseMode = nil
-	subscription.PauseResumesAt = nil
-
-	return s.repos.Subscription().Update(ctx, subscription)
+	return s.repos.Subscription().UpdateStatusByProviderSubscriptionID(ctx, providerSubscriptionID, billingtypes.SubscriptionStatusPastDue)
 }
 
 // HandleSubscriptionRenewed handles a subscription renewal
-func (s *WebhookService) HandleSubscriptionRenewed(ctx context.Context, providerSubscriptionID string, nextBillingDate time.Time) error {
+func (s *WebhookService) HandleSubscriptionRenewed(ctx context.Context, providerSubscriptionID string, nextBillingDate *time.Time) error {
 	subscription, err := s.repos.Subscription().FindByProviderSubscriptionID(ctx, providerSubscriptionID)
 	if err != nil {
 		return err
 	}
 
 	subscription.Status = billingtypes.SubscriptionStatusActive
-	subscription.RenewsAt = &nextBillingDate
+	subscription.RenewsAt = nextBillingDate
 
 	return s.repos.Subscription().Update(ctx, subscription)
 }
@@ -169,43 +163,38 @@ func (s *WebhookService) HandlePaymentFailed(ctx context.Context, providerSubscr
 }
 
 // CreateOrder creates a new order from a payment webhook
-func (s *WebhookService) CreateOrder(ctx context.Context, teamID string, payment *dodopayments.Payment) error {
-	productID := ""
-	if len(payment.ProductCart) > 0 {
-		productID = payment.ProductCart[0].ProductID
-	} else if payment.SubscriptionID != "" {
-		// Derive product from the associated subscription when product_cart is null
-		if sub, err := s.repos.Subscription().FindByProviderSubscriptionID(ctx, payment.SubscriptionID); err == nil {
+func (s *WebhookService) CreateOrder(ctx context.Context, teamID string, in WebhookOrder) error {
+	productID := in.ProductID
+	if productID == "" && in.SubscriptionID != "" {
+		if sub, err := s.repos.Subscription().FindByProviderSubscriptionID(ctx, in.SubscriptionID); err == nil {
 			productID = sub.ProductID
 		}
 	}
 
-	subtotal := payment.TotalAmount - payment.Tax
-
-	var receiptURL *string
-	if payment.InvoiceURL != "" {
-		receiptURL = &payment.InvoiceURL
+	// Idempotency: skip if we already recorded this order.
+	if existing, err := s.repos.Order().FindByProviderOrderID(ctx, in.ProviderOrderID); err == nil && existing != nil {
+		return nil
 	}
 
 	order := &models.Order{
 		BillableType:    models.BillableTypeTeam,
 		BillableID:      teamID,
-		Provider:        models.ProviderDodoPayments,
-		ProviderOrderID: payment.PaymentID,
-		CustomerID:      payment.Customer.CustomerID,
-		Identifier:      payment.PaymentID,
+		Provider:        models.ProviderPolar,
+		ProviderOrderID: in.ProviderOrderID,
+		CustomerID:      in.CustomerID,
+		Identifier:      in.ProviderOrderID,
 		ProductID:       productID,
 		VariantID:       productID,
-		Currency:        string(payment.Currency),
-		Subtotal:        subtotal,
+		Currency:        in.Currency,
+		Subtotal:        in.Subtotal,
 		DiscountTotal:   0,
-		Tax:             payment.Tax,
-		Total:           payment.TotalAmount,
+		Tax:             in.Tax,
+		Total:           in.Total,
 		TaxName:         nil,
 		Status:          billingtypes.OrderStatusPaid,
-		ReceiptURL:      receiptURL,
+		ReceiptURL:      in.ReceiptURL,
 		Refunded:        false,
-		OrderedAt:       payment.CreatedAt,
+		OrderedAt:       in.OrderedAt,
 	}
 
 	if err := s.repos.Order().Create(ctx, order); err != nil {
@@ -219,8 +208,8 @@ func (s *WebhookService) CreateOrder(ctx context.Context, teamID string, payment
 	}
 
 	// Update card details on the associated subscription
-	if payment.SubscriptionID != "" && payment.CardLastFour != "" {
-		s.updateSubscriptionCardInfo(ctx, payment.SubscriptionID, payment.CardNetwork, payment.CardLastFour)
+	if in.SubscriptionID != "" && in.CardLastFour != "" {
+		s.updateSubscriptionCardInfo(ctx, in.SubscriptionID, in.CardBrand, in.CardLastFour)
 	}
 
 	return nil
@@ -238,9 +227,9 @@ func (s *WebhookService) updateSubscriptionCardInfo(ctx context.Context, provide
 	_ = s.repos.Subscription().Update(ctx, subscription)
 }
 
-// RefundOrder marks an order as refunded by payment ID
-func (s *WebhookService) RefundOrder(ctx context.Context, paymentID string) error {
-	order, err := s.repos.Order().FindByProviderOrderID(ctx, paymentID)
+// RefundOrder marks an order as refunded by provider order ID
+func (s *WebhookService) RefundOrder(ctx context.Context, providerOrderID string) error {
+	order, err := s.repos.Order().FindByProviderOrderID(ctx, providerOrderID)
 	if err != nil {
 		return err
 	}
@@ -251,66 +240,6 @@ func (s *WebhookService) RefundOrder(ctx context.Context, paymentID string) erro
 	order.RefundedAt = &now
 
 	return s.repos.Order().Update(ctx, order)
-}
-
-// HandleDisputeOpened handles a dispute being opened
-func (s *WebhookService) HandleDisputeOpened(ctx context.Context, paymentID string) error {
-	order, err := s.repos.Order().FindByProviderOrderID(ctx, paymentID)
-	if err != nil {
-		return err
-	}
-
-	order.Status = billingtypes.OrderStatusDisputed
-	return s.repos.Order().Update(ctx, order)
-}
-
-// HandleDisputeResolved handles a dispute being resolved (won or lost)
-func (s *WebhookService) HandleDisputeResolved(ctx context.Context, paymentID string, lost bool) error {
-	order, err := s.repos.Order().FindByProviderOrderID(ctx, paymentID)
-	if err != nil {
-		return err
-	}
-
-	if lost {
-		now := time.Now()
-		order.Status = billingtypes.OrderStatusRefunded
-		order.Refunded = true
-		order.RefundedAt = &now
-	} else {
-		order.Status = billingtypes.OrderStatusPaid
-	}
-
-	return s.repos.Order().Update(ctx, order)
-}
-
-// MapDodoPaymentsStatus maps DodoPayments status to internal status
-func MapDodoPaymentsStatus(status string) billingtypes.SubscriptionStatus {
-	switch status {
-	case "active":
-		return billingtypes.SubscriptionStatusActive
-	case "on_trial":
-		return billingtypes.SubscriptionStatusOnTrial
-	case "cancelled":
-		return billingtypes.SubscriptionStatusCancelled
-	case "expired":
-		return billingtypes.SubscriptionStatusExpired
-	case "failed":
-		return billingtypes.SubscriptionStatusUnpaid
-	case "on_hold":
-		return billingtypes.SubscriptionStatusPaused
-	case "renewed", "updated":
-		return billingtypes.SubscriptionStatusActive
-	default:
-		return billingtypes.SubscriptionStatusActive
-	}
-}
-
-// timeOrNil returns a pointer to t if it is not zero, otherwise nil
-func timeOrNil(t time.Time) *time.Time {
-	if t.IsZero() {
-		return nil
-	}
-	return &t
 }
 
 // stringOrNil returns a pointer to s if it is not empty, otherwise nil

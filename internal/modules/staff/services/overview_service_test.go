@@ -210,7 +210,7 @@ func newOrder(teamID, providerID string, total int64, currency string, status bi
 	return billingmodels.Order{
 		BillableType:    billingmodels.BillableTypeTeam,
 		BillableID:      teamID,
-		Provider:        billingmodels.ProviderDodoPayments,
+		Provider:        billingmodels.ProviderPolar,
 		ProviderOrderID: providerID,
 		CustomerID:      "cus_test",
 		Identifier:      providerID,

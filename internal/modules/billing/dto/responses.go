@@ -37,10 +37,6 @@ func ToSubscriptionResponse(s *models.Subscription, plan *models.Plan, updatePay
 		PaymentMethodURL: updatePaymentURL,
 	}
 
-	if plan != nil {
-		resp.Yearly = s.VariantID == plan.YearlyID
-	}
-
 	if s.RenewsAt != nil {
 		resp.Renewal = pkgdto.FormatTime(s.RenewsAt)
 	}
@@ -100,7 +96,6 @@ type PlanResponse struct {
 	ID             string             `json:"id"`
 	Name           string             `json:"name"`
 	MonthlyPricing int64              `json:"monthly_pricing"`
-	YearlyPricing  int64              `json:"yearly_pricing"`
 	Features       []string           `json:"features"`
 	Recommended    bool               `json:"recommended"`
 	Options        models.PlanOptions `json:"options"`
@@ -112,7 +107,6 @@ func ToPlanResponse(p *models.Plan) PlanResponse {
 		ID:             p.ID,
 		Name:           p.Name,
 		MonthlyPricing: p.MonthlyPricing,
-		YearlyPricing:  p.YearlyPricing,
 		Features:       p.Features,
 		Recommended:    p.Recommended,
 		Options:        p.Options,

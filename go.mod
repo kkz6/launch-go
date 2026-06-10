@@ -10,7 +10,6 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/sts v1.42.1
 	github.com/aws/smithy-go v1.25.1
 	github.com/charmbracelet/lipgloss v1.1.0
-	github.com/dodopayments/dodopayments-go v1.78.0
 	github.com/getsentry/sentry-go v0.41.0
 	github.com/getsentry/sentry-go/fiber v0.41.0
 	github.com/go-playground/validator/v10 v10.30.1
@@ -101,10 +100,6 @@ require (
 	github.com/spyzhov/ajson v0.8.0 // indirect
 	github.com/stretchr/objx v0.5.2 // indirect
 	github.com/subosito/gotenv v1.6.0 // indirect
-	github.com/tidwall/gjson v1.14.4 // indirect
-	github.com/tidwall/match v1.1.1 // indirect
-	github.com/tidwall/pretty v1.2.1 // indirect
-	github.com/tidwall/sjson v1.2.5 // indirect
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
 	github.com/valyala/fasthttp v1.57.0 // indirect
 	github.com/valyala/tcplisten v1.0.0 // indirect

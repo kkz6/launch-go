@@ -13,15 +13,19 @@ type CorsConfig struct {
 
 // BillingConfig holds billing configuration
 type BillingConfig struct {
-	SubscriptionsEnabled bool   `env:"BILLING_SUBSCRIPTIONS_ENABLED" default:"false"`
-	WebhookSecret        string `env:"DODO_PAYMENTS_WEBHOOK_KEY" default:""`
-	DodoPayments         DodoPaymentsConfig
+	SubscriptionsEnabled bool `env:"BILLING_SUBSCRIPTIONS_ENABLED" default:"false"`
+	Polar                PolarConfig
 }
 
-// DodoPaymentsConfig holds Dodo Payments provider configuration
-type DodoPaymentsConfig struct {
-	APIKey   string `env:"DODO_PAYMENTS_API_KEY" default:""`
-	TestMode bool   `env:"DODO_PAYMENTS_TEST_MODE" default:"true"`
+// PolarConfig holds Polar.sh provider configuration
+type PolarConfig struct {
+	AccessToken    string `env:"POLAR_ACCESS_TOKEN" default:""`
+	WebhookSecret  string `env:"POLAR_WEBHOOK_SECRET" default:""`
+	OrganizationID string `env:"POLAR_ORGANIZATION_ID" default:""`
+	Sandbox        bool   `env:"POLAR_SANDBOX" default:"true"`
+	ProductHobby   string `env:"POLAR_PRODUCT_HOBBY" default:""`
+	ProductCompact string `env:"POLAR_PRODUCT_COMPACT" default:""`
+	ProductTurbo   string `env:"POLAR_PRODUCT_TURBO" default:""`
 }
 
 // GitConfig holds git provider configuration
