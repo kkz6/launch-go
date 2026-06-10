@@ -268,9 +268,9 @@ var (
 	// Paddle sends signatures in prefixed format.
 	PaddleSignature = NewSignatureVerifier(SignatureSHA256, SignatureFormatPrefixed)
 
-	// StandardWebhooksSignature verifies DodoPayments webhook signatures.
-	// DodoPayments uses Standard Webhooks spec with headers:
-	// webhook-id, webhook-signature (v1,base64signature), webhook-timestamp
+	// StandardWebhooksSignature verifies Standard Webhooks signatures.
+	// The spec uses headers: webhook-id, webhook-signature
+	// (v1,base64signature), webhook-timestamp.
 	// Default max age is 5 minutes to prevent replay attacks.
 	StandardWebhooksSignature = NewSignatureVerifier(SignatureSHA256, SignatureFormatStandardWebhooks).WithMaxAge(5 * time.Minute)
 )

@@ -146,6 +146,15 @@ func (h *WebhookHandler) processEvent(ctx context.Context, e polarEvent) error {
 		}
 		return h.webhookService.CreateOrUpdateSubscription(ctx, teamID, toWebhookSubscription(sub))
 
+	case "subscription.cycled":
+		// Renewal (new billing period) on an already-stored subscription —
+		// advance RenewsAt and keep it active without requiring team metadata.
+		sub, err := decodeSubscription(e.Data)
+		if err != nil {
+			return err
+		}
+		return h.webhookService.HandleSubscriptionRenewed(ctx, sub.ID, sub.CurrentPeriodEnd)
+
 	case "subscription.updated":
 		sub, err := decodeSubscription(e.Data)
 		if err != nil {
@@ -269,7 +278,10 @@ func mapPolarStatus(status string) billingtypes.SubscriptionStatus {
 	case "incomplete", "incomplete_expired":
 		return billingtypes.SubscriptionStatusExpired
 	default:
-		return billingtypes.SubscriptionStatusActive
+		// Fail closed: an unrecognized status must not grant access. Only
+		// `active`/`on_trial` are access-granting, so default to a
+		// non-granting state rather than silently unlocking features.
+		return billingtypes.SubscriptionStatusPastDue
 	}
 }
 

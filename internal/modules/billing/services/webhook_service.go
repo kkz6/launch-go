@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/kkz6/launch-go/internal/modules/billing/models"
@@ -165,10 +166,22 @@ func (s *WebhookService) HandlePaymentFailed(ctx context.Context, providerSubscr
 // CreateOrder creates a new order from a payment webhook
 func (s *WebhookService) CreateOrder(ctx context.Context, teamID string, in WebhookOrder) error {
 	productID := in.ProductID
-	if productID == "" && in.SubscriptionID != "" {
+	// Backfill product id AND team id from the associated subscription. Renewal
+	// orders often omit team metadata, so without this the order would be saved
+	// with an empty BillableID and never surface in billing history.
+	if (productID == "" || teamID == "") && in.SubscriptionID != "" {
 		if sub, err := s.repos.Subscription().FindByProviderSubscriptionID(ctx, in.SubscriptionID); err == nil {
-			productID = sub.ProductID
+			if productID == "" {
+				productID = sub.ProductID
+			}
+			if teamID == "" {
+				teamID = sub.BillableID
+			}
 		}
+	}
+
+	if teamID == "" {
+		return fmt.Errorf("cannot attribute order %s to a team", in.ProviderOrderID)
 	}
 
 	// Idempotency: skip if we already recorded this order.
