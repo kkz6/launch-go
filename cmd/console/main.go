@@ -29,6 +29,7 @@ func main() {
 		&workerCommand{},
 		&scriptsRenderCommand{},
 		&imagesValidateCommand{},
+		&polarSetupCommand{},
 	)
 
 	// Database migration commands.

@@ -170,8 +170,39 @@ func (c *PolarClient) ValidateWebhook(payload []byte, headers http.Header) error
 	return c.webhook.Verify(payload, headers)
 }
 
-// Client exposes the underlying Polar SDK client for advanced operations
-// (e.g. the product-setup console command).
+// CreateProduct creates a monthly-recurring product priced at priceCents (USD)
+// in the configured organization and returns its product ID. Used by the
+// `billing:polar-setup` console command.
+func (c *PolarClient) CreateProduct(ctx context.Context, name string, priceCents int64) (string, error) {
+	usd := components.PresentmentCurrencyUsd
+	var orgID *string
+	if c.config.OrganizationID != "" {
+		orgID = &c.config.OrganizationID
+	}
+
+	req := components.CreateProductCreateProductCreateRecurring(components.ProductCreateRecurring{
+		Name:              name,
+		OrganizationID:    orgID,
+		RecurringInterval: components.SubscriptionRecurringIntervalMonth,
+		Prices: []components.ProductCreateRecurringPrices{
+			components.CreateProductCreateRecurringPricesFixed(components.ProductPriceFixedCreate{
+				PriceAmount:   priceCents,
+				PriceCurrency: &usd,
+			}),
+		},
+	})
+
+	res, err := c.client.Products.Create(ctx, req)
+	if err != nil {
+		return "", c.mapError(err)
+	}
+	if res.Product == nil {
+		return "", ErrPolarAPIError
+	}
+	return res.Product.ID, nil
+}
+
+// Client exposes the underlying Polar SDK client for advanced operations.
 func (c *PolarClient) Client() *polargo.Polar {
 	return c.client
 }
