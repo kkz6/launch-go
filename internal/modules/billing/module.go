@@ -23,6 +23,7 @@ type Module struct {
 	service        *services.BillingService
 	webhookService *services.WebhookService
 	repos          *repositories.Registry
+	polarClient    *providers.PolarClient
 	serverCountFn  func(teamID string) (int, error)
 }
 
@@ -33,22 +34,29 @@ func NewModule(b *app.Builder) *Module {
 
 	repos := repositories.NewRegistry(deps.DB)
 
-	var dpClient *providers.DodoPaymentsClient
-	if cfg.DodoPayments.APIKey != "" {
-		dpConfig := &providers.DodoPaymentsConfig{
-			APIKey:     cfg.DodoPayments.APIKey,
-			WebhookKey: cfg.WebhookSecret,
-			TestMode:   cfg.DodoPayments.TestMode,
-		}
-		dpClient = providers.NewDodoPaymentsClient(dpConfig, deps.Logger)
+	var polarClient *providers.PolarClient
+	if cfg.Polar.AccessToken != "" {
+		polarClient = providers.NewPolarClient(&providers.PolarConfig{
+			AccessToken:    cfg.Polar.AccessToken,
+			WebhookSecret:  cfg.Polar.WebhookSecret,
+			OrganizationID: cfg.Polar.OrganizationID,
+			Sandbox:        cfg.Polar.Sandbox,
+		}, deps.Logger)
 	}
 
 	billingConfig := &services.Config{
 		SubscriptionsEnabled: cfg.SubscriptionsEnabled,
-		Plans:                models.DefaultPlans(),
+		Plans:                models.PlansFromConfig(cfg.Polar.ProductHobby, cfg.Polar.ProductCompact, cfg.Polar.ProductTurbo),
 	}
 
-	service := services.NewBillingService(repos, dpClient, billingConfig, deps.Logger)
+	// NewBillingService takes a BillingProvider; pass nil explicitly when Polar
+	// isn't configured so the interface value is a true nil (not a typed nil).
+	var provider providers.BillingProvider
+	if polarClient != nil {
+		provider = polarClient
+	}
+
+	service := services.NewBillingService(repos, provider, billingConfig, deps.Logger)
 	webhookService := services.NewWebhookService(repos)
 
 	return &Module{
@@ -56,6 +64,7 @@ func NewModule(b *app.Builder) *Module {
 		service:        service,
 		webhookService: webhookService,
 		repos:          repos,
+		polarClient:    polarClient,
 	}
 }
 

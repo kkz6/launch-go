@@ -2,8 +2,7 @@ package dto
 
 // GenerateCheckoutURLRequest represents the request to generate a checkout URL
 type GenerateCheckoutURLRequest struct {
-	Plan   string `json:"plan" validate:"required"`
-	Annual bool   `json:"annual"`
+	Plan string `json:"plan" validate:"required"`
 }
 
 // CancelSubscriptionRequest represents the request to cancel a subscription

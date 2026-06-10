@@ -25,6 +25,10 @@ run:
 worker:
 	@go run ./cmd/console queue:work
 
+## polar-setup: Create Polar products for each plan and print their IDs
+polar-setup:
+	@go run ./cmd/console billing:polar-setup
+
 ## dev: Run API with hot reload (requires air)
 dev:
 	@$(shell go env GOPATH)/bin/air -c .air.toml

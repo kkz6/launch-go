@@ -85,7 +85,7 @@ func TestAcceptPlatformInviteWithTrial_CreatesSubscriptionAndAcceptsInvite(t *te
 	assert.Equal(t, teamID, sub.BillableID)
 	require.NotNil(t, sub.TrialEndsAt)
 	assert.WithinDuration(t, invitation.TrialEndsAt, *sub.TrialEndsAt, time.Second)
-	assert.Equal(t, billingmodels.ProviderDodoPayments, sub.Provider)
+	assert.Equal(t, billingmodels.ProviderPolar, sub.Provider)
 
 	var stored authmodels.PlatformInvitation
 	require.NoError(t, db.Where("id = ?", invitation.ID).First(&stored).Error)

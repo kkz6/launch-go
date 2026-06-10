@@ -375,7 +375,7 @@ func TestVerifyPaddleSignature(t *testing.T) {
 	}
 }
 
-func TestVerifyDodoPaymentsSignature(t *testing.T) {
+func TestVerifyStandardWebhooksSignature(t *testing.T) {
 	secret := "dodo-payments-webhook-secret"
 	payload := []byte(`{"business_id": "test", "type": "subscription.active"}`)
 	webhookID := "wh_123"
@@ -387,7 +387,7 @@ func TestVerifyDodoPaymentsSignature(t *testing.T) {
 	_, _ = mac.Write([]byte(signedPayload))
 	sig := "v1," + base64.StdEncoding.EncodeToString(mac.Sum(nil))
 
-	if !VerifyDodoPaymentsSignature(payload, webhookID, sig, timestamp, secret) {
+	if !VerifyStandardWebhooksSignature(payload, webhookID, sig, timestamp, secret) {
 		t.Error("expected valid DodoPayments signature to pass")
 	}
 }
@@ -490,8 +490,8 @@ func TestPreConfiguredVerifiers(t *testing.T) {
 	})
 
 	t.Run("DodoPayments", func(t *testing.T) {
-		if DodoPaymentsSignature.maxAge != 5*time.Minute {
-			t.Errorf("DodoPayments maxAge = %v, want 5 minutes", DodoPaymentsSignature.maxAge)
+		if StandardWebhooksSignature.maxAge != 5*time.Minute {
+			t.Errorf("StandardWebhooks maxAge = %v, want 5 minutes", StandardWebhooksSignature.maxAge)
 		}
 	})
 }

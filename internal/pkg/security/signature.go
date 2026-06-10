@@ -268,11 +268,11 @@ var (
 	// Paddle sends signatures in prefixed format.
 	PaddleSignature = NewSignatureVerifier(SignatureSHA256, SignatureFormatPrefixed)
 
-	// DodoPaymentsSignature verifies DodoPayments webhook signatures.
-	// DodoPayments uses Standard Webhooks spec with headers:
-	// webhook-id, webhook-signature (v1,base64signature), webhook-timestamp
+	// StandardWebhooksSignature verifies Standard Webhooks signatures.
+	// The spec uses headers: webhook-id, webhook-signature
+	// (v1,base64signature), webhook-timestamp.
 	// Default max age is 5 minutes to prevent replay attacks.
-	DodoPaymentsSignature = NewSignatureVerifier(SignatureSHA256, SignatureFormatStandardWebhooks).WithMaxAge(5 * time.Minute)
+	StandardWebhooksSignature = NewSignatureVerifier(SignatureSHA256, SignatureFormatStandardWebhooks).WithMaxAge(5 * time.Minute)
 )
 
 // VerifyGitHubSignature is a convenience function for verifying GitHub webhook signatures.
@@ -302,13 +302,13 @@ func VerifyPaddleSignature(payload []byte, signature, secret string) bool {
 	return PaddleSignature.Verify(payload, signature, secret)
 }
 
-// VerifyDodoPaymentsSignature is a convenience function for verifying DodoPayments webhook signatures.
-// DodoPayments uses the Standard Webhooks spec with three headers:
+// VerifyStandardWebhooksSignature is a convenience function for verifying Standard Webhooks signatures.
+// Standard Webhooks spec uses with three headers:
 // - webhook-id: Unique identifier for the webhook
 // - webhook-signature: The signature in format "v1,base64signature"
 // - webhook-timestamp: Unix timestamp when the webhook was sent
-func VerifyDodoPaymentsSignature(payload []byte, webhookID, signature, timestamp, secret string) bool {
-	return DodoPaymentsSignature.VerifyStandardWebhooks(payload, webhookID, signature, timestamp, secret)
+func VerifyStandardWebhooksSignature(payload []byte, webhookID, signature, timestamp, secret string) bool {
+	return StandardWebhooksSignature.VerifyStandardWebhooks(payload, webhookID, signature, timestamp, secret)
 }
 
 // ComputeHMACSignature computes an HMAC-SHA256 signature for the given payload.

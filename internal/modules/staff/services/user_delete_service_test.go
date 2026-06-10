@@ -60,7 +60,7 @@ func seedOrder(t *testing.T, db *gorm.DB, teamID string, status billingtypes.Ord
 	order := billingmodels.Order{
 		BillableType:    billingmodels.BillableTypeTeam,
 		BillableID:      teamID,
-		Provider:        "dodo_payments",
+		Provider:        "polar",
 		ProviderOrderID: "po_" + teamID + string(status),
 		Identifier:      "id_" + teamID + string(status),
 		ProductID:       "prod_1",
@@ -77,7 +77,7 @@ func seedSubscription(t *testing.T, db *gorm.DB, teamID string, status billingty
 		BillableType:           billingmodels.BillableTypeTeam,
 		BillableID:             teamID,
 		Type:                   "default",
-		Provider:               "dodo_payments",
+		Provider:               "polar",
 		ProviderSubscriptionID: "sub_" + teamID + string(status),
 		Status:                 status,
 		ProductID:              "prod_1",

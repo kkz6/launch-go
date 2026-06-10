@@ -1,14 +1,13 @@
 package models
 
-// Plan represents a billing plan configuration (stored in config, not database)
+// Plan represents a billing plan configuration (stored in config, not database).
+// Monthly-only — Polar product IDs are injected from config at boot.
 type Plan struct {
 	ID             string      `json:"id"`
 	Name           string      `json:"name"`
 	Description    string      `json:"description,omitempty"`
 	MonthlyID      string      `json:"monthly_id"`
-	YearlyID       string      `json:"yearly_id"`
 	MonthlyPricing int64       `json:"monthly_pricing"`
-	YearlyPricing  int64       `json:"yearly_pricing"`
 	Features       []string    `json:"features,omitempty"`
 	Recommended    bool        `json:"recommended"`
 	Options        PlanOptions `json:"options"`
@@ -24,16 +23,15 @@ type PlanOptions struct {
 	HasMonitoring         bool `json:"has_monitoring"`
 }
 
-// DefaultPlans returns default plan configurations with DodoPayments product IDs
-func DefaultPlans() []Plan {
+// PlansFromConfig returns the plan catalogue with Polar product IDs injected
+// from config (monthly-only). Pricing/limits/features are fixed in code.
+func PlansFromConfig(hobbyID, compactID, turboID string) []Plan {
 	return []Plan{
 		{
 			ID:             "hobby",
 			Name:           "Hobby Plan",
-			MonthlyID:      "pdt_0NXvMTj4rVMbbEhFF34nD",
-			YearlyID:       "pdt_0NXvMZxP5iKHblFYCUQ3I",
+			MonthlyID:      hobbyID,
 			MonthlyPricing: 199,
-			YearlyPricing:  2380,
 			Features: []string{
 				"1 server",
 				"1 site per server",
@@ -53,10 +51,8 @@ func DefaultPlans() []Plan {
 		{
 			ID:             "compact",
 			Name:           "Compact Plan",
-			MonthlyID:      "pdt_0NXvMeSTeHZD1ETlUUuwL",
-			YearlyID:       "pdt_0NXvMi7nhQ8vLsuqLMHpr",
+			MonthlyID:      compactID,
 			MonthlyPricing: 699,
-			YearlyPricing:  8388,
 			Features: []string{
 				"3 servers",
 				"10 sites per server",
@@ -78,10 +74,8 @@ func DefaultPlans() []Plan {
 		{
 			ID:             "turbo",
 			Name:           "Turbo Plan",
-			MonthlyID:      "pdt_0NXvMmccM70LXXjjCuTSd",
-			YearlyID:       "pdt_0NXvMqZY4iYrFUmldDc08",
+			MonthlyID:      turboID,
 			MonthlyPricing: 2000,
-			YearlyPricing:  24000,
 			Features: []string{
 				"10 servers",
 				"20 sites per server",
@@ -101,6 +95,14 @@ func DefaultPlans() []Plan {
 			},
 		},
 	}
+}
+
+// DefaultPlans returns the plan catalogue with empty product IDs — metadata
+// only (name, pricing, limits, features). Use this for read-only consumers
+// (admin/overview/invitations) that don't initiate checkout. The billing
+// module injects real Polar product IDs via PlansFromConfig.
+func DefaultPlans() []Plan {
+	return PlansFromConfig("", "", "")
 }
 
 // PlanByID returns the configured plan with the given id (e.g. "hobby") and

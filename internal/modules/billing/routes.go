@@ -11,7 +11,7 @@ import (
 // RegisterRoutes registers the module routes (implements app.RouteRegistrar)
 func (m *Module) RegisterRoutes(router fiber.Router, authMiddleware fiber.Handler) {
 	deps := m.Deps()
-	// Billing redirects (Dodo Payments success/cancel) land the user back
+	// Billing redirects (Polar checkout success/cancel) land the user back
 	// in the frontend, not the API.
 	handler := handlers.NewBillingHandler(m.service, m.serverCountFn, deps.Config.App.Frontend())
 
@@ -44,12 +44,12 @@ func (m *Module) registerSubscriptionRoutes(router fiber.Router, authMiddleware 
 // RegisterWebhookRoutes registers webhook routes (implements app.WebhookRegistrar)
 func (m *Module) RegisterWebhookRoutes(router fiber.Router) {
 	deps := m.Deps()
-	webhookHandler := handlers.NewWebhookHandler(m.service, m.webhookService, m.service.GetDodoPaymentsClient(), deps.Logger)
+	webhookHandler := handlers.NewWebhookHandler(m.service, m.webhookService, m.polarClient, deps.Logger)
 
 	m.setupWebhookRoutes(router, webhookHandler)
 }
 
-// setupWebhookRoutes registers DodoPayments webhook routes
+// setupWebhookRoutes registers Polar webhook routes
 func (m *Module) setupWebhookRoutes(router fiber.Router, handler *handlers.WebhookHandler) {
-	router.Post("/webhooks/dodo-payments", handler.HandleWebhook)
+	router.Post("/webhooks/polar", handler.HandleWebhook)
 }

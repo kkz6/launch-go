@@ -11,7 +11,7 @@ type Order struct {
 	ID              uint                     `gorm:"primaryKey" json:"id"`
 	BillableType    string                   `gorm:"size:255;not null;index:idx_billable" json:"billable_type"`
 	BillableID      string                   `gorm:"size:26;not null;index:idx_billable" json:"billable_id"`
-	Provider        string                   `gorm:"size:50;not null;default:dodo_payments" json:"provider"`
+	Provider        string                   `gorm:"size:50;not null;default:polar" json:"provider"`
 	ProviderOrderID string                   `gorm:"size:255;uniqueIndex;not null" json:"provider_order_id"`
 	CustomerID      string                   `gorm:"size:255;not null" json:"customer_id"`
 	Identifier      string                   `gorm:"size:36;uniqueIndex;not null" json:"identifier"`

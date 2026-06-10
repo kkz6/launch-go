@@ -2,11 +2,12 @@ package handlers
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"time"
 
-	"github.com/dodopayments/dodopayments-go"
 	"github.com/gofiber/fiber/v2"
 	"github.com/rs/zerolog"
 
@@ -26,59 +27,92 @@ var (
 	ErrWebhookProcessFailed = errors.New("webhook processing failed")
 )
 
-// WebhookHandler handles incoming webhooks from DodoPayments
+// WebhookHandler handles incoming webhooks from Polar.
 type WebhookHandler struct {
 	logger         *zerolog.Logger
-	dodoPayments   *providers.DodoPaymentsClient
+	provider       *providers.PolarClient
 	service        *services.BillingService
 	webhookService *services.WebhookService
 	maxRetries     int
 }
 
 // NewWebhookHandler creates a new webhook handler
-func NewWebhookHandler(service *services.BillingService, webhookService *services.WebhookService, dodoPayments *providers.DodoPaymentsClient, logger *zerolog.Logger) *WebhookHandler {
+func NewWebhookHandler(service *services.BillingService, webhookService *services.WebhookService, provider *providers.PolarClient, logger *zerolog.Logger) *WebhookHandler {
 	return &WebhookHandler{
 		logger:         logger,
-		dodoPayments:   dodoPayments,
+		provider:       provider,
 		service:        service,
 		webhookService: webhookService,
 		maxRetries:     3,
 	}
 }
 
-// HandleWebhook handles incoming webhook requests from DodoPayments
-// DodoPayments uses Standard Webhooks spec with 3 headers:
-// - webhook-id: Unique identifier for the webhook
-// - webhook-signature: The signature in format "v1,base64signature"
-// - webhook-timestamp: Unix timestamp when the webhook was sent
-func (h *WebhookHandler) HandleWebhook(c *fiber.Ctx) error {
-	webhookID := c.Get("webhook-id")
-	signature := c.Get("webhook-signature")
-	timestamp := c.Get("webhook-timestamp")
+// polarEvent is the envelope every Polar webhook shares: a type discriminator
+// and the entity payload under `data`.
+type polarEvent struct {
+	Type string          `json:"type"`
+	Data json.RawMessage `json:"data"`
+}
 
-	if webhookID == "" || signature == "" || timestamp == "" {
-		h.logger.Warn().
-			Str("webhook_id", webhookID).
-			Bool("has_signature", signature != "").
-			Bool("has_timestamp", timestamp != "").
-			Msg("Webhook received with missing headers")
-		return fiberctx.RespondUnauthorized(c, "Missing required webhook headers")
+// polarSubscription captures the subscription fields we persist. Unknown
+// fields are ignored — Polar sends a much larger object.
+type polarSubscription struct {
+	ID                string            `json:"id"`
+	Status            string            `json:"status"`
+	CustomerID        string            `json:"customer_id"`
+	ProductID         string            `json:"product_id"`
+	CurrentPeriodEnd  *time.Time        `json:"current_period_end"`
+	CancelAtPeriodEnd bool              `json:"cancel_at_period_end"`
+	EndsAt            *time.Time        `json:"ends_at"`
+	Metadata          map[string]string `json:"metadata"`
+}
+
+// polarOrder captures the order fields we persist.
+type polarOrder struct {
+	ID             string            `json:"id"`
+	CustomerID     string            `json:"customer_id"`
+	ProductID      string            `json:"product_id"`
+	SubscriptionID string            `json:"subscription_id"`
+	Currency       string            `json:"currency"`
+	SubtotalAmount int64             `json:"subtotal_amount"`
+	TaxAmount      int64             `json:"tax_amount"`
+	TotalAmount    int64             `json:"total_amount"`
+	CreatedAt      time.Time         `json:"created_at"`
+	Metadata       map[string]string `json:"metadata"`
+}
+
+// HandleWebhook handles incoming Polar webhook requests. Polar uses the
+// Standard Webhooks spec (webhook-id / webhook-signature / webhook-timestamp).
+func (h *WebhookHandler) HandleWebhook(c *fiber.Ctx) error {
+	if h.provider == nil {
+		h.logger.Warn().Msg("Polar webhook received but provider is not configured")
+		return fiberctx.RespondUnauthorized(c, "Billing provider not configured")
 	}
 
 	body := c.Body()
 
-	parsed, err := h.dodoPayments.UnwrapWebhook(body, webhookID, signature, timestamp)
-	if err != nil {
-		h.logger.Warn().Err(err).Str("webhook_id", webhookID).Msg("Webhook verification/parsing failed")
+	headers := http.Header{}
+	c.Request().Header.VisitAll(func(k, v []byte) {
+		headers.Add(string(k), string(v))
+	})
+
+	if err := h.provider.ValidateWebhook(body, headers); err != nil {
+		h.logger.Warn().Err(err).Msg("Polar webhook verification failed")
 		return fiberctx.RespondUnauthorized(c, "Invalid signature")
 	}
 
-	eventType := billingtypes.WebhookEventType(parsed.Type)
+	var envelope polarEvent
+	if err := json.Unmarshal(body, &envelope); err != nil {
+		h.logger.Warn().Err(err).Msg("Failed to parse Polar webhook envelope")
+		return fiberctx.RespondBadRequest(c, "Invalid payload")
+	}
+
+	eventType := billingtypes.WebhookEventType(envelope.Type)
 
 	event := &models.WebhookEvent{
 		EventName: eventType,
 		Payload:   string(body),
-		Signature: signature,
+		Signature: c.Get("webhook-signature"),
 		Processed: false,
 	}
 
@@ -87,8 +121,8 @@ func (h *WebhookHandler) HandleWebhook(c *fiber.Ctx) error {
 		return fiberctx.RespondInternalError(c, "Failed to store event")
 	}
 
-	if err := h.processEvent(c.Context(), eventType, parsed.AsUnion()); err != nil {
-		h.logger.Error().Err(err).Str("event_id", event.ID).Msg("Failed to process webhook")
+	if err := h.processEvent(c.Context(), envelope); err != nil {
+		h.logger.Error().Err(err).Str("event_id", event.ID).Str("type", envelope.Type).Msg("Failed to process webhook")
 		_ = h.webhookService.MarkWebhookEventFailed(c.Context(), event.ID, err.Error())
 		return fiberctx.OK(c, "Webhook received but processing failed", nil)
 	}
@@ -98,197 +132,160 @@ func (h *WebhookHandler) HandleWebhook(c *fiber.Ctx) error {
 	return fiberctx.OK(c, "Webhook processed successfully", nil)
 }
 
-// processEvent dispatches a parsed webhook event to the appropriate handler
-func (h *WebhookHandler) processEvent(ctx context.Context, eventType billingtypes.WebhookEventType, union dodopayments.UnwrapWebhookEventUnion) error {
-	if !eventType.IsValid() {
-		h.logger.Warn().Str("event", string(eventType)).Msg("Unknown webhook event type")
-		return nil
-	}
-
-	switch e := union.(type) {
-	// Subscription events
-	case dodopayments.SubscriptionActiveWebhookEvent:
-		teamID := e.Data.Metadata["team_id"]
+// processEvent dispatches a Polar webhook to the appropriate handler.
+func (h *WebhookHandler) processEvent(ctx context.Context, e polarEvent) error {
+	switch e.Type {
+	case "subscription.created", "subscription.active", "subscription.uncanceled":
+		sub, err := decodeSubscription(e.Data)
+		if err != nil {
+			return err
+		}
+		teamID := sub.Metadata["team_id"]
 		if teamID == "" {
-			return fmt.Errorf("missing team_id in webhook metadata")
+			return fmt.Errorf("missing team_id in subscription metadata")
 		}
-		return h.webhookService.CreateOrUpdateSubscription(ctx, teamID, e.Data.SubscriptionID, &e.Data)
+		return h.webhookService.CreateOrUpdateSubscription(ctx, teamID, toWebhookSubscription(sub))
 
-	case dodopayments.SubscriptionUpdatedWebhookEvent:
-		return h.webhookService.UpdateSubscription(ctx, e.Data.SubscriptionID, &e.Data)
-
-	case dodopayments.SubscriptionPlanChangedWebhookEvent:
-		return h.webhookService.UpdateSubscription(ctx, e.Data.SubscriptionID, &e.Data)
-
-	case dodopayments.SubscriptionCancelledWebhookEvent:
-		return h.webhookService.CancelSubscriptionByWebhook(ctx, e.Data.SubscriptionID, e.Data.CancelledAt)
-
-	case dodopayments.SubscriptionExpiredWebhookEvent:
-		return h.webhookService.ExpireSubscription(ctx, e.Data.SubscriptionID)
-
-	case dodopayments.SubscriptionFailedWebhookEvent:
-		return h.webhookService.HandleSubscriptionFailed(ctx, e.Data.SubscriptionID)
-
-	case dodopayments.SubscriptionOnHoldWebhookEvent:
-		return h.webhookService.PauseSubscription(ctx, e.Data.SubscriptionID)
-
-	case dodopayments.SubscriptionRenewedWebhookEvent:
-		return h.webhookService.HandleSubscriptionRenewed(ctx, e.Data.SubscriptionID, e.Data.NextBillingDate)
-
-	// Payment events
-	case dodopayments.PaymentSucceededWebhookEvent:
-		teamID := e.Data.Metadata["team_id"]
-		if teamID == "" {
-			return fmt.Errorf("missing team_id in webhook metadata")
+	case "subscription.cycled":
+		// Renewal (new billing period) on an already-stored subscription —
+		// advance RenewsAt and keep it active without requiring team metadata.
+		sub, err := decodeSubscription(e.Data)
+		if err != nil {
+			return err
 		}
-		return h.webhookService.CreateOrder(ctx, teamID, &e.Data)
+		return h.webhookService.HandleSubscriptionRenewed(ctx, sub.ID, sub.CurrentPeriodEnd)
 
-	case dodopayments.PaymentFailedWebhookEvent:
-		if e.Data.SubscriptionID != "" {
-			return h.webhookService.HandlePaymentFailed(ctx, e.Data.SubscriptionID)
+	case "subscription.updated":
+		sub, err := decodeSubscription(e.Data)
+		if err != nil {
+			return err
 		}
-		return nil
+		// A cancel-at-period-end update arrives as `subscription.updated`.
+		if sub.CancelAtPeriodEnd {
+			return h.webhookService.CancelSubscriptionByWebhook(ctx, sub.ID, periodEnd(sub))
+		}
+		return h.webhookService.UpdateSubscription(ctx, toWebhookSubscription(sub))
 
-	case dodopayments.PaymentProcessingWebhookEvent:
-		h.logger.Info().Str("event", string(eventType)).Str("payment_id", e.Data.PaymentID).Msg("Payment event received")
-		return nil
+	case "subscription.canceled":
+		sub, err := decodeSubscription(e.Data)
+		if err != nil {
+			return err
+		}
+		return h.webhookService.CancelSubscriptionByWebhook(ctx, sub.ID, periodEnd(sub))
 
-	case dodopayments.PaymentCancelledWebhookEvent:
-		h.logger.Info().Str("event", string(eventType)).Str("payment_id", e.Data.PaymentID).Msg("Payment event received")
-		return nil
+	case "subscription.revoked":
+		sub, err := decodeSubscription(e.Data)
+		if err != nil {
+			return err
+		}
+		return h.webhookService.ExpireSubscription(ctx, sub.ID)
 
-	// Refund events
-	case dodopayments.RefundSucceededWebhookEvent:
-		return h.webhookService.RefundOrder(ctx, e.Data.PaymentID)
+	case "subscription.past_due":
+		sub, err := decodeSubscription(e.Data)
+		if err != nil {
+			return err
+		}
+		return h.webhookService.HandleSubscriptionFailed(ctx, sub.ID)
 
-	case dodopayments.RefundFailedWebhookEvent:
-		h.logger.Warn().Str("refund_id", e.Data.RefundID).Str("payment_id", e.Data.PaymentID).Msg("Refund failed")
-		return nil
+	case "order.created", "order.paid":
+		order, err := decodeOrder(e.Data)
+		if err != nil {
+			return err
+		}
+		teamID := order.Metadata["team_id"]
+		if teamID == "" && order.SubscriptionID == "" {
+			return fmt.Errorf("missing team_id in order metadata")
+		}
+		return h.webhookService.CreateOrder(ctx, teamID, toWebhookOrder(order))
 
-	// Dispute events
-	case dodopayments.DisputeOpenedWebhookEvent:
-		h.logger.Warn().
-			Str("dispute_id", e.Data.DisputeID).
-			Str("payment_id", e.Data.PaymentID).
-			Str("amount", e.Data.Amount).
-			Msg("Dispute opened")
-		return h.webhookService.HandleDisputeOpened(ctx, e.Data.PaymentID)
-
-	case dodopayments.DisputeWonWebhookEvent:
-		h.logger.Info().Str("dispute_id", e.Data.DisputeID).Msg("Dispute won")
-		return h.webhookService.HandleDisputeResolved(ctx, e.Data.PaymentID, false)
-
-	case dodopayments.DisputeLostWebhookEvent:
-		h.logger.Warn().Str("dispute_id", e.Data.DisputeID).Msg("Dispute lost")
-		return h.webhookService.HandleDisputeResolved(ctx, e.Data.PaymentID, true)
-
-	case dodopayments.DisputeExpiredWebhookEvent:
-		h.logger.Info().Str("dispute_id", e.Data.DisputeID).Msg("Dispute expired")
-		return nil
-
-	case dodopayments.DisputeAcceptedWebhookEvent:
-		h.logger.Info().Str("dispute_id", e.Data.DisputeID).Msg("Dispute accepted")
-		return nil
-
-	case dodopayments.DisputeCancelledWebhookEvent:
-		h.logger.Info().Str("dispute_id", e.Data.DisputeID).Msg("Dispute cancelled")
-		return nil
-
-	case dodopayments.DisputeChallengedWebhookEvent:
-		h.logger.Info().Str("dispute_id", e.Data.DisputeID).Msg("Dispute challenged")
-		return nil
+	case "order.refunded":
+		order, err := decodeOrder(e.Data)
+		if err != nil {
+			return err
+		}
+		return h.webhookService.RefundOrder(ctx, order.ID)
 
 	default:
+		// checkout.*, customer.*, benefit_grant.*, product.*, organization.* —
+		// stored for audit, no state change.
+		h.logger.Debug().Str("type", e.Type).Msg("Unhandled Polar webhook event")
 		return nil
 	}
 }
 
-// processEventFromUnsafe dispatches a parsed unsafe webhook event to the appropriate handler.
-// Used for re-processing stored events that were already verified on receipt.
-func (h *WebhookHandler) processEventFromUnsafe(ctx context.Context, eventType billingtypes.WebhookEventType, union dodopayments.UnsafeUnwrapWebhookEventUnion) error {
-	if !eventType.IsValid() {
-		h.logger.Warn().Str("event", string(eventType)).Msg("Unknown webhook event type")
-		return nil
+func decodeSubscription(raw json.RawMessage) (polarSubscription, error) {
+	var sub polarSubscription
+	if err := json.Unmarshal(raw, &sub); err != nil {
+		return polarSubscription{}, fmt.Errorf("decode subscription: %w", err)
 	}
+	return sub, nil
+}
 
-	switch e := union.(type) {
-	// Subscription events
-	case dodopayments.SubscriptionActiveWebhookEvent:
-		teamID := e.Data.Metadata["team_id"]
-		if teamID == "" {
-			return fmt.Errorf("missing team_id in webhook metadata")
-		}
-		return h.webhookService.CreateOrUpdateSubscription(ctx, teamID, e.Data.SubscriptionID, &e.Data)
+func decodeOrder(raw json.RawMessage) (polarOrder, error) {
+	var order polarOrder
+	if err := json.Unmarshal(raw, &order); err != nil {
+		return polarOrder{}, fmt.Errorf("decode order: %w", err)
+	}
+	return order, nil
+}
 
-	case dodopayments.SubscriptionUpdatedWebhookEvent:
-		return h.webhookService.UpdateSubscription(ctx, e.Data.SubscriptionID, &e.Data)
+// periodEnd prefers an explicit ends_at, falling back to current_period_end.
+func periodEnd(sub polarSubscription) *time.Time {
+	if sub.EndsAt != nil {
+		return sub.EndsAt
+	}
+	return sub.CurrentPeriodEnd
+}
 
-	case dodopayments.SubscriptionPlanChangedWebhookEvent:
-		return h.webhookService.UpdateSubscription(ctx, e.Data.SubscriptionID, &e.Data)
-
-	case dodopayments.SubscriptionCancelledWebhookEvent:
-		return h.webhookService.CancelSubscriptionByWebhook(ctx, e.Data.SubscriptionID, e.Data.CancelledAt)
-
-	case dodopayments.SubscriptionExpiredWebhookEvent:
-		return h.webhookService.ExpireSubscription(ctx, e.Data.SubscriptionID)
-
-	case dodopayments.SubscriptionFailedWebhookEvent:
-		return h.webhookService.HandleSubscriptionFailed(ctx, e.Data.SubscriptionID)
-
-	case dodopayments.SubscriptionOnHoldWebhookEvent:
-		return h.webhookService.PauseSubscription(ctx, e.Data.SubscriptionID)
-
-	case dodopayments.SubscriptionRenewedWebhookEvent:
-		return h.webhookService.HandleSubscriptionRenewed(ctx, e.Data.SubscriptionID, e.Data.NextBillingDate)
-
-	// Payment events
-	case dodopayments.PaymentSucceededWebhookEvent:
-		teamID := e.Data.Metadata["team_id"]
-		if teamID == "" {
-			return fmt.Errorf("missing team_id in webhook metadata")
-		}
-		return h.webhookService.CreateOrder(ctx, teamID, &e.Data)
-
-	case dodopayments.PaymentFailedWebhookEvent:
-		if e.Data.SubscriptionID != "" {
-			return h.webhookService.HandlePaymentFailed(ctx, e.Data.SubscriptionID)
-		}
-		return nil
-
-	case dodopayments.PaymentProcessingWebhookEvent,
-		dodopayments.PaymentCancelledWebhookEvent:
-		return nil
-
-	// Refund events
-	case dodopayments.RefundSucceededWebhookEvent:
-		return h.webhookService.RefundOrder(ctx, e.Data.PaymentID)
-
-	case dodopayments.RefundFailedWebhookEvent:
-		h.logger.Warn().Str("refund_id", e.Data.RefundID).Str("payment_id", e.Data.PaymentID).Msg("Refund failed")
-		return nil
-
-	// Dispute events
-	case dodopayments.DisputeOpenedWebhookEvent:
-		return h.webhookService.HandleDisputeOpened(ctx, e.Data.PaymentID)
-
-	case dodopayments.DisputeWonWebhookEvent:
-		return h.webhookService.HandleDisputeResolved(ctx, e.Data.PaymentID, false)
-
-	case dodopayments.DisputeLostWebhookEvent:
-		return h.webhookService.HandleDisputeResolved(ctx, e.Data.PaymentID, true)
-
-	case dodopayments.DisputeExpiredWebhookEvent,
-		dodopayments.DisputeAcceptedWebhookEvent,
-		dodopayments.DisputeCancelledWebhookEvent,
-		dodopayments.DisputeChallengedWebhookEvent:
-		return nil
-
-	default:
-		return nil
+func toWebhookSubscription(sub polarSubscription) services.WebhookSubscription {
+	return services.WebhookSubscription{
+		ProviderSubscriptionID: sub.ID,
+		CustomerID:             sub.CustomerID,
+		ProductID:              sub.ProductID,
+		Status:                 mapPolarStatus(sub.Status),
+		RenewsAt:               sub.CurrentPeriodEnd,
+		EndsAt:                 sub.EndsAt,
 	}
 }
 
-// ProcessPendingWebhooks processes any unprocessed webhook events
+func toWebhookOrder(order polarOrder) services.WebhookOrder {
+	return services.WebhookOrder{
+		ProviderOrderID: order.ID,
+		CustomerID:      order.CustomerID,
+		ProductID:       order.ProductID,
+		SubscriptionID:  order.SubscriptionID,
+		Currency:        order.Currency,
+		Subtotal:        order.SubtotalAmount,
+		Tax:             order.TaxAmount,
+		Total:           order.TotalAmount,
+		OrderedAt:       order.CreatedAt,
+	}
+}
+
+// mapPolarStatus maps Polar subscription status to our internal status.
+func mapPolarStatus(status string) billingtypes.SubscriptionStatus {
+	switch status {
+	case "active":
+		return billingtypes.SubscriptionStatusActive
+	case "trialing":
+		return billingtypes.SubscriptionStatusOnTrial
+	case "canceled":
+		return billingtypes.SubscriptionStatusCancelled
+	case "past_due":
+		return billingtypes.SubscriptionStatusPastDue
+	case "unpaid":
+		return billingtypes.SubscriptionStatusUnpaid
+	case "incomplete", "incomplete_expired":
+		return billingtypes.SubscriptionStatusExpired
+	default:
+		// Fail closed: an unrecognized status must not grant access. Only
+		// `active`/`on_trial` are access-granting, so default to a
+		// non-granting state rather than silently unlocking features.
+		return billingtypes.SubscriptionStatusPastDue
+	}
+}
+
+// ProcessPendingWebhooks re-processes unprocessed webhook events from storage.
 func (h *WebhookHandler) ProcessPendingWebhooks(ctx context.Context) error {
 	events, err := h.webhookService.FindUnprocessedWebhookEvents(ctx, h.maxRetries)
 	if err != nil {
@@ -296,15 +293,13 @@ func (h *WebhookHandler) ProcessPendingWebhooks(ctx context.Context) error {
 	}
 
 	for _, event := range events {
-		parsed, err := h.dodoPayments.UnsafeUnwrapWebhook([]byte(event.Payload))
-		if err != nil {
+		var envelope polarEvent
+		if err := json.Unmarshal([]byte(event.Payload), &envelope); err != nil {
 			_ = h.webhookService.MarkWebhookEventFailed(ctx, event.ID, err.Error())
 			continue
 		}
 
-		eventType := billingtypes.WebhookEventType(parsed.Type)
-
-		if err := h.processEventFromUnsafe(ctx, eventType, parsed.AsUnion()); err != nil {
+		if err := h.processEvent(ctx, envelope); err != nil {
 			_ = h.webhookService.MarkWebhookEventFailed(ctx, event.ID, err.Error())
 			continue
 		}

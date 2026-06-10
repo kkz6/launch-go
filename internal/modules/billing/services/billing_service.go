@@ -35,24 +35,22 @@ type Config struct {
 // BillingService handles billing operations
 type BillingService struct {
 	repos            *repositories.Registry
-	dodoPayments     *providers.DodoPaymentsClient
+	provider         providers.BillingProvider
 	config           *Config
 	logger           *zerolog.Logger
 	plansByID        map[string]*models.Plan
 	plansByProductID map[string]*models.Plan
-	plansByVariantID map[string]*models.Plan
 }
 
 // NewBillingService creates a new billing service
-func NewBillingService(repos *repositories.Registry, dodoPayments *providers.DodoPaymentsClient, config *Config, logger *zerolog.Logger) *BillingService {
+func NewBillingService(repos *repositories.Registry, provider providers.BillingProvider, config *Config, logger *zerolog.Logger) *BillingService {
 	svc := &BillingService{
 		repos:            repos,
-		dodoPayments:     dodoPayments,
+		provider:         provider,
 		config:           config,
 		logger:           logger,
 		plansByID:        make(map[string]*models.Plan, len(config.Plans)),
 		plansByProductID: make(map[string]*models.Plan, len(config.Plans)),
-		plansByVariantID: make(map[string]*models.Plan, len(config.Plans)),
 	}
 
 	for i := range config.Plans {
@@ -60,11 +58,6 @@ func NewBillingService(repos *repositories.Registry, dodoPayments *providers.Dod
 		svc.plansByID[p.ID] = p
 		if p.MonthlyID != "" {
 			svc.plansByProductID[p.MonthlyID] = p
-			svc.plansByVariantID[p.MonthlyID] = p
-		}
-		if p.YearlyID != "" {
-			svc.plansByProductID[p.YearlyID] = p
-			svc.plansByVariantID[p.YearlyID] = p
 		}
 	}
 
@@ -86,14 +79,15 @@ func (s *BillingService) GetPlanByProductID(productID string) *models.Plan {
 	return s.plansByProductID[productID]
 }
 
-// GetPlanByVariantID finds a plan by its variant ID
+// GetPlanByVariantID finds a plan by its variant ID. With Polar there is no
+// separate variant concept, so this aliases the product-ID lookup.
 func (s *BillingService) GetPlanByVariantID(variantID string) *models.Plan {
-	return s.plansByVariantID[variantID]
+	return s.plansByProductID[variantID]
 }
 
 // GenerateCheckoutURL generates a checkout URL for a team to subscribe
 func (s *BillingService) GenerateCheckoutURL(ctx context.Context, teamID string, req *dto.GenerateCheckoutURLRequest, redirectURL string, customerEmail string, customerName string) (string, error) {
-	if s.dodoPayments == nil {
+	if s.provider == nil {
 		return "", ErrSubscriptionsNotEnabled
 	}
 
@@ -102,13 +96,7 @@ func (s *BillingService) GenerateCheckoutURL(ctx context.Context, teamID string,
 		return "", ErrPlanNotFound
 	}
 
-	// Use the appropriate product ID based on billing period
-	productID := plan.MonthlyID
-	if req.Annual {
-		productID = plan.YearlyID
-	}
-
-	url, err := s.dodoPayments.CreateCheckout(ctx, productID, plan.Name, teamID, redirectURL, customerEmail, customerName)
+	url, err := s.provider.CreateCheckout(ctx, plan.MonthlyID, plan.Name, teamID, redirectURL, customerEmail, customerName)
 	if err != nil {
 		s.logger.Error().Err(err).Str("team_id", teamID).Str("plan_id", req.Plan).Msg("Failed to create checkout URL")
 		return "", err
@@ -143,7 +131,7 @@ func (s *BillingService) CancelSubscription(ctx context.Context, subscriptionID 
 		return nil
 	}
 
-	err = s.dodoPayments.CancelSubscription(ctx, subscription.ProviderSubscriptionID)
+	err = s.provider.CancelSubscription(ctx, subscription.ProviderSubscriptionID)
 	if err != nil {
 		s.logger.Error().Err(err).Str("subscription_id", subscriptionID).Msg("Failed to cancel subscription")
 		return err
@@ -168,7 +156,7 @@ func (s *BillingService) ResumeSubscription(ctx context.Context, subscriptionID 
 		return ErrCannotResume
 	}
 
-	err = s.dodoPayments.ResumeSubscription(ctx, subscription.ProviderSubscriptionID)
+	err = s.provider.ResumeSubscription(ctx, subscription.ProviderSubscriptionID)
 	if err != nil {
 		s.logger.Error().Err(err).Str("subscription_id", subscriptionID).Msg("Failed to resume subscription")
 		return err
@@ -205,9 +193,9 @@ func (s *BillingService) GetBillingData(ctx context.Context, teamID string, serv
 	for i, sub := range subscriptions {
 		plan := s.GetPlanByProductID(sub.ProductID)
 		updateURL := ""
-		if s.dodoPayments != nil && sub.CustomerID != "" {
+		if s.provider != nil && sub.CustomerID != "" {
 			var err error
-			updateURL, err = s.dodoPayments.GetUpdatePaymentMethodURL(ctx, sub.CustomerID)
+			updateURL, err = s.provider.GetUpdatePaymentMethodURL(ctx, sub.CustomerID)
 			if err != nil {
 				s.logger.Warn().Err(err).Uint("subscription_id", sub.ID).Msg("Failed to get update payment method URL")
 			}
@@ -238,9 +226,9 @@ func (s *BillingService) GetConfig() *Config {
 	return s.config
 }
 
-// GetDodoPaymentsClient returns the DodoPayments client
-func (s *BillingService) GetDodoPaymentsClient() *providers.DodoPaymentsClient {
-	return s.dodoPayments
+// GetProvider returns the billing provider.
+func (s *BillingService) GetProvider() providers.BillingProvider {
+	return s.provider
 }
 
 // SetSubscriptionsEnabled sets whether subscriptions are enabled

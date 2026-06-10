@@ -117,7 +117,7 @@ func (r *Registry) CreateTrialSubscription(ctx context.Context, db *gorm.DB, tea
 		BillableType:           billingmodels.BillableTypeTeam,
 		BillableID:             teamID,
 		Type:                   "default",
-		Provider:               billingmodels.ProviderDodoPayments,
+		Provider:               billingmodels.ProviderPolar,
 		ProviderSubscriptionID: fmt.Sprintf("trial:%s", teamID),
 		Status:                 billingtypes.SubscriptionStatusOnTrial,
 		ProductID:              productID,

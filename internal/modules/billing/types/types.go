@@ -286,7 +286,7 @@ func (u *UserRole) Scan(value any) error {
 // WebhookEventType
 // =============================================================================
 
-// WebhookEventType represents types of webhook events from DodoPayments
+// WebhookEventType represents types of webhook events from the billing provider
 type WebhookEventType string
 
 const (

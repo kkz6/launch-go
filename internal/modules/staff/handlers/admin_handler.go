@@ -505,7 +505,6 @@ func (h *AdminHandler) ListPlans(c *fiber.Ctx) error {
 			"id":              p.ID,
 			"name":            p.Name,
 			"monthly_pricing": p.MonthlyPricing,
-			"yearly_pricing":  p.YearlyPricing,
 			"recommended":     p.Recommended,
 		})
 	}
