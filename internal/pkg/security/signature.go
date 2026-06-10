@@ -84,7 +84,7 @@ func (v *SignatureVerifier) Verify(payload []byte, signatureHeader, secret strin
 }
 
 // VerifyStandardWebhooks verifies a Standard Webhooks signature.
-// This is used by DodoPayments and other providers following the spec.
+// Used by providers following the Standard Webhooks spec.
 // The signed payload format is: {webhook-id}.{webhook-timestamp}.{payload}
 func (v *SignatureVerifier) VerifyStandardWebhooks(payload []byte, webhookID, signature, timestamp, secret string) bool {
 	if webhookID == "" || signature == "" || timestamp == "" || secret == "" {
@@ -246,7 +246,7 @@ func (v *SignatureVerifier) compute(payload []byte, secret string) string {
 
 // SignatureFormatStandardWebhooks expects signatures in Standard Webhooks format.
 // Headers: webhook-id, webhook-signature (v1,signature), webhook-timestamp
-// Used by DodoPayments and other providers following the Standard Webhooks spec.
+// Used by providers following the Standard Webhooks spec.
 const SignatureFormatStandardWebhooks SignatureFormat = "standard_webhooks"
 
 // Pre-configured verifiers for common webhook providers.
