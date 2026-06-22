@@ -86,6 +86,18 @@ type ApplicationResponse struct {
 	// run yet (still in "Setting up") or when build_location is
 	// "server". See dockertypes.GHAInstallStatus for values.
 	GHAInstallStatus string `json:"gha_install_status,omitempty"`
+
+	// GHAOutOfSync is true when build secrets have changed since the
+	// last successful workflow sync, so the committed workflow YAML
+	// and repo secrets are stale. Drives the "re-sync workflow" banner
+	// on the Environment tab's Build-time section. Always false for
+	// build_location=server (no workflow to commit).
+	GHAOutOfSync bool `json:"gha_out_of_sync"`
+
+	// GHAPendingChanges is how many build-secret mutations have been
+	// made since the last sync — shown in the banner as
+	// "N pending changes". Zero for server-build apps.
+	GHAPendingChanges int `json:"gha_pending_changes"`
 }
 
 // DeploymentResponse is the API representation of a deploy attempt or
@@ -736,6 +748,36 @@ func ghaBuildReady(buildLocation dockertypes.BuildLocation, tokenHash *string, s
 	return sha != ""
 }
 
+// ghaPendingChanges reports how many build-secret mutations have been
+// made since the last successful workflow sync. Zero for non-GHA
+// apps — they have no workflow to re-commit, so a stale counter is
+// meaningless. The counter round-trips through JSON, so it comes back
+// as a float64.
+func ghaPendingChanges(buildLocation dockertypes.BuildLocation, sourceConfig map[string]any) int {
+	if buildLocation != dockertypes.BuildLocationGitHubActions || sourceConfig == nil {
+		return 0
+	}
+
+	var n int
+	switch v := sourceConfig["gha_pending_changes"].(type) {
+	case float64:
+		n = int(v)
+	case int:
+		n = v
+	}
+
+	if n < 0 {
+		return 0
+	}
+	return n
+}
+
+// ghaOutOfSync is true when a GitHub Actions app has build-secret
+// changes that haven't been pushed to the repo + workflow yet.
+func ghaOutOfSync(buildLocation dockertypes.BuildLocation, sourceConfig map[string]any) bool {
+	return ghaPendingChanges(buildLocation, sourceConfig) > 0
+}
+
 // ToApplicationResponse maps an Application model to its API response shape.
 func ToApplicationResponse(a *models.Application) *ApplicationResponse {
 	var buildType *string
@@ -761,9 +803,11 @@ func ToApplicationResponse(a *models.Application) *ApplicationResponse {
 		CreatedAt:      a.CreatedAt,
 		UpdatedAt:      a.UpdatedAt,
 
-		BuildLocation:    string(a.BuildLocation),
-		GHABuildReady:    ghaBuildReady(a.BuildLocation, a.GHADeployTokenHash, sourceConfig),
-		GHAInstallStatus: ghaInstallStatusOf(sourceConfig),
+		BuildLocation:     string(a.BuildLocation),
+		GHABuildReady:     ghaBuildReady(a.BuildLocation, a.GHADeployTokenHash, sourceConfig),
+		GHAInstallStatus:  ghaInstallStatusOf(sourceConfig),
+		GHAOutOfSync:      ghaOutOfSync(a.BuildLocation, sourceConfig),
+		GHAPendingChanges: ghaPendingChanges(a.BuildLocation, sourceConfig),
 	}
 }
 

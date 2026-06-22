@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"github.com/kkz6/launch-go/internal/modules/docker/dto"
-	"github.com/kkz6/launch-go/internal/modules/docker/jobs"
 	"github.com/kkz6/launch-go/internal/modules/docker/models"
 	dockertypes "github.com/kkz6/launch-go/internal/modules/docker/types"
 	"github.com/kkz6/launch-go/internal/pkg/dbtype"
@@ -102,7 +101,7 @@ func (s *BuildSecretService) CreateBuildSecret(
 		"build_secret_id": v.ID,
 		"name":            v.Name,
 	})
-	s.queueResyncIfGHA(ctx, app)
+	s.markGHADirty(ctx, app, teamID)
 	return *resp, nil
 }
 
@@ -144,7 +143,7 @@ func (s *BuildSecretService) UpdateBuildSecret(
 		"build_secret_id": id,
 		"name":            reloaded.Name,
 	})
-	s.queueResyncIfGHA(ctx, app)
+	s.markGHADirty(ctx, app, teamID)
 	return *dto.ToApplicationBuildSecretResponse(reloaded), nil
 }
 
@@ -178,7 +177,7 @@ func (s *BuildSecretService) DeleteBuildSecret(
 		"build_secret_id": id,
 		"name":            name,
 	})
-	s.queueResyncIfGHA(ctx, app)
+	s.markGHADirty(ctx, app, teamID)
 	return nil
 }
 
@@ -201,31 +200,36 @@ func (s *BuildSecretService) scopedAppForBuildSecret(
 	return app, nil
 }
 
-// queueResyncIfGHA enqueues a workflow re-sync job when the app is
-// GHA-backed so the workflow YAML's `secrets:` block stays in sync
-// with the build-secret list AND the repo secrets get pushed. No-op
-// for server-build apps — they read the table directly at deploy
-// time.
+// markGHADirty records that build secrets changed so the committed
+// workflow YAML + repo secrets are now stale — WITHOUT pushing
+// anything to GitHub. It bumps the pending-changes counter on
+// source_config and broadcasts gha_out_of_sync so the UI shows a
+// "re-sync workflow" banner; the user applies the changes explicitly
+// via the resync action. No-op for server-build apps — they read the
+// build-secret table directly at deploy time.
 //
-// Best-effort: we log on failure but don't return it. The API caller
-// already saw a 2xx for the secret mutation; bouncing on resync would
-// give them a confusing "secret saved but error" state.
-func (s *BuildSecretService) queueResyncIfGHA(_ context.Context, app *models.Application) {
+// Best-effort: a failure to persist the counter is logged, not
+// returned. The API caller already saw a 2xx for the secret mutation;
+// bouncing here would give a confusing "secret saved but error" state.
+func (s *BuildSecretService) markGHADirty(ctx context.Context, app *models.Application, teamID string) {
 	if app == nil || app.BuildLocation != dockertypes.BuildLocationGitHubActions {
 		return
 	}
-	task, err := jobs.NewGHABootstrapWorkflowTask("application", app.ID, false, s.AppURL())
-	if err != nil {
+	cfg, pending := bumpGHAPendingChanges(app.SourceConfig)
+	app.SourceConfig = cfg
+	if err := s.Repos().Application().UpdateSourceConfig(ctx, app.ID, cfg); err != nil {
 		if s.Logger != nil {
 			s.Logger.Warn().Err(err).Str("application_id", app.ID).
-				Msg("build-secret: failed to build resync task")
+				Msg("build-secret: failed to persist gha pending-changes counter")
 		}
 		return
 	}
-	if err := s.EnqueueTask(task); err != nil && s.Logger != nil {
-		s.Logger.Warn().Err(err).Str("application_id", app.ID).
-			Msg("build-secret: failed to queue workflow resync after secret change")
-	}
+	s.BroadcastToTeam(teamID, "docker.application.gha_out_of_sync", map[string]any{
+		"application_id":  app.ID,
+		"server_id":       app.ServerID,
+		"team_id":         app.TeamID,
+		"pending_changes": pending,
+	})
 }
 
 // validBuildSecretName mirrors validEnvVarKey: POSIX env-name shape

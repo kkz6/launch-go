@@ -6,6 +6,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/kkz6/launch-go/internal/modules/docker/models"
+	"github.com/kkz6/launch-go/internal/pkg/dbtype"
 	"github.com/kkz6/launch-go/internal/pkg/repository"
 )
 
@@ -30,6 +31,19 @@ func (r *ApplicationRepository) UpdateStatus(
 		Model(&models.Application{}).
 		Where("id = ?", id).
 		Update("status", status).Error
+}
+
+// UpdateSourceConfig writes only the source_config column. Used by the
+// build-secret sync tracking to flip gha_pending_changes without
+// touching other fields (same single-column discipline as
+// UpdateStatus).
+func (r *ApplicationRepository) UpdateSourceConfig(
+	ctx context.Context, id string, cfg dbtype.JSONMap,
+) error {
+	return r.DB.WithContext(ctx).
+		Model(&models.Application{}).
+		Where("id = ?", id).
+		Update("source_config", cfg).Error
 }
 
 // FindByIDAndTeamServer returns the application iff the (id, team, server)

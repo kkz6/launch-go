@@ -4,6 +4,8 @@ import (
 	"testing"
 
 	"github.com/kkz6/launch-go/internal/modules/docker/models"
+	dockertypes "github.com/kkz6/launch-go/internal/modules/docker/types"
+	"github.com/kkz6/launch-go/internal/pkg/dbtype"
 )
 
 // EnvVar secret-masking is the most fragile bit of the response layer:
@@ -49,6 +51,56 @@ func TestToApplicationResponse_IncludesInternalPort(t *testing.T) {
 	got := ToApplicationResponse(a)
 	if got.InternalPort != 3000 {
 		t.Errorf("expected internal_port 3000, got %d", got.InternalPort)
+	}
+}
+
+// A GitHub Actions app whose build secrets changed since the last
+// workflow sync must report out-of-sync so the UI shows the
+// "re-sync workflow" banner with a pending count. The counter comes
+// back from JSON as a float64.
+func TestToApplicationResponse_GHAOutOfSyncWhenPendingChanges(t *testing.T) {
+	a := &models.Application{
+		BuildLocation: dockertypes.BuildLocationGitHubActions,
+		SourceConfig:  dbtype.JSONMap{"gha_pending_changes": float64(2)},
+	}
+	got := ToApplicationResponse(a)
+	if !got.GHAOutOfSync {
+		t.Errorf("github_actions app with pending changes must report out of sync")
+	}
+	if got.GHAPendingChanges != 2 {
+		t.Errorf("expected pending_changes 2, got %d", got.GHAPendingChanges)
+	}
+}
+
+// No pending changes → in sync, banner hidden.
+func TestToApplicationResponse_GHAInSyncWhenNoPending(t *testing.T) {
+	a := &models.Application{
+		BuildLocation: dockertypes.BuildLocationGitHubActions,
+		SourceConfig:  dbtype.JSONMap{},
+	}
+	got := ToApplicationResponse(a)
+	if got.GHAOutOfSync {
+		t.Errorf("github_actions app with no pending changes must be in sync")
+	}
+	if got.GHAPendingChanges != 0 {
+		t.Errorf("expected 0 pending, got %d", got.GHAPendingChanges)
+	}
+}
+
+// Server-build apps never have a workflow to sync — out-of-sync is
+// always false and the pending count is suppressed, even if stale
+// source_config carries a counter.
+func TestToApplicationResponse_ServerBuildNeverOutOfSync(t *testing.T) {
+	a := &models.Application{
+		BuildLocation: dockertypes.BuildLocationServer,
+		SourceConfig:  dbtype.JSONMap{"gha_pending_changes": float64(5)},
+	}
+	got := ToApplicationResponse(a)
+	if got.GHAOutOfSync {
+		t.Errorf("server-build app must never report out of sync")
+	}
+	if got.GHAPendingChanges != 0 {
+		t.Errorf("server-build pending must be 0, got %d", got.GHAPendingChanges)
 	}
 }
 

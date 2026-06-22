@@ -203,6 +203,10 @@ func (j *GHABootstrapWorkflowJob) handleApplication(ctx context.Context) error {
 			// after the customer grants permissions flips the banner
 			// off without the UI having to track it separately.
 			"gha_install_status": string(dockertypes.GHAInstallStatusOK),
+			// A successful sync flushes every pending build-secret
+			// change — the committed workflow + repo secrets now match
+			// the DB, so the "out of sync" banner clears.
+			"gha_pending_changes": 0,
 		}),
 	}
 	if tokenHash != "" {
@@ -573,6 +577,7 @@ func (j *GHABootstrapWorkflowJob) handleCompose(ctx context.Context) error {
 			"gha_workflow_sha":     cfg.LastCommitSHA,
 			"gha_image_repository": "ghcr.io/" + cfg.ImagePackage,
 			"gha_install_status":   string(dockertypes.GHAInstallStatusOK),
+			"gha_pending_changes":  0,
 		}),
 	}
 	if tokenHash != "" {
