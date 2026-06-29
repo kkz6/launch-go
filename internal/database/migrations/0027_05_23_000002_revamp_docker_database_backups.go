@@ -107,8 +107,13 @@ func revampDockerDatabaseBackupsDown(db *gorm.DB) error {
 		return err
 	}
 
+	if err := db.Exec(
+		"DROP INDEX IF EXISTS idx_docker_db_backups_storage_provider",
+	).Error; err != nil {
+		return err
+	}
+
 	drops := []string{
-		"DROP INDEX idx_docker_db_backups_storage_provider",
 		"DROP COLUMN IF EXISTS storage_provider_id",
 		"DROP COLUMN IF EXISTS path",
 		"DROP COLUMN IF EXISTS retention",

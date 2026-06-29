@@ -77,16 +77,12 @@ func makeApplicationVolumesPolymorphicUp(db *gorm.DB) error {
 	// 5. FK from compose_id → docker_composes.id with ON DELETE
 	//    CASCADE so removing a compose stack tears down its mount
 	//    rows. Matches the existing application FK behavior.
-	if err := db.Exec(
+	return db.Exec(
 		"ALTER TABLE docker_application_volumes " +
 			"ADD CONSTRAINT fk_docker_app_volumes_compose " +
 			"FOREIGN KEY (compose_id) REFERENCES docker_composes(id) " +
 			"ON DELETE CASCADE",
-	).Error; err != nil {
-		return err
-	}
-
-	return nil
+	).Error
 }
 
 // makeApplicationVolumesPolymorphicDown reverses Up. Will fail if any
@@ -103,14 +99,12 @@ func makeApplicationVolumesPolymorphicDown(db *gorm.DB) error {
 		return err
 	}
 	if err := db.Exec(
-		"DROP INDEX idx_docker_app_volume_compose_name " +
-			"ON docker_application_volumes",
+		"DROP INDEX IF EXISTS idx_docker_app_volume_compose_name",
 	).Error; err != nil {
 		return err
 	}
 	if err := db.Exec(
-		"DROP INDEX idx_docker_app_volume_compose_id " +
-			"ON docker_application_volumes",
+		"DROP INDEX IF EXISTS idx_docker_app_volume_compose_id",
 	).Error; err != nil {
 		return err
 	}

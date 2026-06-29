@@ -1,0 +1,76 @@
+package migrations
+
+import (
+	"os"
+	"testing"
+
+	"github.com/rs/zerolog"
+
+	"github.com/kkz6/launch-go/internal/config"
+	"github.com/kkz6/launch-go/internal/database"
+)
+
+// TestMigrationsApplyCleanlyOnPostgres runs the full registered migration set
+// against a real Postgres database, end to end.
+//
+// The migrations are Postgres-specific (TIMESTAMPTZ, CHAR(26), JSON ->>,
+// UPDATE ... FROM), so the SQLite-backed unit tests never exercise them. Without
+// this guard a broken or missing migration only surfaces in production — which
+// is exactly how the missing source_controls.token_expires_at column slipped
+// through: a model gained a field that no migration added.
+//
+// The test connects through database.Connect so it inherits production's GORM
+// configuration (PrepareStmt in particular — bundling multiple statements into
+// one Exec under prepared statements is what broke an earlier deploy).
+//
+// Skipped unless MIGRATION_TEST_DSN points at a Postgres database. It RESETS the
+// public schema, so point it ONLY at a disposable database. CI provides one via
+// the postgres service in ci.yml.
+func TestMigrationsApplyCleanlyOnPostgres(t *testing.T) {
+	dsn := os.Getenv("MIGRATION_TEST_DSN")
+	if dsn == "" {
+		t.Skip("set MIGRATION_TEST_DSN (a disposable Postgres URL) to run the migration integration test")
+	}
+
+	cfg := config.DatabaseConfig{URL: dsn}
+	db, err := database.Connect(cfg)
+	if err != nil {
+		t.Fatalf("connect to test database: %v", err)
+	}
+
+	// Clean slate. PrepareStmt is on (same as production), and it rejects
+	// multiple statements in a single Exec, so DROP and CREATE go separately.
+	if err := db.Exec("DROP SCHEMA public CASCADE").Error; err != nil {
+		t.Fatalf("reset schema (drop): %v", err)
+	}
+	if err := db.Exec("CREATE SCHEMA public").Error; err != nil {
+		t.Fatalf("reset schema (create): %v", err)
+	}
+
+	nop := zerolog.Nop()
+	migrator := NewMigrator(db, &nop)
+
+	// Forward: every registered migration applies without error.
+	if err := migrator.Migrate(); err != nil {
+		t.Fatalf("migrate up: %v", err)
+	}
+
+	pending, err := migrator.GetPendingMigrations()
+	if err != nil {
+		t.Fatalf("list pending migrations: %v", err)
+	}
+	if len(pending) != 0 {
+		t.Fatalf("expected 0 pending migrations after migrate, got %d", len(pending))
+	}
+
+	// Reversibility: the full set rolls back and re-applies cleanly. A
+	// half-written Down() would otherwise only fail when a real rollback is
+	// attempted in production. Migrate() puts every migration in one batch, so a
+	// single Rollback() exercises every Down().
+	if err := migrator.Rollback(); err != nil {
+		t.Fatalf("rollback: %v", err)
+	}
+	if err := migrator.Migrate(); err != nil {
+		t.Fatalf("re-migrate up after rollback: %v", err)
+	}
+}

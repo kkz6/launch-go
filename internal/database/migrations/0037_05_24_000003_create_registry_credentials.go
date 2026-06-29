@@ -121,11 +121,7 @@ func createRegistryCredentialsUp(db *gorm.DB) error {
 	`).Error; err != nil {
 		return err
 	}
-	if err := db.Exec(`CREATE INDEX idx_dcrc_credential ON docker_compose_registry_credentials (registry_credential_id)`).Error; err != nil {
-		return err
-	}
-
-	return nil
+	return db.Exec(`CREATE INDEX idx_dcrc_credential ON docker_compose_registry_credentials (registry_credential_id)`).Error
 }
 
 // createRegistryCredentialsDown reverses Up. Order matters — drop
@@ -141,9 +137,11 @@ func createRegistryCredentialsDown(db *gorm.DB) error {
 	`).Error; err != nil {
 		return err
 	}
+	if err := db.Exec(`DROP INDEX IF EXISTS idx_docker_apps_reg_cred`).Error; err != nil {
+		return err
+	}
 	if err := db.Exec(`
 		ALTER TABLE docker_applications
-			DROP INDEX idx_docker_apps_reg_cred,
 			DROP COLUMN IF EXISTS registry_password,
 			DROP COLUMN IF EXISTS registry_username,
 			DROP COLUMN IF EXISTS registry_credential_id

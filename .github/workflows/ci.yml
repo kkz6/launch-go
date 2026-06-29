@@ -39,12 +39,24 @@ jobs:
     name: Test
     runs-on: ubuntu-latest
     needs: lint
-    # Tests are fully self-contained — service tests use in-memory
-    # sqlite via gorm.io/driver/sqlite, and nothing else hits a live
-    # DB. The previous MySQL+Redis service containers were dead weight
-    # from the Laravel-era port (and outright wrong since the codebase
-    # moved to Postgres). Removed; if any future test needs a live DB,
-    # add a postgres service back here.
+    # Unit and service tests use in-memory sqlite. The one exception is the
+    # migration integrity test (internal/database/migrations), which runs the
+    # Postgres-specific migration set end to end against the postgres service
+    # below — it is skipped unless MIGRATION_TEST_DSN is set.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: launch
+          POSTGRES_PASSWORD: launch
+          POSTGRES_DB: launch_migration_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U launch"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -59,6 +71,8 @@ jobs:
         run: go mod download
 
       - name: Run tests
+        env:
+          MIGRATION_TEST_DSN: postgres://launch:launch@localhost:5432/launch_migration_test?sslmode=disable
         run: go test -race -coverprofile=coverage.out ./...
 
       - name: Upload coverage reports to Codecov

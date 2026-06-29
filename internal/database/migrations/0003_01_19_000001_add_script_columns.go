@@ -39,7 +39,7 @@ func addScriptColumnsDown(db *gorm.DB) error {
 	// IF EXISTS for idempotent down migrations.
 	db.Exec(`ALTER TABLE scripts DROP CONSTRAINT IF EXISTS fk_scripts_team`)
 	db.Exec(`DROP INDEX IF EXISTS idx_scripts_team_id`)
-	db.Exec(`ALTER TABLE scripts DROP COLUMN IF EXISTS IF EXISTS "user"`)
-	db.Exec(`ALTER TABLE scripts DROP COLUMN IF EXISTS IF EXISTS team_id`)
+	db.Exec(`ALTER TABLE scripts DROP COLUMN IF EXISTS "user"`)
+	db.Exec(`ALTER TABLE scripts DROP COLUMN IF EXISTS team_id`)
 	return nil
 }

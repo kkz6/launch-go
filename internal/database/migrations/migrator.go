@@ -176,6 +176,10 @@ func (m *Migrator) Rollback() error {
 			return fmt.Errorf("migration %s not found in registry", record.Migration)
 		}
 
+		if migration.Down == nil {
+			return fmt.Errorf("migration %s has no down function and cannot be rolled back", migration.ID)
+		}
+
 		m.logger.Info().Str("migration", migration.ID).Msg("Rolling back")
 
 		if err := migration.Down(m.db); err != nil {

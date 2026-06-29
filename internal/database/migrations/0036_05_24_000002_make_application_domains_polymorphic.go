@@ -88,16 +88,12 @@ func makeApplicationDomainsPolymorphicUp(db *gorm.DB) error {
 	// 6. FK from compose_id → docker_composes.id with ON DELETE
 	//    CASCADE so removing a compose stack tears down its domain
 	//    rows. Matches the existing application FK behavior.
-	if err := db.Exec(
+	return db.Exec(
 		"ALTER TABLE docker_application_domains " +
 			"ADD CONSTRAINT fk_docker_app_domains_compose " +
 			"FOREIGN KEY (compose_id) REFERENCES docker_composes(id) " +
 			"ON DELETE CASCADE",
-	).Error; err != nil {
-		return err
-	}
-
-	return nil
+	).Error
 }
 
 // makeApplicationDomainsPolymorphicDown reverses Up. Will fail if
@@ -111,14 +107,12 @@ func makeApplicationDomainsPolymorphicDown(db *gorm.DB) error {
 		return err
 	}
 	if err := db.Exec(
-		"DROP INDEX idx_docker_app_domain_compose_host " +
-			"ON docker_application_domains",
+		"DROP INDEX IF EXISTS idx_docker_app_domain_compose_host",
 	).Error; err != nil {
 		return err
 	}
 	if err := db.Exec(
-		"DROP INDEX idx_docker_app_domain_compose_id " +
-			"ON docker_application_domains",
+		"DROP INDEX IF EXISTS idx_docker_app_domain_compose_id",
 	).Error; err != nil {
 		return err
 	}

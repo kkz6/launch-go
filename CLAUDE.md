@@ -65,6 +65,45 @@ Key tables to migrate:
 ### Primary Key Format
 Laravel uses **ULIDs** (26 characters). Go implementation uses `github.com/oklog/ulid/v2`.
 
+### Writing Migrations
+
+Go migrations live in `internal/database/migrations/` as `NNNN_YY_MM_DD_HHMMSS_name.go`
+files, each registering one `Migration{ID, Name, Up, Down, Timestamp}` via `init()`.
+`console migrate:run` (also run from `entrypoint.sh` on every deploy) applies pending
+migrations in `Timestamp` order; `migrate:rollback` reverses the last batch via `Down`.
+
+Rules — these are not style preferences, each one maps to a production incident:
+
+- **A shipped migration is frozen.** Once a migration has run anywhere (any deploy,
+  any teammate's DB), never change its `Up` or the struct/SQL it applies. To add or
+  alter a column, write a **new** migration. Editing the create-table migration's
+  struct to add `token_expires_at` is exactly what stranded production without the
+  column while fresh DBs had it — a silent schema drift that only surfaced as a
+  runtime "column does not exist" error.
+- **Every migration is reversible.** Always provide a real `Down`. A nil `Down`
+  segfaulted `migrate:rollback`; the migrator now rejects it, but the fix is to write
+  the `Down`, not to rely on the guard.
+- **One statement per `db.Exec`.** GORM runs with `PrepareStmt`, which rejects multiple
+  semicolon-separated statements in a single `Exec` (SQLSTATE 42601). Split them, or
+  use a `[]string` of statements. A single `ALTER TABLE … ADD a, ADD b` (one statement,
+  comma-separated actions) is fine.
+- **Postgres syntax, not MySQL.** Drop an index with `DROP INDEX IF EXISTS idx_name`
+  — never `ALTER TABLE t DROP INDEX idx` or `DROP INDEX idx ON t` (both MySQL-only,
+  and both shipped broken in old `Down`s). Prefer `IF EXISTS` / `IF NOT EXISTS` so
+  migrations stay idempotent.
+
+**The guard:** `internal/database/migrations/integration_pg_test.go` runs the entire
+migration set up → rollback → up against a real Postgres in CI (the `postgres` service
+in `ci.yml`). It catches broken, non-idempotent, or non-reversible migrations before
+they reach production. Run it locally against a disposable database:
+
+```
+MIGRATION_TEST_DSN="postgres://user@127.0.0.1:5432/throwaway?sslmode=disable" \
+  go test -run TestMigrationsApplyCleanlyOnPostgres ./internal/database/migrations/
+```
+
+It resets the `public` schema, so point it only at a throwaway DB.
+
 ## Laravel Jobs -> Go Jobs Reference
 
 ### Server Module Jobs
