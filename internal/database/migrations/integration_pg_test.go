@@ -10,14 +10,16 @@ import (
 	"github.com/kkz6/launch-go/internal/database"
 )
 
-// TestMigrationsApplyCleanlyOnPostgres runs the full registered migration set
-// against a real Postgres database, end to end.
+// TestMigrationsApplyCleanlyOnPostgres applies the full registered migration set
+// forward against a real Postgres database.
 //
-// The migrations are Postgres-specific (TIMESTAMPTZ, CHAR(26), JSON ->>,
-// UPDATE ... FROM), so the SQLite-backed unit tests never exercise them. Without
-// this guard a broken or missing migration only surfaces in production — which
-// is exactly how the missing source_controls.token_expires_at column slipped
-// through: a model gained a field that no migration added.
+// Migrations are up-only by policy (no Down — a rollback risks data loss), so
+// this guard only exercises the forward path: every migration applies cleanly
+// and leaves nothing pending. The migrations are Postgres-specific (TIMESTAMPTZ,
+// CHAR(26), JSON ->>, UPDATE ... FROM), so the SQLite-backed unit tests never
+// exercise them. Without this guard a broken or missing migration only surfaces
+// in production — which is exactly how the missing source_controls.token_expires_at
+// column slipped through: a model gained a field that no migration added.
 //
 // The test connects through database.Connect so it inherits production's GORM
 // configuration (PrepareStmt in particular — bundling multiple statements into
@@ -61,16 +63,5 @@ func TestMigrationsApplyCleanlyOnPostgres(t *testing.T) {
 	}
 	if len(pending) != 0 {
 		t.Fatalf("expected 0 pending migrations after migrate, got %d", len(pending))
-	}
-
-	// Reversibility: the full set rolls back and re-applies cleanly. A
-	// half-written Down() would otherwise only fail when a real rollback is
-	// attempted in production. Migrate() puts every migration in one batch, so a
-	// single Rollback() exercises every Down().
-	if err := migrator.Rollback(); err != nil {
-		t.Fatalf("rollback: %v", err)
-	}
-	if err := migrator.Migrate(); err != nil {
-		t.Fatalf("re-migrate up after rollback: %v", err)
 	}
 }

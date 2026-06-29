@@ -68,9 +68,9 @@ Laravel uses **ULIDs** (26 characters). Go implementation uses `github.com/oklog
 ### Writing Migrations
 
 Go migrations live in `internal/database/migrations/` as `NNNN_YY_MM_DD_HHMMSS_name.go`
-files, each registering one `Migration{ID, Name, Up, Down, Timestamp}` via `init()`.
+files, each registering one `Migration{ID, Name, Up, Timestamp}` via `init()`.
 `console migrate:run` (also run from `entrypoint.sh` on every deploy) applies pending
-migrations in `Timestamp` order; `migrate:rollback` reverses the last batch via `Down`.
+migrations in `Timestamp` order.
 
 Rules — these are not style preferences, each one maps to a production incident:
 
@@ -80,22 +80,23 @@ Rules — these are not style preferences, each one maps to a production inciden
   struct to add `token_expires_at` is exactly what stranded production without the
   column while fresh DBs had it — a silent schema drift that only surfaced as a
   runtime "column does not exist" error.
-- **Every migration is reversible.** Always provide a real `Down`. A nil `Down`
-  segfaulted `migrate:rollback`; the migrator now rejects it, but the fix is to write
-  the `Down`, not to rely on the guard.
+- **Migrations are up-only — never write a `Down`.** Rolling a migration back can
+  permanently delete data (a `DROP COLUMN` / `DROP TABLE` in a `Down` is irreversible),
+  so we don't do it. Implement only `Up`; leave `Down` unset. The migrator refuses to
+  roll back a migration whose `Down` is nil, so `migrate:rollback` is effectively a
+  no-op for up-only migrations — by design, not an oversight.
 - **One statement per `db.Exec`.** GORM runs with `PrepareStmt`, which rejects multiple
   semicolon-separated statements in a single `Exec` (SQLSTATE 42601). Split them, or
   use a `[]string` of statements. A single `ALTER TABLE … ADD a, ADD b` (one statement,
   comma-separated actions) is fine.
 - **Postgres syntax, not MySQL.** Drop an index with `DROP INDEX IF EXISTS idx_name`
-  — never `ALTER TABLE t DROP INDEX idx` or `DROP INDEX idx ON t` (both MySQL-only,
-  and both shipped broken in old `Down`s). Prefer `IF EXISTS` / `IF NOT EXISTS` so
-  migrations stay idempotent.
+  — never `ALTER TABLE t DROP INDEX idx` or `DROP INDEX idx ON t` (both MySQL-only).
+  Prefer `IF EXISTS` / `IF NOT EXISTS` so migrations stay idempotent.
 
-**The guard:** `internal/database/migrations/integration_pg_test.go` runs the entire
-migration set up → rollback → up against a real Postgres in CI (the `postgres` service
-in `ci.yml`). It catches broken, non-idempotent, or non-reversible migrations before
-they reach production. Run it locally against a disposable database:
+**The guard:** `internal/database/migrations/integration_pg_test.go` applies the entire
+migration set forward against a real Postgres in CI (the `postgres` service in
+`ci.yml`) and asserts nothing is left pending. It catches broken or non-idempotent
+migrations before they reach production. Run it locally against a disposable database:
 
 ```
 MIGRATION_TEST_DSN="postgres://user@127.0.0.1:5432/throwaway?sslmode=disable" \
