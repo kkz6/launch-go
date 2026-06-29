@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"github.com/gofiber/fiber/v2"
+	"github.com/rs/zerolog/log"
 
 	"github.com/kkz6/launch-go/internal/modules/git/contracts"
 	"github.com/kkz6/launch-go/internal/modules/git/dto"
@@ -165,13 +166,25 @@ func (h *SourceControlHandler) HandleInstallationCallback(c *fiber.Ctx) error {
 		return c.Redirect(redirectTo)
 	}
 
-	existingSC, err := h.service.GetSourceControlByInstallation(c.Context(), providerType, installationID, contracts.WithTeamID(teamID))
-	if setupAction == "install" {
-		if err == nil && existingSC != nil {
-			_ = h.service.RefreshInstallationRepositories(c.Context(), existingSC)
-		} else {
-			_ = h.service.SyncUserInstallation(c.Context(), providerType, installationID, teamID, userID)
-		}
+	// Record the installation for any callback that carries an
+	// installation_id. This used to be gated on setup_action=="install",
+	// so a reconnect — which GitHub returns as "update" once the app is
+	// already installed — recorded nothing. Sync errors were also swallowed
+	// (`_ =`), which hid failures; log them now.
+	existingSC, getErr := h.service.GetSourceControlByInstallation(c.Context(), providerType, installationID, contracts.WithTeamID(teamID))
+	var syncErr error
+	if getErr == nil && existingSC != nil {
+		syncErr = h.service.RefreshInstallationRepositories(c.Context(), existingSC)
+	} else {
+		syncErr = h.service.SyncUserInstallation(c.Context(), providerType, installationID, teamID, userID)
+	}
+	if syncErr != nil {
+		log.Error().Err(syncErr).
+			Str("provider", string(providerType)).
+			Str("installation_id", installationID).
+			Str("setup_action", setupAction).
+			Str("team_id", teamID).
+			Msg("git installation callback sync failed")
 	}
 	return c.Redirect(redirectTo)
 }
