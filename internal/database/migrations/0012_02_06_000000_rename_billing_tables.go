@@ -13,7 +13,6 @@ func init() {
 		Name:      "Create billing tables (subscriptions, orders, webhook events)",
 		Timestamp: time.Date(2012, 2, 6, 0, 0, 0, 0, time.UTC),
 		Up:        renameBillingTablesUp,
-		Down:      renameBillingTablesDown,
 	})
 }
 
@@ -121,12 +120,5 @@ func renameBillingTablesUp(db *gorm.DB) error {
 		}
 	}
 
-	return nil
-}
-
-func renameBillingTablesDown(db *gorm.DB) error {
-	db.Exec("DROP TABLE IF EXISTS billing_webhook_events")
-	db.Exec("DROP TABLE IF EXISTS orders")
-	db.Exec("DROP TABLE IF EXISTS subscriptions")
 	return nil
 }

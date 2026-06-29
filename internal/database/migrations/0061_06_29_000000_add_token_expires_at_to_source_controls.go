@@ -12,7 +12,6 @@ func init() {
 		Name:      "Add token_expires_at to source_controls",
 		Timestamp: time.Date(2026, 6, 29, 0, 0, 0, 0, time.UTC),
 		Up:        addTokenExpiresAtToSourceControlsUp,
-		Down:      addTokenExpiresAtToSourceControlsDown,
 	})
 }
 
@@ -25,8 +24,4 @@ func addTokenExpiresAtToSourceControlsUp(db *gorm.DB) error {
 	return db.Exec(
 		"ALTER TABLE source_controls ADD COLUMN IF NOT EXISTS token_expires_at TIMESTAMPTZ",
 	).Error
-}
-
-func addTokenExpiresAtToSourceControlsDown(db *gorm.DB) error {
-	return db.Exec("ALTER TABLE source_controls DROP COLUMN IF EXISTS token_expires_at").Error
 }

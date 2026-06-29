@@ -30,7 +30,6 @@ func init() {
 		Name:      "Allow empty (NULL) docker env var values",
 		Timestamp: time.Date(2026, 6, 1, 0, 0, 2, 0, time.UTC),
 		Up:        envVarValueNullableUp,
-		Down:      envVarValueNullableDown,
 	})
 }
 
@@ -41,26 +40,6 @@ func envVarValueNullableUp(db *gorm.DB) error {
 		`ALTER TABLE docker_application_env_vars ALTER COLUMN value DROP NOT NULL`,
 		`ALTER TABLE docker_project_env_vars ALTER COLUMN value DROP NOT NULL`,
 		`ALTER TABLE docker_database_env_vars ALTER COLUMN value DROP NOT NULL`,
-	}
-	for _, s := range statements {
-		if err := db.Exec(s).Error; err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func envVarValueNullableDown(db *gorm.DB) error {
-	// Re-asserting NOT NULL would fail on any NULL rows, so backfill the
-	// empties to '' first (their semantic equivalent), then restore the
-	// constraint.
-	statements := []string{
-		`UPDATE docker_application_env_vars SET value = '' WHERE value IS NULL`,
-		`ALTER TABLE docker_application_env_vars ALTER COLUMN value SET NOT NULL`,
-		`UPDATE docker_project_env_vars SET value = '' WHERE value IS NULL`,
-		`ALTER TABLE docker_project_env_vars ALTER COLUMN value SET NOT NULL`,
-		`UPDATE docker_database_env_vars SET value = '' WHERE value IS NULL`,
-		`ALTER TABLE docker_database_env_vars ALTER COLUMN value SET NOT NULL`,
 	}
 	for _, s := range statements {
 		if err := db.Exec(s).Error; err != nil {

@@ -12,7 +12,6 @@ func init() {
 		Name:      "Create certificates table",
 		Timestamp: time.Date(2003, 6, 14, 0, 0, 2, 0, time.UTC),
 		Up:        createCertificatesTableUp,
-		Down:      createCertificatesTableDown,
 	})
 }
 
@@ -54,8 +53,4 @@ func createCertificatesTableUp(db *gorm.DB) error {
 	}
 
 	return migrator.CreateConstraint(&certificateWithSiteFK{}, "Site")
-}
-
-func createCertificatesTableDown(db *gorm.DB) error {
-	return db.Migrator().DropTable(&certificateMigration{})
 }

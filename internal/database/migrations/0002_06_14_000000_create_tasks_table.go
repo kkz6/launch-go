@@ -12,7 +12,6 @@ func init() {
 		Name:      "Create tasks table",
 		Timestamp: time.Date(2002, 6, 14, 0, 0, 0, 0, time.UTC),
 		Up:        createTasksTableUp,
-		Down:      createTasksTableDown,
 	})
 }
 
@@ -46,8 +45,4 @@ func createTasksTableUp(db *gorm.DB) error {
 
 	// Note: FK constraint to servers will be added after servers table is created
 	return nil
-}
-
-func createTasksTableDown(db *gorm.DB) error {
-	return db.Migrator().DropTable(&taskMigration{})
 }

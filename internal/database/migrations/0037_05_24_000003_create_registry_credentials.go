@@ -12,7 +12,6 @@ func init() {
 		Name:      "Create registry_credentials + wire to docker apps + compose",
 		Timestamp: time.Date(2026, 5, 24, 0, 0, 3, 0, time.UTC),
 		Up:        createRegistryCredentialsUp,
-		Down:      createRegistryCredentialsDown,
 	})
 }
 
@@ -122,31 +121,4 @@ func createRegistryCredentialsUp(db *gorm.DB) error {
 		return err
 	}
 	return db.Exec(`CREATE INDEX idx_dcrc_credential ON docker_compose_registry_credentials (registry_credential_id)`).Error
-}
-
-// createRegistryCredentialsDown reverses Up. Order matters — drop
-// the join table + the app FK + columns before dropping the
-// registry_credentials table the FKs reference.
-func createRegistryCredentialsDown(db *gorm.DB) error {
-	if err := db.Exec(`DROP TABLE IF EXISTS docker_compose_registry_credentials`).Error; err != nil {
-		return err
-	}
-	if err := db.Exec(`
-		ALTER TABLE docker_applications
-			DROP CONSTRAINT IF EXISTS fk_docker_apps_reg_cred
-	`).Error; err != nil {
-		return err
-	}
-	if err := db.Exec(`DROP INDEX IF EXISTS idx_docker_apps_reg_cred`).Error; err != nil {
-		return err
-	}
-	if err := db.Exec(`
-		ALTER TABLE docker_applications
-			DROP COLUMN IF EXISTS registry_password,
-			DROP COLUMN IF EXISTS registry_username,
-			DROP COLUMN IF EXISTS registry_credential_id
-	`).Error; err != nil {
-		return err
-	}
-	return db.Exec(`DROP TABLE IF EXISTS registry_credentials`).Error
 }

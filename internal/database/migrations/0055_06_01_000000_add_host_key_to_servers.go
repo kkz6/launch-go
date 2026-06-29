@@ -23,14 +23,9 @@ func init() {
 		Name:      "Add host_key column to servers",
 		Timestamp: time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC),
 		Up:        addHostKeyToServersUp,
-		Down:      addHostKeyToServersDown,
 	})
 }
 
 func addHostKeyToServersUp(db *gorm.DB) error {
 	return db.Exec(`ALTER TABLE servers ADD COLUMN IF NOT EXISTS host_key TEXT NULL`).Error
-}
-
-func addHostKeyToServersDown(db *gorm.DB) error {
-	return db.Exec(`ALTER TABLE servers DROP COLUMN IF EXISTS host_key`).Error
 }

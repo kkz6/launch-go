@@ -12,7 +12,6 @@ func init() {
 		Name:      "Create users table",
 		Timestamp: time.Date(2001, 1, 1, 0, 0, 0, 0, time.UTC),
 		Up:        createUsersTableUp,
-		Down:      createUsersTableDown,
 	})
 }
 
@@ -79,16 +78,4 @@ func createUsersTableUp(db *gorm.DB) error {
 
 	// Create sessions table
 	return migrator.CreateTable(&sessionMigration{})
-}
-
-func createUsersTableDown(db *gorm.DB) error {
-	migrator := db.Migrator()
-
-	if err := migrator.DropTable(&sessionMigration{}); err != nil {
-		return err
-	}
-	if err := migrator.DropTable(&passwordResetTokenMigration{}); err != nil {
-		return err
-	}
-	return migrator.DropTable(&userMigration{})
 }

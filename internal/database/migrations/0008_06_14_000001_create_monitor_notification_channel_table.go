@@ -12,7 +12,6 @@ func init() {
 		Name:      "Create monitor_notification_channel pivot table",
 		Timestamp: time.Date(2008, 6, 14, 0, 0, 1, 0, time.UTC),
 		Up:        createMonitorNotificationChannelTableUp,
-		Down:      createMonitorNotificationChannelTableDown,
 	})
 }
 
@@ -60,8 +59,4 @@ func createMonitorNotificationChannelTableUp(db *gorm.DB) error {
 	}
 
 	return migrator.CreateConstraint(&monitorNotificationChannelWithChannelFK{}, "NotificationChannel")
-}
-
-func createMonitorNotificationChannelTableDown(db *gorm.DB) error {
-	return db.Migrator().DropTable(&monitorNotificationChannelMigration{})
 }

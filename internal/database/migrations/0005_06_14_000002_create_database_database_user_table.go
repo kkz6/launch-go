@@ -12,7 +12,6 @@ func init() {
 		Name:      "Create database_database_user pivot table",
 		Timestamp: time.Date(2005, 6, 14, 0, 0, 2, 0, time.UTC),
 		Up:        createDatabaseDatabaseUserTableUp,
-		Down:      createDatabaseDatabaseUserTableDown,
 	})
 }
 
@@ -60,8 +59,4 @@ func createDatabaseDatabaseUserTableUp(db *gorm.DB) error {
 	}
 
 	return migrator.CreateConstraint(&databaseDatabaseUserWithUserFK{}, "DatabaseUser")
-}
-
-func createDatabaseDatabaseUserTableDown(db *gorm.DB) error {
-	return db.Migrator().DropTable(&databaseDatabaseUserMigration{})
 }

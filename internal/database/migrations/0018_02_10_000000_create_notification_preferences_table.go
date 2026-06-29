@@ -12,7 +12,6 @@ func init() {
 		Name:      "Create notification_preferences table",
 		Timestamp: time.Date(2018, 2, 10, 0, 0, 0, 0, time.UTC),
 		Up:        createNotificationPreferencesTableUp,
-		Down:      createNotificationPreferencesTableDown,
 	})
 }
 
@@ -52,8 +51,4 @@ func createNotificationPreferencesTableUp(db *gorm.DB) error {
 	}
 
 	return migrator.CreateConstraint(&notificationPreferenceWithTeamFK{}, "Team")
-}
-
-func createNotificationPreferencesTableDown(db *gorm.DB) error {
-	return db.Migrator().DropTable(&notificationPreferenceMigration{})
 }

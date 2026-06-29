@@ -12,7 +12,6 @@ func init() {
 		Name:      "Create load balancer backends table",
 		Timestamp: time.Date(2013, 2, 7, 0, 0, 1, 0, time.UTC),
 		Up:        createLoadBalancerBackendsTableUp,
-		Down:      createLoadBalancerBackendsTableDown,
 	})
 }
 
@@ -83,8 +82,4 @@ func createLoadBalancerBackendsTableUp(db *gorm.DB) error {
 	}
 
 	return db.Exec("CREATE UNIQUE INDEX idx_lb_backends_upstream_site ON load_balancer_backends(upstream_id, site_id)").Error
-}
-
-func createLoadBalancerBackendsTableDown(db *gorm.DB) error {
-	return db.Migrator().DropTable(&lbBackendMigration{})
 }

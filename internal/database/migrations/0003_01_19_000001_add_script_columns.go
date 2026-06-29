@@ -12,7 +12,6 @@ func init() {
 		Name:      "Add columns to scripts table",
 		Timestamp: time.Date(2003, 1, 19, 0, 0, 1, 0, time.UTC),
 		Up:        addScriptColumnsUp,
-		Down:      addScriptColumnsDown,
 	})
 }
 
@@ -32,14 +31,4 @@ func addScriptColumnsUp(db *gorm.DB) error {
 	}
 
 	return db.Exec(`ALTER TABLE scripts ADD CONSTRAINT fk_scripts_team FOREIGN KEY (team_id) REFERENCES teams(id) ON DELETE CASCADE`).Error
-}
-
-func addScriptColumnsDown(db *gorm.DB) error {
-	// Postgres uses DROP CONSTRAINT (not DROP FOREIGN KEY) and supports
-	// IF EXISTS for idempotent down migrations.
-	db.Exec(`ALTER TABLE scripts DROP CONSTRAINT IF EXISTS fk_scripts_team`)
-	db.Exec(`DROP INDEX IF EXISTS idx_scripts_team_id`)
-	db.Exec(`ALTER TABLE scripts DROP COLUMN IF EXISTS "user"`)
-	db.Exec(`ALTER TABLE scripts DROP COLUMN IF EXISTS team_id`)
-	return nil
 }

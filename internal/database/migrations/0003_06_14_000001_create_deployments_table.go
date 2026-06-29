@@ -12,7 +12,6 @@ func init() {
 		Name:      "Create deployments table",
 		Timestamp: time.Date(2003, 6, 14, 0, 0, 1, 0, time.UTC),
 		Up:        createDeploymentsTableUp,
-		Down:      createDeploymentsTableDown,
 	})
 }
 
@@ -81,8 +80,4 @@ func createDeploymentsTableUp(db *gorm.DB) error {
 	}
 
 	return migrator.CreateConstraint(&deploymentWithTaskFK{}, "Task")
-}
-
-func createDeploymentsTableDown(db *gorm.DB) error {
-	return db.Migrator().DropTable(&deploymentMigration{})
 }

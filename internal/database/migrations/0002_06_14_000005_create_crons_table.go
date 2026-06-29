@@ -12,7 +12,6 @@ func init() {
 		Name:      "Create crons table",
 		Timestamp: time.Date(2002, 6, 14, 0, 0, 5, 0, time.UTC),
 		Up:        createCronsTableUp,
-		Down:      createCronsTableDown,
 	})
 }
 
@@ -56,8 +55,4 @@ func createCronsTableUp(db *gorm.DB) error {
 	}
 
 	return migrator.CreateConstraint(&cronWithFK{}, "Server")
-}
-
-func createCronsTableDown(db *gorm.DB) error {
-	return db.Migrator().DropTable(&cronMigration{})
 }

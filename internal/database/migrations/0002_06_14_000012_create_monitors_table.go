@@ -12,7 +12,6 @@ func init() {
 		Name:      "Create monitors table",
 		Timestamp: time.Date(2002, 6, 14, 0, 0, 12, 0, time.UTC),
 		Up:        createMonitorsTableUp,
-		Down:      createMonitorsTableDown,
 	})
 }
 
@@ -50,8 +49,4 @@ func createMonitorsTableUp(db *gorm.DB) error {
 	}
 
 	return migrator.CreateConstraint(&monitorWithServerFK{}, "Server")
-}
-
-func createMonitorsTableDown(db *gorm.DB) error {
-	return db.Migrator().DropTable(&monitorMigration{})
 }

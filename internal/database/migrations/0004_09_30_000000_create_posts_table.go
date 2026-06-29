@@ -12,7 +12,6 @@ func init() {
 		Name:      "Create posts table",
 		Timestamp: time.Date(2004, 9, 30, 0, 0, 0, 0, time.UTC),
 		Up:        createPostsTableUp,
-		Down:      createPostsTableDown,
 	})
 }
 
@@ -50,8 +49,4 @@ func createPostsTableUp(db *gorm.DB) error {
 	}
 
 	return migrator.CreateConstraint(&postWithUserFK{}, "User")
-}
-
-func createPostsTableDown(db *gorm.DB) error {
-	return db.Migrator().DropTable(&postMigration{})
 }

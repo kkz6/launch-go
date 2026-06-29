@@ -21,7 +21,6 @@ func init() {
 		Name:      "Add detected_os_* and detected_arch / detected_kernel columns to servers",
 		Timestamp: time.Date(2026, 5, 28, 0, 0, 1, 0, time.UTC),
 		Up:        addDetectedOSToServersUp,
-		Down:      addDetectedOSToServersDown,
 	})
 }
 
@@ -34,17 +33,5 @@ func addDetectedOSToServersUp(db *gorm.DB) error {
 			ADD COLUMN detected_arch VARCHAR(32) NULL,
 			ADD COLUMN detected_kernel VARCHAR(128) NULL,
 			ADD COLUMN detected_at TIMESTAMPTZ NULL
-	`).Error
-}
-
-func addDetectedOSToServersDown(db *gorm.DB) error {
-	return db.Exec(`
-		ALTER TABLE servers
-			DROP COLUMN IF EXISTS detected_os_id,
-			DROP COLUMN IF EXISTS detected_os_version,
-			DROP COLUMN IF EXISTS detected_os_version_codename,
-			DROP COLUMN IF EXISTS detected_arch,
-			DROP COLUMN IF EXISTS detected_kernel,
-			DROP COLUMN IF EXISTS detected_at
 	`).Error
 }

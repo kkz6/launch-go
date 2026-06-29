@@ -12,7 +12,6 @@ func init() {
 		Name:      "Create commands table",
 		Timestamp: time.Date(2003, 6, 14, 0, 0, 5, 0, time.UTC),
 		Up:        createCommandsTableUp,
-		Down:      createCommandsTableDown,
 	})
 }
 
@@ -65,8 +64,4 @@ func createCommandsTableUp(db *gorm.DB) error {
 	}
 
 	return migrator.CreateConstraint(&commandWithUserFK{}, "User")
-}
-
-func createCommandsTableDown(db *gorm.DB) error {
-	return db.Migrator().DropTable(&commandMigration{})
 }

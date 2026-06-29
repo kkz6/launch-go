@@ -12,7 +12,6 @@ func init() {
 		Name:      "Add load_balanced_upstream_id to sites table",
 		Timestamp: time.Date(2013, 2, 7, 0, 0, 2, 0, time.UTC),
 		Up:        addLoadBalancedUpstreamIDToSitesUp,
-		Down:      addLoadBalancedUpstreamIDToSitesDown,
 	})
 }
 
@@ -32,11 +31,4 @@ func addLoadBalancedUpstreamIDToSitesUp(db *gorm.DB) error {
 	return db.Exec(
 		"ALTER TABLE sites ADD CONSTRAINT fk_sites_lb_upstream FOREIGN KEY (load_balanced_upstream_id) REFERENCES load_balancer_upstreams(id) ON DELETE SET NULL",
 	).Error
-}
-
-func addLoadBalancedUpstreamIDToSitesDown(db *gorm.DB) error {
-	db.Exec("ALTER TABLE sites DROP CONSTRAINT IF EXISTS fk_sites_lb_upstream")
-	db.Exec("DROP INDEX IF EXISTS idx_sites_lb_upstream")
-
-	return db.Exec("ALTER TABLE sites DROP COLUMN IF EXISTS load_balanced_upstream_id").Error
 }

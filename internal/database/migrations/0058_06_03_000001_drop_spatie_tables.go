@@ -12,7 +12,6 @@ func init() {
 		Name:      "Drop dormant Spatie permission tables (replaced by users.staff_role)",
 		Timestamp: time.Date(2026, 6, 3, 0, 0, 1, 0, time.UTC),
 		Up:        dropSpatieTablesUp,
-		Down:      dropSpatieTablesDown,
 	})
 }
 
@@ -32,11 +31,5 @@ func dropSpatieTablesUp(db *gorm.DB) error {
 			return err
 		}
 	}
-	return nil
-}
-
-func dropSpatieTablesDown(db *gorm.DB) error {
-	// Intentional no-op: the Spatie permission schema is retired and not
-	// recreated. users.staff_role replaces its only live use.
 	return nil
 }

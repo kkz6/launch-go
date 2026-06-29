@@ -12,7 +12,6 @@ func init() {
 		Name:      "Create domain_providers table",
 		Timestamp: time.Date(2007, 5, 2, 0, 0, 0, 0, time.UTC),
 		Up:        createDomainProvidersTableUp,
-		Down:      createDomainProvidersTableDown,
 	})
 }
 
@@ -69,8 +68,4 @@ func createDomainProvidersTableUp(db *gorm.DB) error {
 	}
 
 	return migrator.CreateConstraint(&domainProviderWithTeamFK{}, "Team")
-}
-
-func createDomainProvidersTableDown(db *gorm.DB) error {
-	return db.Migrator().DropTable(&domainProviderMigration{})
 }

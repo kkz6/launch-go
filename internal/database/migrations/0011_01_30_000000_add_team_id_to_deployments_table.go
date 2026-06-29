@@ -13,7 +13,6 @@ func init() {
 		Name:      "Add team_id to deployments table",
 		Timestamp: time.Date(2011, 1, 30, 0, 0, 0, 0, time.UTC),
 		Up:        addTeamIDToDeploymentsUp,
-		Down:      addTeamIDToDeploymentsDown,
 	})
 }
 
@@ -47,11 +46,4 @@ func addTeamIDToDeploymentsUp(db *gorm.DB) error {
 	}
 
 	return db.Exec(`ALTER TABLE deployments ADD CONSTRAINT fk_deployments_team_id FOREIGN KEY (team_id) REFERENCES teams(id) ON DELETE CASCADE`).Error
-}
-
-func addTeamIDToDeploymentsDown(db *gorm.DB) error {
-	db.Exec(`ALTER TABLE deployments DROP CONSTRAINT IF EXISTS fk_deployments_team_id`)
-	db.Exec(`DROP INDEX IF EXISTS idx_deployments_team_id`)
-	db.Exec(`ALTER TABLE deployments DROP COLUMN IF EXISTS team_id`)
-	return nil
 }

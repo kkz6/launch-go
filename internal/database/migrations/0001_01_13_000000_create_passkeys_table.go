@@ -12,7 +12,6 @@ func init() {
 		Name:      "Create passkeys table",
 		Timestamp: time.Date(2001, 1, 13, 0, 0, 0, 0, time.UTC),
 		Up:        createPasskeysTableUp,
-		Down:      createPasskeysTableDown,
 	})
 }
 
@@ -55,8 +54,4 @@ func createPasskeysTableUp(db *gorm.DB) error {
 	}
 
 	return migrator.CreateConstraint(&passkeyWithUserFK{}, "User")
-}
-
-func createPasskeysTableDown(db *gorm.DB) error {
-	return db.Migrator().DropTable(&passkeyMigration{})
 }

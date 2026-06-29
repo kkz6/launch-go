@@ -24,12 +24,11 @@ func init() {
 		ID:        "0048_05_28_000000_convert_ssh_keys_is_global_to_boolean",
 		Name:      "Convert ssh_keys.is_global from smallint to boolean",
 		Timestamp: time.Date(2026, 5, 28, 0, 0, 0, 0, time.UTC),
-		Up:        convertSshKeysIsGlobalToBooleanUp,
-		Down:      convertSshKeysIsGlobalToBooleanDown,
+		Up:        convertSSHKeysIsGlobalToBooleanUp,
 	})
 }
 
-func convertSshKeysIsGlobalToBooleanUp(db *gorm.DB) error {
+func convertSSHKeysIsGlobalToBooleanUp(db *gorm.DB) error {
 	// Idempotency guard. The `ALTER … TYPE boolean` below auto-commits
 	// the moment it runs; if a later statement in this migration ever
 	// failed (or the migration row wasn't recorded), the column is left
@@ -81,34 +80,5 @@ func convertSshKeysIsGlobalToBooleanUp(db *gorm.DB) error {
 	if err := db.Exec(`UPDATE ssh_keys SET is_global = false WHERE is_global IS NULL`).Error; err != nil {
 		return err
 	}
-	if err := db.Exec(`ALTER TABLE ssh_keys ALTER COLUMN is_global SET NOT NULL`).Error; err != nil {
-		return err
-	}
-	return nil
-}
-
-func convertSshKeysIsGlobalToBooleanDown(db *gorm.DB) error {
-	// Reverse: bool → smallint, with default 0, nullable as it was
-	// before. Drop the constraint and default before flipping the
-	// type — same reason as the Up direction.
-	if err := db.Exec(`ALTER TABLE ssh_keys ALTER COLUMN is_global DROP NOT NULL`).Error; err != nil {
-		return err
-	}
-	if err := db.Exec(`ALTER TABLE ssh_keys ALTER COLUMN is_global DROP DEFAULT`).Error; err != nil {
-		return err
-	}
-	if err := db.Exec(`
-		ALTER TABLE ssh_keys
-		ALTER COLUMN is_global TYPE smallint
-		USING CASE WHEN is_global THEN 1 ELSE 0 END
-	`).Error; err != nil {
-		return err
-	}
-	if err := db.Exec(`
-		ALTER TABLE ssh_keys
-		ALTER COLUMN is_global SET DEFAULT 0
-	`).Error; err != nil {
-		return err
-	}
-	return nil
+	return db.Exec(`ALTER TABLE ssh_keys ALTER COLUMN is_global SET NOT NULL`).Error
 }

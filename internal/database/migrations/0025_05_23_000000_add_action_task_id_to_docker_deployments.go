@@ -12,7 +12,6 @@ func init() {
 		Name:      "Add action + task_id columns to docker_deployments",
 		Timestamp: time.Date(2024, 5, 23, 0, 0, 0, 0, time.UTC),
 		Up:        addActionTaskIDToDockerDeploymentsUp,
-		Down:      addActionTaskIDToDockerDeploymentsDown,
 	})
 }
 
@@ -50,21 +49,5 @@ func addActionTaskIDToDockerDeploymentsUp(db *gorm.DB) error {
 	}
 	return db.Exec(
 		"CREATE INDEX idx_docker_deployments_task_id ON docker_deployments (task_id)",
-	).Error
-}
-
-func addActionTaskIDToDockerDeploymentsDown(db *gorm.DB) error {
-	if err := db.Exec(
-		"DROP INDEX IF EXISTS idx_docker_deployments_task_id",
-	).Error; err != nil {
-		return err
-	}
-	if err := db.Exec(
-		"DROP INDEX IF EXISTS idx_docker_deployments_action",
-	).Error; err != nil {
-		return err
-	}
-	return db.Exec(
-		"ALTER TABLE docker_deployments DROP COLUMN IF EXISTS action, DROP COLUMN IF EXISTS task_id",
 	).Error
 }

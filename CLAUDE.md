@@ -80,11 +80,11 @@ Rules — these are not style preferences, each one maps to a production inciden
   struct to add `token_expires_at` is exactly what stranded production without the
   column while fresh DBs had it — a silent schema drift that only surfaced as a
   runtime "column does not exist" error.
-- **Migrations are up-only — never write a `Down`.** Rolling a migration back can
-  permanently delete data (a `DROP COLUMN` / `DROP TABLE` in a `Down` is irreversible),
-  so we don't do it. Implement only `Up`; leave `Down` unset. The migrator refuses to
-  roll back a migration whose `Down` is nil, so `migrate:rollback` is effectively a
-  no-op for up-only migrations — by design, not an oversight.
+- **Migrations are up-only — there is no `Down`.** Rolling a migration back can
+  permanently delete data (a `DROP COLUMN` / `DROP TABLE` is irreversible), so the
+  `Migration` struct has no `Down` field and `migrate:rollback` is hard-disabled — it
+  refuses with an explanation rather than running anything. Implement only `Up`. To
+  undo a change, write a new forward migration.
 - **One statement per `db.Exec`.** GORM runs with `PrepareStmt`, which rejects multiple
   semicolon-separated statements in a single `Exec` (SQLSTATE 42601). Split them, or
   use a `[]string` of statements. A single `ALTER TABLE … ADD a, ADD b` (one statement,

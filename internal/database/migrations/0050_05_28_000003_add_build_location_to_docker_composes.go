@@ -20,7 +20,6 @@ func init() {
 		Name:      "Add build_location + gha_deploy_token_hash to docker_composes",
 		Timestamp: time.Date(2026, 5, 28, 0, 0, 3, 0, time.UTC),
 		Up:        addBuildLocationToDockerComposesUp,
-		Down:      addBuildLocationToDockerComposesDown,
 	})
 }
 
@@ -29,13 +28,5 @@ func addBuildLocationToDockerComposesUp(db *gorm.DB) error {
 		ALTER TABLE docker_composes
 			ADD COLUMN build_location VARCHAR(32) NOT NULL DEFAULT 'server',
 			ADD COLUMN gha_deploy_token_hash VARCHAR(255) NULL
-	`).Error
-}
-
-func addBuildLocationToDockerComposesDown(db *gorm.DB) error {
-	return db.Exec(`
-		ALTER TABLE docker_composes
-			DROP COLUMN IF EXISTS build_location,
-			DROP COLUMN IF EXISTS gha_deploy_token_hash
 	`).Error
 }

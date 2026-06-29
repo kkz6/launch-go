@@ -12,7 +12,6 @@ func init() {
 		Name:      "Create docker workload tables",
 		Timestamp: time.Date(2022, 5, 22, 0, 0, 1, 0, time.UTC),
 		Up:        createDockerWorkloadsTablesUp,
-		Down:      createDockerWorkloadsTablesDown,
 	})
 }
 
@@ -301,25 +300,5 @@ func createDockerWorkloadsTablesUp(db *gorm.DB) error {
 		}
 	}
 
-	return nil
-}
-
-func createDockerWorkloadsTablesDown(db *gorm.DB) error {
-	// Drop in reverse order so child FK constraints don't block.
-	tables := []any{
-		&dockerApplicationScheduleMigration{},
-		&dockerApplicationVolumeMigration{},
-		&dockerApplicationDomainMigration{},
-		&dockerApplicationEnvVarMigration{},
-		&dockerDeploymentMigration{},
-		&dockerDatabaseMigration{},
-		&dockerComposeMigration{},
-		&dockerApplicationMigration{},
-	}
-	for _, t := range tables {
-		if err := db.Migrator().DropTable(t); err != nil {
-			return err
-		}
-	}
 	return nil
 }

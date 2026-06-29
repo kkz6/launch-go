@@ -12,7 +12,6 @@ func init() {
 		Name:      "Add build_config to docker_databases",
 		Timestamp: time.Date(2024, 5, 23, 0, 0, 1, 0, time.UTC),
 		Up:        addBuildConfigToDockerDatabasesUp,
-		Down:      addBuildConfigToDockerDatabasesDown,
 	})
 }
 
@@ -31,11 +30,5 @@ func init() {
 func addBuildConfigToDockerDatabasesUp(db *gorm.DB) error {
 	return db.Exec(
 		"ALTER TABLE docker_databases ADD COLUMN build_config TEXT NULL",
-	).Error
-}
-
-func addBuildConfigToDockerDatabasesDown(db *gorm.DB) error {
-	return db.Exec(
-		"ALTER TABLE docker_databases DROP COLUMN IF EXISTS build_config",
 	).Error
 }

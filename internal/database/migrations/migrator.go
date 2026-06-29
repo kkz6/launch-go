@@ -9,12 +9,13 @@ import (
 	"gorm.io/gorm"
 )
 
-// Migration represents a single database migration
+// Migration represents a single database migration. Migrations are up-only by
+// policy — there is no Down: rolling a migration back risks irreversible data
+// loss (a dropped column or table is gone for good).
 type Migration struct {
 	ID        string
 	Name      string
 	Up        func(db *gorm.DB) error
-	Down      func(db *gorm.DB) error
 	Timestamp time.Time
 }
 
@@ -146,54 +147,14 @@ func (m *Migrator) Migrate() error {
 	return nil
 }
 
-// Rollback rolls back the last batch of migrations
+// Rollback is intentionally disabled. Migrations are up-only: rolling one back
+// risks irreversible data loss (a dropped column or table is gone for good), so
+// migrations declare no Down. The method is kept so callers — chiefly the
+// `migrate:rollback` console command — surface a clear explanation instead of
+// silently doing nothing.
 func (m *Migrator) Rollback() error {
-	var lastBatch int
-	err := m.db.Model(&MigrationRecord{}).Select("COALESCE(MAX(batch), 0)").Scan(&lastBatch).Error
-	if err != nil {
-		return fmt.Errorf("failed to get last batch: %w", err)
-	}
-
-	if lastBatch == 0 {
-		m.logger.Info().Msg("Nothing to rollback")
-		return nil
-	}
-
-	var records []MigrationRecord
-	if err := m.db.Where("batch = ?", lastBatch).Order("id DESC").Find(&records).Error; err != nil {
-		return fmt.Errorf("failed to get migrations to rollback: %w", err)
-	}
-
-	// Build migration map for quick lookup
-	migrationMap := make(map[string]Migration)
-	for _, mig := range m.migrations {
-		migrationMap[mig.ID] = mig
-	}
-
-	for _, record := range records {
-		migration, ok := migrationMap[record.Migration]
-		if !ok {
-			return fmt.Errorf("migration %s not found in registry", record.Migration)
-		}
-
-		if migration.Down == nil {
-			return fmt.Errorf("migration %s has no down function and cannot be rolled back", migration.ID)
-		}
-
-		m.logger.Info().Str("migration", migration.ID).Msg("Rolling back")
-
-		if err := migration.Down(m.db); err != nil {
-			return fmt.Errorf("rollback %s failed: %w", migration.ID, err)
-		}
-
-		if err := m.db.Delete(&record).Error; err != nil {
-			return fmt.Errorf("failed to delete migration record %s: %w", migration.ID, err)
-		}
-
-		m.logger.Info().Str("migration", migration.ID).Msg("Rolled back")
-	}
-
-	return nil
+	m.logger.Warn().Msg("rollback is disabled: migrations are up-only to prevent data loss")
+	return fmt.Errorf("rollback is disabled: migrations are up-only to prevent data loss")
 }
 
 // Fresh drops all tables and re-runs all migrations

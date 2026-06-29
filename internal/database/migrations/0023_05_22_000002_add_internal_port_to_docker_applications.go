@@ -12,7 +12,6 @@ func init() {
 		Name:      "Add internal_port to docker_applications",
 		Timestamp: time.Date(2023, 5, 22, 0, 0, 2, 0, time.UTC),
 		Up:        addInternalPortToDockerApplicationsUp,
-		Down:      addInternalPortToDockerApplicationsDown,
 	})
 }
 
@@ -26,8 +25,4 @@ func init() {
 // apps on 3000, Go services on 8080).
 func addInternalPortToDockerApplicationsUp(db *gorm.DB) error {
 	return db.Exec("ALTER TABLE docker_applications ADD COLUMN internal_port INT NOT NULL DEFAULT 80").Error
-}
-
-func addInternalPortToDockerApplicationsDown(db *gorm.DB) error {
-	return db.Exec("ALTER TABLE docker_applications DROP COLUMN IF EXISTS internal_port").Error
 }

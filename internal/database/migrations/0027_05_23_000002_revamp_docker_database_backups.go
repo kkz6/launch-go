@@ -12,7 +12,6 @@ func init() {
 		Name:      "Revamp docker_database_backups to use storage_providers FK",
 		Timestamp: time.Date(2024, 5, 23, 0, 0, 2, 0, time.UTC),
 		Up:        revampDockerDatabaseBackupsUp,
-		Down:      revampDockerDatabaseBackupsDown,
 	})
 }
 
@@ -89,59 +88,4 @@ func revampDockerDatabaseBackupsUp(db *gorm.DB) error {
 			"FOREIGN KEY (storage_provider_id) REFERENCES storage_providers(id) " +
 			"ON DELETE RESTRICT",
 	).Error
-}
-
-func revampDockerDatabaseBackupsDown(db *gorm.DB) error {
-	// Same nuke-and-pave on the way down so the previous shape is
-	// recreated cleanly.
-	if err := db.Exec("DELETE FROM docker_database_backup_runs").Error; err != nil {
-		return err
-	}
-	if err := db.Exec("DELETE FROM docker_database_backups").Error; err != nil {
-		return err
-	}
-
-	if err := db.Exec(
-		"ALTER TABLE docker_database_backups DROP CONSTRAINT IF EXISTS fk_docker_db_backups_storage_provider",
-	).Error; err != nil {
-		return err
-	}
-
-	if err := db.Exec(
-		"DROP INDEX IF EXISTS idx_docker_db_backups_storage_provider",
-	).Error; err != nil {
-		return err
-	}
-
-	drops := []string{
-		"DROP COLUMN IF EXISTS storage_provider_id",
-		"DROP COLUMN IF EXISTS path",
-		"DROP COLUMN IF EXISTS retention",
-		"DROP COLUMN IF EXISTS notify_on_success",
-		"DROP COLUMN IF EXISTS notify_on_failure",
-	}
-	for _, clause := range drops {
-		if err := db.Exec(
-			"ALTER TABLE docker_database_backups " + clause,
-		).Error; err != nil {
-			return err
-		}
-	}
-
-	adds := []string{
-		"ADD COLUMN provider VARCHAR(32) NOT NULL DEFAULT 's3'",
-		"ADD COLUMN endpoint VARCHAR(255) NULL",
-		"ADD COLUMN bucket VARCHAR(255) NOT NULL",
-		"ADD COLUMN region VARCHAR(64) NULL",
-		"ADD COLUMN path_prefix VARCHAR(255) NULL",
-		"ADD COLUMN credentials TEXT NULL",
-	}
-	for _, clause := range adds {
-		if err := db.Exec(
-			"ALTER TABLE docker_database_backups " + clause,
-		).Error; err != nil {
-			return err
-		}
-	}
-	return nil
 }

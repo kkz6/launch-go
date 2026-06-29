@@ -12,7 +12,6 @@ func init() {
 		Name:      "Create invitations table",
 		Timestamp: time.Date(2004, 9, 23, 0, 0, 0, 0, time.UTC),
 		Up:        createInvitationsTableUp,
-		Down:      createInvitationsTableDown,
 	})
 }
 
@@ -34,8 +33,4 @@ func (invitationMigration) TableName() string {
 
 func createInvitationsTableUp(db *gorm.DB) error {
 	return db.Migrator().CreateTable(&invitationMigration{})
-}
-
-func createInvitationsTableDown(db *gorm.DB) error {
-	return db.Migrator().DropTable(&invitationMigration{})
 }

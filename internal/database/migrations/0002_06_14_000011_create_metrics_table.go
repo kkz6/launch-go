@@ -12,7 +12,6 @@ func init() {
 		Name:      "Create metrics table",
 		Timestamp: time.Date(2002, 6, 14, 0, 0, 11, 0, time.UTC),
 		Up:        createMetricsTableUp,
-		Down:      createMetricsTableDown,
 	})
 }
 
@@ -53,8 +52,4 @@ func createMetricsTableUp(db *gorm.DB) error {
 	}
 
 	return migrator.CreateConstraint(&metricWithServerFK{}, "Server")
-}
-
-func createMetricsTableDown(db *gorm.DB) error {
-	return db.Migrator().DropTable(&metricMigration{})
 }

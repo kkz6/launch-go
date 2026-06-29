@@ -12,7 +12,6 @@ func init() {
 		Name:      "Create notification_channels table",
 		Timestamp: time.Date(2008, 6, 14, 0, 0, 0, 0, time.UTC),
 		Up:        createNotificationChannelsTableUp,
-		Down:      createNotificationChannelsTableDown,
 	})
 }
 
@@ -66,8 +65,4 @@ func createNotificationChannelsTableUp(db *gorm.DB) error {
 	}
 
 	return migrator.CreateConstraint(&notificationChannelWithTeamFK{}, "Team")
-}
-
-func createNotificationChannelsTableDown(db *gorm.DB) error {
-	return db.Migrator().DropTable(&notificationChannelMigration{})
 }

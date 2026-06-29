@@ -12,7 +12,6 @@ func init() {
 		Name:      "Add internal_path / strip_path / container_port / certificate_provider to docker_application_domains",
 		Timestamp: time.Date(2024, 5, 23, 0, 0, 7, 0, time.UTC),
 		Up:        enrichApplicationDomainsUp,
-		Down:      enrichApplicationDomainsDown,
 	})
 }
 
@@ -54,26 +53,5 @@ func enrichApplicationDomainsUp(db *gorm.DB) error {
 	}
 	return db.Exec(
 		"ALTER TABLE docker_application_domains ADD COLUMN certificate_provider VARCHAR(32) NOT NULL DEFAULT 'letsencrypt'",
-	).Error
-}
-
-func enrichApplicationDomainsDown(db *gorm.DB) error {
-	if err := db.Exec(
-		"ALTER TABLE docker_application_domains DROP COLUMN IF EXISTS certificate_provider",
-	).Error; err != nil {
-		return err
-	}
-	if err := db.Exec(
-		"ALTER TABLE docker_application_domains DROP COLUMN IF EXISTS container_port",
-	).Error; err != nil {
-		return err
-	}
-	if err := db.Exec(
-		"ALTER TABLE docker_application_domains DROP COLUMN IF EXISTS strip_path",
-	).Error; err != nil {
-		return err
-	}
-	return db.Exec(
-		"ALTER TABLE docker_application_domains DROP COLUMN IF EXISTS internal_path",
 	).Error
 }

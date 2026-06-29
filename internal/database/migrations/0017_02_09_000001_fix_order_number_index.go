@@ -12,7 +12,6 @@ func init() {
 		Name:      "Drop unique constraint on orders.order_number",
 		Timestamp: time.Date(2017, 2, 9, 0, 0, 1, 0, time.UTC),
 		Up:        fixOrderNumberIndexUp,
-		Down:      fixOrderNumberIndexDown,
 	})
 }
 
@@ -43,10 +42,4 @@ func fixOrderNumberIndexUp(db *gorm.DB) error {
 	// Backfill any 0 / NULL order_numbers to the row's id so future
 	// non-null inserts don't clash. Safe to run repeatedly.
 	return db.Exec("UPDATE orders SET order_number = id WHERE order_number = 0 OR order_number IS NULL").Error
-}
-
-func fixOrderNumberIndexDown(db *gorm.DB) error {
-	// Restoring the unique constraint would fail if duplicates exist.
-	// This is a deliberate one-way migration.
-	return nil
 }

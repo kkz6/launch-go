@@ -12,7 +12,6 @@ func init() {
 		Name:      "Create source_controls table",
 		Timestamp: time.Date(2003, 5, 31, 0, 0, 0, 0, time.UTC),
 		Up:        createSourceControlsTableUp,
-		Down:      createSourceControlsTableDown,
 	})
 }
 
@@ -72,8 +71,4 @@ func createSourceControlsTableUp(db *gorm.DB) error {
 	}
 
 	return migrator.CreateConstraint(&sourceControlWithFK{}, "Team")
-}
-
-func createSourceControlsTableDown(db *gorm.DB) error {
-	return db.Migrator().DropTable(&sourceControlMigration{})
 }

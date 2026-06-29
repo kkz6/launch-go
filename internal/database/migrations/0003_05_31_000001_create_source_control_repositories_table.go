@@ -12,7 +12,6 @@ func init() {
 		Name:      "Create source_control_repositories table",
 		Timestamp: time.Date(2003, 5, 31, 0, 0, 1, 0, time.UTC),
 		Up:        createSourceControlRepositoriesTableUp,
-		Down:      createSourceControlRepositoriesTableDown,
 	})
 }
 
@@ -51,8 +50,4 @@ func createSourceControlRepositoriesTableUp(db *gorm.DB) error {
 	}
 
 	return migrator.CreateConstraint(&sourceControlRepositoryWithFK{}, "SourceControl")
-}
-
-func createSourceControlRepositoriesTableDown(db *gorm.DB) error {
-	return db.Migrator().DropTable(&sourceControlRepositoryMigration{})
 }

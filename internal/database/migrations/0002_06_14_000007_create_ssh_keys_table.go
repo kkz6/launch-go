@@ -12,7 +12,6 @@ func init() {
 		Name:      "Create ssh_keys table",
 		Timestamp: time.Date(2002, 6, 14, 0, 0, 7, 0, time.UTC),
 		Up:        createSSHKeysTableUp,
-		Down:      createSSHKeysTableDown,
 	})
 }
 
@@ -58,8 +57,4 @@ func createSSHKeysTableUp(db *gorm.DB) error {
 	}
 
 	return migrator.CreateConstraint(&sshKeyWithFK{}, "Team")
-}
-
-func createSSHKeysTableDown(db *gorm.DB) error {
-	return db.Migrator().DropTable(&sshKeyMigration{})
 }

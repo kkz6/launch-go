@@ -12,7 +12,6 @@ func init() {
 		Name:      "Create personal_access_tokens table",
 		Timestamp: time.Date(2001, 1, 1, 0, 0, 4, 0, time.UTC),
 		Up:        createPersonalAccessTokensTableUp,
-		Down:      createPersonalAccessTokensTableDown,
 	})
 }
 
@@ -39,10 +38,4 @@ func createPersonalAccessTokensTableUp(db *gorm.DB) error {
 
 	// Create personal_access_tokens table
 	return migrator.CreateTable(&personalAccessTokenMigration{})
-}
-
-func createPersonalAccessTokensTableDown(db *gorm.DB) error {
-	migrator := db.Migrator()
-
-	return migrator.DropTable(&personalAccessTokenMigration{})
 }

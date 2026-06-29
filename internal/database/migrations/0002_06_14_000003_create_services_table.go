@@ -12,7 +12,6 @@ func init() {
 		Name:      "Create services table",
 		Timestamp: time.Date(2002, 6, 14, 0, 0, 3, 0, time.UTC),
 		Up:        createServicesTableUp,
-		Down:      createServicesTableDown,
 	})
 }
 
@@ -65,8 +64,4 @@ func createServicesTableUp(db *gorm.DB) error {
 	// Laravel uses nullable foreignIdFor without constrained() for task_id
 
 	return nil
-}
-
-func createServicesTableDown(db *gorm.DB) error {
-	return db.Migrator().DropTable(&serviceMigration{})
 }

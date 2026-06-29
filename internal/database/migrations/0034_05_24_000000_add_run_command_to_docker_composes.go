@@ -12,7 +12,6 @@ func init() {
 		Name:      "Add run_command column to docker_composes",
 		Timestamp: time.Date(2024, 5, 24, 0, 0, 0, 0, time.UTC),
 		Up:        addRunCommandToComposesUp,
-		Down:      addRunCommandToComposesDown,
 	})
 }
 
@@ -35,11 +34,5 @@ func init() {
 func addRunCommandToComposesUp(db *gorm.DB) error {
 	return db.Exec(
 		"ALTER TABLE docker_composes ADD COLUMN run_command TEXT NULL",
-	).Error
-}
-
-func addRunCommandToComposesDown(db *gorm.DB) error {
-	return db.Exec(
-		"ALTER TABLE docker_composes DROP COLUMN IF EXISTS run_command",
 	).Error
 }

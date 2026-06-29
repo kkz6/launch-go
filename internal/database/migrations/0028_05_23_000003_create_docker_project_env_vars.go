@@ -12,7 +12,6 @@ func init() {
 		Name:      "Create docker_project_env_vars table",
 		Timestamp: time.Date(2024, 5, 23, 0, 0, 3, 0, time.UTC),
 		Up:        createDockerProjectEnvVarsUp,
-		Down:      createDockerProjectEnvVarsDown,
 	})
 }
 
@@ -64,8 +63,4 @@ func createDockerProjectEnvVarsUp(db *gorm.DB) error {
 		"CREATE UNIQUE INDEX idx_docker_project_env_vars_unique " +
 			"ON docker_project_env_vars (project_id, key, deleted_at)",
 	).Error
-}
-
-func createDockerProjectEnvVarsDown(db *gorm.DB) error {
-	return db.Migrator().DropTable(&dockerProjectEnvVarMigration{})
 }

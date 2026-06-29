@@ -12,7 +12,6 @@ func init() {
 		Name:      "Create database_users table",
 		Timestamp: time.Date(2005, 6, 14, 0, 0, 1, 0, time.UTC),
 		Up:        createDatabaseUsersTableUp,
-		Down:      createDatabaseUsersTableDown,
 	})
 }
 
@@ -53,8 +52,4 @@ func createDatabaseUsersTableUp(db *gorm.DB) error {
 	}
 
 	return migrator.CreateConstraint(&databaseUserWithServerFK{}, "Server")
-}
-
-func createDatabaseUsersTableDown(db *gorm.DB) error {
-	return db.Migrator().DropTable(&databaseUserMigration{})
 }

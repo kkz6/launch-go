@@ -12,7 +12,6 @@ func init() {
 		Name:      "Create script_executions table",
 		Timestamp: time.Date(2002, 6, 14, 0, 0, 10, 0, time.UTC),
 		Up:        createScriptExecutionsTableUp,
-		Down:      createScriptExecutionsTableDown,
 	})
 }
 
@@ -63,8 +62,4 @@ func createScriptExecutionsTableUp(db *gorm.DB) error {
 	}
 
 	return migrator.CreateConstraint(&scriptExecutionWithServerFK{}, "Server")
-}
-
-func createScriptExecutionsTableDown(db *gorm.DB) error {
-	return db.Migrator().DropTable(&scriptExecutionMigration{})
 }

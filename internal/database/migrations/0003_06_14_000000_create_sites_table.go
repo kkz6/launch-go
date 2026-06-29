@@ -12,7 +12,6 @@ func init() {
 		Name:      "Create sites table",
 		Timestamp: time.Date(2003, 6, 14, 0, 0, 0, 0, time.UTC),
 		Up:        createSitesTableUp,
-		Down:      createSitesTableDown,
 	})
 }
 
@@ -142,8 +141,4 @@ func createSitesTableUp(db *gorm.DB) error {
 
 	// Add FK constraint for crons.site_id -> sites.id (deferred from crons migration)
 	return migrator.CreateConstraint(&cronWithSiteFK{}, "Site")
-}
-
-func createSitesTableDown(db *gorm.DB) error {
-	return db.Migrator().DropTable(&siteMigration{})
 }

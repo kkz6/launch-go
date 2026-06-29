@@ -12,7 +12,6 @@ func init() {
 		Name:      "Create server_providers table",
 		Timestamp: time.Date(2002, 6, 14, 0, 0, 1, 0, time.UTC),
 		Up:        createServerProvidersTableUp,
-		Down:      createServerProvidersTableDown,
 	})
 }
 
@@ -59,8 +58,4 @@ func createServerProvidersTableUp(db *gorm.DB) error {
 
 	// Add foreign key constraint for team_id -> teams.id
 	return migrator.CreateConstraint(&serverProviderWithFK{}, "Team")
-}
-
-func createServerProvidersTableDown(db *gorm.DB) error {
-	return db.Migrator().DropTable(&serverProviderMigration{})
 }

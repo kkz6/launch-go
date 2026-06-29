@@ -12,7 +12,6 @@ func init() {
 		Name:      "Create docker database backup tables",
 		Timestamp: time.Date(2024, 5, 22, 0, 0, 3, 0, time.UTC),
 		Up:        createDockerDatabaseBackupTablesUp,
-		Down:      createDockerDatabaseBackupTablesDown,
 	})
 }
 
@@ -91,11 +90,4 @@ func createDockerDatabaseBackupTablesUp(db *gorm.DB) error {
 	return db.Exec(
 		"CREATE UNIQUE INDEX idx_docker_db_backups_db ON docker_database_backups (database_id, deleted_at)",
 	).Error
-}
-
-func createDockerDatabaseBackupTablesDown(db *gorm.DB) error {
-	if err := db.Migrator().DropTable(&dockerDatabaseBackupRunMigration{}); err != nil {
-		return err
-	}
-	return db.Migrator().DropTable(&dockerDatabaseBackupMigration{})
 }

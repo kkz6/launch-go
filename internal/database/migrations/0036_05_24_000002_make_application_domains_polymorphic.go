@@ -13,7 +13,6 @@ func init() {
 			"(application_id OR compose_id) + add service_name",
 		Timestamp: time.Date(2026, 5, 24, 0, 0, 2, 0, time.UTC),
 		Up:        makeApplicationDomainsPolymorphicUp,
-		Down:      makeApplicationDomainsPolymorphicDown,
 	})
 }
 
@@ -93,41 +92,5 @@ func makeApplicationDomainsPolymorphicUp(db *gorm.DB) error {
 			"ADD CONSTRAINT fk_docker_app_domains_compose " +
 			"FOREIGN KEY (compose_id) REFERENCES docker_composes(id) " +
 			"ON DELETE CASCADE",
-	).Error
-}
-
-// makeApplicationDomainsPolymorphicDown reverses Up. Will fail if
-// compose-only rows exist (application_id IS NULL) — same intentional
-// hard failure 0035 uses to prevent silent data loss on rollback.
-func makeApplicationDomainsPolymorphicDown(db *gorm.DB) error {
-	if err := db.Exec(
-		"ALTER TABLE docker_application_domains " +
-			"DROP CONSTRAINT IF EXISTS fk_docker_app_domains_compose",
-	).Error; err != nil {
-		return err
-	}
-	if err := db.Exec(
-		"DROP INDEX IF EXISTS idx_docker_app_domain_compose_host",
-	).Error; err != nil {
-		return err
-	}
-	if err := db.Exec(
-		"DROP INDEX IF EXISTS idx_docker_app_domain_compose_id",
-	).Error; err != nil {
-		return err
-	}
-	if err := db.Exec(
-		"ALTER TABLE docker_application_domains DROP COLUMN IF EXISTS service_name",
-	).Error; err != nil {
-		return err
-	}
-	if err := db.Exec(
-		"ALTER TABLE docker_application_domains DROP COLUMN IF EXISTS compose_id",
-	).Error; err != nil {
-		return err
-	}
-	return db.Exec(
-		"ALTER TABLE docker_application_domains " +
-			"ALTER COLUMN application_id SET NOT NULL",
 	).Error
 }

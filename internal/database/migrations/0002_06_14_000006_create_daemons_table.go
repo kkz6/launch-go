@@ -12,7 +12,6 @@ func init() {
 		Name:      "Create daemons table",
 		Timestamp: time.Date(2002, 6, 14, 0, 0, 6, 0, time.UTC),
 		Up:        createDaemonsTableUp,
-		Down:      createDaemonsTableDown,
 	})
 }
 
@@ -59,8 +58,4 @@ func createDaemonsTableUp(db *gorm.DB) error {
 	}
 
 	return migrator.CreateConstraint(&daemonWithFK{}, "Server")
-}
-
-func createDaemonsTableDown(db *gorm.DB) error {
-	return db.Migrator().DropTable(&daemonMigration{})
 }

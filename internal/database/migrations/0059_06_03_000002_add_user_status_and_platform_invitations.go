@@ -12,7 +12,6 @@ func init() {
 		Name:      "Add users.status, create platform_invitations",
 		Timestamp: time.Date(2026, 6, 3, 0, 0, 2, 0, time.UTC),
 		Up:        addUserStatusAndPlatformInvitationsUp,
-		Down:      addUserStatusAndPlatformInvitationsDown,
 	})
 }
 
@@ -41,12 +40,4 @@ func addUserStatusAndPlatformInvitationsUp(db *gorm.DB) error {
 	}
 
 	return db.Migrator().CreateTable(&platformInvitationMigration{})
-}
-
-func addUserStatusAndPlatformInvitationsDown(db *gorm.DB) error {
-	if err := db.Migrator().DropTable(&platformInvitationMigration{}); err != nil {
-		return err
-	}
-
-	return db.Exec("ALTER TABLE users DROP COLUMN IF EXISTS status").Error
 }

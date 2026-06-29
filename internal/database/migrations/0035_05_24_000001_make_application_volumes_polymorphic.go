@@ -13,7 +13,6 @@ func init() {
 			"(application_id OR compose_id)",
 		Timestamp: time.Date(2026, 5, 24, 0, 0, 1, 0, time.UTC),
 		Up:        makeApplicationVolumesPolymorphicUp,
-		Down:      makeApplicationVolumesPolymorphicDown,
 	})
 }
 
@@ -82,43 +81,5 @@ func makeApplicationVolumesPolymorphicUp(db *gorm.DB) error {
 			"ADD CONSTRAINT fk_docker_app_volumes_compose " +
 			"FOREIGN KEY (compose_id) REFERENCES docker_composes(id) " +
 			"ON DELETE CASCADE",
-	).Error
-}
-
-// makeApplicationVolumesPolymorphicDown reverses Up. Will fail if any
-// compose-only rows exist (application_id IS NULL) — the rollback
-// expects the caller to first migrate or delete those rows. That's
-// intentional: silently dropping compose-owned mounts on a rollback
-// would lose customer-defined state.
-func makeApplicationVolumesPolymorphicDown(db *gorm.DB) error {
-	// Order matters — drop the FK + indexes before the column itself.
-	if err := db.Exec(
-		"ALTER TABLE docker_application_volumes " +
-			"DROP CONSTRAINT IF EXISTS fk_docker_app_volumes_compose",
-	).Error; err != nil {
-		return err
-	}
-	if err := db.Exec(
-		"DROP INDEX IF EXISTS idx_docker_app_volume_compose_name",
-	).Error; err != nil {
-		return err
-	}
-	if err := db.Exec(
-		"DROP INDEX IF EXISTS idx_docker_app_volume_compose_id",
-	).Error; err != nil {
-		return err
-	}
-	if err := db.Exec(
-		"ALTER TABLE docker_application_volumes DROP COLUMN IF EXISTS compose_id",
-	).Error; err != nil {
-		return err
-	}
-
-	// Restore the NOT NULL constraint. This errors out if any row
-	// snuck through with application_id NULL — surface that as a
-	// hard failure rather than silent data loss.
-	return db.Exec(
-		"ALTER TABLE docker_application_volumes " +
-			"ALTER COLUMN application_id SET NOT NULL",
 	).Error
 }

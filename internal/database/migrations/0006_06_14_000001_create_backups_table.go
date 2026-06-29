@@ -12,7 +12,6 @@ func init() {
 		Name:      "Create backups table",
 		Timestamp: time.Date(2006, 6, 14, 0, 0, 1, 0, time.UTC),
 		Up:        createBackupsTableUp,
-		Down:      createBackupsTableDown,
 	})
 }
 
@@ -89,8 +88,4 @@ func createBackupsTableUp(db *gorm.DB) error {
 	}
 
 	return migrator.CreateConstraint(&backupWithStorageProviderFK{}, "StorageProvider")
-}
-
-func createBackupsTableDown(db *gorm.DB) error {
-	return db.Migrator().DropTable(&backupMigration{})
 }

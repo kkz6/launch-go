@@ -12,7 +12,6 @@ func init() {
 		Name:      "Create team_invitations table",
 		Timestamp: time.Date(2001, 1, 1, 0, 0, 3, 0, time.UTC),
 		Up:        createTeamInvitationsTableUp,
-		Down:      createTeamInvitationsTableDown,
 	})
 }
 
@@ -50,10 +49,4 @@ func createTeamInvitationsTableUp(db *gorm.DB) error {
 
 	// Add foreign key constraint for team_invitations.team_id -> teams.id
 	return migrator.CreateConstraint(&teamInvitationWithFK{}, "Team")
-}
-
-func createTeamInvitationsTableDown(db *gorm.DB) error {
-	migrator := db.Migrator()
-
-	return migrator.DropTable(&teamInvitationMigration{})
 }

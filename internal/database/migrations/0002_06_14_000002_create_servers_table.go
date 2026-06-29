@@ -12,7 +12,6 @@ func init() {
 		Name:      "Create servers table",
 		Timestamp: time.Date(2002, 6, 14, 0, 0, 2, 0, time.UTC),
 		Up:        createServersTableUp,
-		Down:      createServersTableDown,
 	})
 }
 
@@ -113,13 +112,4 @@ func createServersTableUp(db *gorm.DB) error {
 
 	// Now add the FK constraint for tasks.server_id -> servers.id (deferred from tasks migration)
 	return migrator.CreateConstraint(&taskWithServerFK{}, "Server")
-}
-
-func createServersTableDown(db *gorm.DB) error {
-	migrator := db.Migrator()
-
-	// Drop the tasks FK first
-	_ = migrator.DropConstraint(&taskWithServerFK{}, "Server")
-
-	return migrator.DropTable(&serverMigration{})
 }

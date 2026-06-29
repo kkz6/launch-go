@@ -12,7 +12,6 @@ func init() {
 		Name:      "Add users.staff_role, impersonation_sessions, seed existing admins",
 		Timestamp: time.Date(2026, 6, 3, 0, 0, 0, 0, time.UTC),
 		Up:        addStaffRoleAndImpersonationUp,
-		Down:      addStaffRoleAndImpersonationDown,
 	})
 }
 
@@ -69,11 +68,4 @@ func addStaffRoleAndImpersonationUp(db *gorm.DB) error {
 		}
 	}
 	return nil
-}
-
-func addStaffRoleAndImpersonationDown(db *gorm.DB) error {
-	if err := db.Migrator().DropTable(&impersonationSessionMigration{}); err != nil {
-		return err
-	}
-	return db.Exec("ALTER TABLE users DROP COLUMN IF EXISTS staff_role").Error
 }

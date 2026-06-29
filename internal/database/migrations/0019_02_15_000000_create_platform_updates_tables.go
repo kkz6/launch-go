@@ -12,7 +12,6 @@ func init() {
 		Name:      "Create platform_updates, server_platform_updates, and platform_update_dismissals tables",
 		Timestamp: time.Date(2019, 2, 15, 0, 0, 0, 0, time.UTC),
 		Up:        createPlatformUpdatesTablesUp,
-		Down:      createPlatformUpdatesTablesDown,
 	})
 }
 
@@ -102,7 +101,6 @@ func (platformUpdateDismissalWithUpdateFK) TableName() string {
 }
 
 func createPlatformUpdatesTablesUp(db *gorm.DB) error {
-
 	// Create platform_updates table
 	if err := db.Migrator().CreateTable(&platformUpdateMigration{}); err != nil {
 		return err
@@ -143,16 +141,4 @@ func createPlatformUpdatesTablesUp(db *gorm.DB) error {
 	}
 
 	return db.Migrator().CreateConstraint(&platformUpdateDismissalWithUpdateFK{}, "PlatformUpdate")
-}
-
-func createPlatformUpdatesTablesDown(db *gorm.DB) error {
-	if err := db.Migrator().DropTable(&platformUpdateDismissalMigration{}); err != nil {
-		return err
-	}
-
-	if err := db.Migrator().DropTable(&serverPlatformUpdateMigration{}); err != nil {
-		return err
-	}
-
-	return db.Migrator().DropTable(&platformUpdateMigration{})
 }

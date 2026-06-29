@@ -26,7 +26,6 @@ func init() {
 		Name:      "Add build_location + gha_deploy_token_hash to docker_applications",
 		Timestamp: time.Date(2026, 5, 28, 0, 0, 2, 0, time.UTC),
 		Up:        addBuildLocationToDockerApplicationsUp,
-		Down:      addBuildLocationToDockerApplicationsDown,
 	})
 }
 
@@ -35,13 +34,5 @@ func addBuildLocationToDockerApplicationsUp(db *gorm.DB) error {
 		ALTER TABLE docker_applications
 			ADD COLUMN build_location VARCHAR(32) NOT NULL DEFAULT 'server',
 			ADD COLUMN gha_deploy_token_hash VARCHAR(255) NULL
-	`).Error
-}
-
-func addBuildLocationToDockerApplicationsDown(db *gorm.DB) error {
-	return db.Exec(`
-		ALTER TABLE docker_applications
-			DROP COLUMN IF EXISTS build_location,
-			DROP COLUMN IF EXISTS gha_deploy_token_hash
 	`).Error
 }

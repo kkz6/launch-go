@@ -12,7 +12,6 @@ func init() {
 		Name:      "Add columns to script_executions table",
 		Timestamp: time.Date(2003, 1, 19, 0, 0, 2, 0, time.UTC),
 		Up:        addScriptExecutionColumnsUp,
-		Down:      addScriptExecutionColumnsDown,
 	})
 }
 
@@ -49,15 +48,4 @@ func addScriptExecutionColumnsUp(db *gorm.DB) error {
 
 	// Add index for status
 	return db.Exec("CREATE INDEX idx_script_executions_status ON script_executions(status)").Error
-}
-
-func addScriptExecutionColumnsDown(db *gorm.DB) error {
-	db.Exec("DROP INDEX IF EXISTS idx_script_executions_status")
-	db.Exec("DROP INDEX IF EXISTS idx_script_executions_batch_id")
-	db.Exec("ALTER TABLE script_executions DROP COLUMN IF EXISTS started_at")
-	db.Exec("ALTER TABLE script_executions DROP COLUMN IF EXISTS output")
-	db.Exec("ALTER TABLE script_executions DROP COLUMN IF EXISTS exit_code")
-	db.Exec("ALTER TABLE script_executions DROP COLUMN IF EXISTS status")
-	db.Exec("ALTER TABLE script_executions DROP COLUMN IF EXISTS batch_id")
-	return nil
 }

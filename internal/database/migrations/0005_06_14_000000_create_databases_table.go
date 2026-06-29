@@ -12,7 +12,6 @@ func init() {
 		Name:      "Create databases table",
 		Timestamp: time.Date(2005, 6, 14, 0, 0, 0, 0, time.UTC),
 		Up:        createDatabasesTableUp,
-		Down:      createDatabasesTableDown,
 	})
 }
 
@@ -51,8 +50,4 @@ func createDatabasesTableUp(db *gorm.DB) error {
 	}
 
 	return migrator.CreateConstraint(&databaseWithServerFK{}, "Server")
-}
-
-func createDatabasesTableDown(db *gorm.DB) error {
-	return db.Migrator().DropTable(&databaseMigration{})
 }

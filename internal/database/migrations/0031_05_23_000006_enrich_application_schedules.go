@@ -12,7 +12,6 @@ func init() {
 		Name:      "Add enabled / shell_type / last_task_id to docker_application_schedules",
 		Timestamp: time.Date(2024, 5, 23, 0, 0, 6, 0, time.UTC),
 		Up:        enrichApplicationSchedulesUp,
-		Down:      enrichApplicationSchedulesDown,
 	})
 }
 
@@ -42,21 +41,5 @@ func enrichApplicationSchedulesUp(db *gorm.DB) error {
 	}
 	return db.Exec(
 		"ALTER TABLE docker_application_schedules ADD COLUMN last_task_id CHAR(26) NULL",
-	).Error
-}
-
-func enrichApplicationSchedulesDown(db *gorm.DB) error {
-	if err := db.Exec(
-		"ALTER TABLE docker_application_schedules DROP COLUMN IF EXISTS last_task_id",
-	).Error; err != nil {
-		return err
-	}
-	if err := db.Exec(
-		"ALTER TABLE docker_application_schedules DROP COLUMN IF EXISTS shell_type",
-	).Error; err != nil {
-		return err
-	}
-	return db.Exec(
-		"ALTER TABLE docker_application_schedules DROP COLUMN IF EXISTS enabled",
 	).Error
 }

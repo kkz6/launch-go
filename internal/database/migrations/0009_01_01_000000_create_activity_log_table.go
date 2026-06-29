@@ -12,7 +12,6 @@ func init() {
 		Name:      "Create activity_log table",
 		Timestamp: time.Date(2009, 1, 1, 0, 0, 0, 0, time.UTC),
 		Up:        createActivityLogTableUp,
-		Down:      createActivityLogTableDown,
 	})
 }
 
@@ -39,10 +38,4 @@ func createActivityLogTableUp(db *gorm.DB) error {
 	migrator := db.Migrator()
 
 	return migrator.CreateTable(&activityLogMigration{})
-}
-
-func createActivityLogTableDown(db *gorm.DB) error {
-	migrator := db.Migrator()
-
-	return migrator.DropTable(&activityLogMigration{})
 }

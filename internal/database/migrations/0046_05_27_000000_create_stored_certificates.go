@@ -12,7 +12,6 @@ func init() {
 		Name:      "Create stored_certificates table",
 		Timestamp: time.Date(2026, 5, 27, 0, 0, 0, 0, time.UTC),
 		Up:        createStoredCertificatesUp,
-		Down:      createStoredCertificatesDown,
 	})
 }
 
@@ -74,16 +73,9 @@ func createStoredCertificatesUp(db *gorm.DB) error {
 	`).Error; err != nil {
 		return err
 	}
-	if err := db.Exec(`
+	return db.Exec(`
 		CREATE INDEX idx_stored_certs_expiry
 		ON stored_certificates (team_id, not_after)
 		WHERE deleted_at IS NULL
-	`).Error; err != nil {
-		return err
-	}
-	return nil
-}
-
-func createStoredCertificatesDown(db *gorm.DB) error {
-	return db.Exec(`DROP TABLE IF EXISTS stored_certificates`).Error
+	`).Error
 }

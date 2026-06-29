@@ -27,7 +27,6 @@ func init() {
 		Name:      "Flip services.is_default default to false + dedupe per (server_id,type)",
 		Timestamp: time.Date(2026, 5, 31, 12, 0, 0, 0, time.UTC),
 		Up:        fixServicesIsDefaultUp,
-		Down:      fixServicesIsDefaultDown,
 	})
 }
 
@@ -61,11 +60,4 @@ func fixServicesIsDefaultUp(db *gorm.DB) error {
 		      )
 		  )
 	`).Error
-}
-
-func fixServicesIsDefaultDown(db *gorm.DB) error {
-	// Restore the original (wrong) default so the migration is
-	// reversible. We don't reinstate the duplicate rows — there's no
-	// way to know which ones we cleared.
-	return db.Exec(`ALTER TABLE services ALTER COLUMN is_default SET DEFAULT TRUE`).Error
 }

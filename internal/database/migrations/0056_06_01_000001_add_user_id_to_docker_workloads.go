@@ -34,7 +34,6 @@ func init() {
 		Name:      "Add user_id to docker_applications + docker_composes",
 		Timestamp: time.Date(2026, 6, 1, 0, 0, 1, 0, time.UTC),
 		Up:        addUserIDToDockerWorkloadsUp,
-		Down:      addUserIDToDockerWorkloadsDown,
 	})
 }
 
@@ -68,19 +67,6 @@ func addUserIDToDockerWorkloadsUp(db *gorm.DB) error {
 		   AND sc.id = NULLIF(dc.source_config->>'source_control_id', '')`,
 	}
 
-	for _, sql := range statements {
-		if err := db.Exec(sql).Error; err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func addUserIDToDockerWorkloadsDown(db *gorm.DB) error {
-	statements := []string{
-		`ALTER TABLE docker_applications DROP COLUMN IF EXISTS user_id`,
-		`ALTER TABLE docker_composes DROP COLUMN IF EXISTS user_id`,
-	}
 	for _, sql := range statements {
 		if err := db.Exec(sql).Error; err != nil {
 			return err

@@ -12,7 +12,6 @@ func init() {
 		Name:      "Create docker_projects table",
 		Timestamp: time.Date(2021, 5, 22, 0, 0, 0, 0, time.UTC),
 		Up:        createDockerProjectsTableUp,
-		Down:      createDockerProjectsTableDown,
 	})
 }
 
@@ -71,8 +70,4 @@ func createDockerProjectsTableUp(db *gorm.DB) error {
 		"CREATE UNIQUE INDEX idx_docker_projects_server_name " +
 			"ON docker_projects (server_id, name, deleted_at)",
 	).Error
-}
-
-func createDockerProjectsTableDown(db *gorm.DB) error {
-	return db.Migrator().DropTable(&dockerProjectMigration{})
 }

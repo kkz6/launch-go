@@ -12,7 +12,6 @@ func init() {
 		Name:      "Create teams table",
 		Timestamp: time.Date(2001, 1, 1, 0, 0, 1, 0, time.UTC),
 		Up:        createTeamsTableUp,
-		Down:      createTeamsTableDown,
 	})
 }
 
@@ -67,14 +66,4 @@ func createTeamsTableUp(db *gorm.DB) error {
 
 	// Add foreign key constraint for users.current_team_id -> teams.id
 	return migrator.CreateConstraint(&userWithTeamFK{}, "CurrentTeam")
-}
-
-func createTeamsTableDown(db *gorm.DB) error {
-	migrator := db.Migrator()
-
-	// Drop foreign key from users table
-	_ = migrator.DropConstraint(&userWithTeamFK{}, "CurrentTeam")
-
-	// Drop teams table (will cascade drop teams_user_id_foreign)
-	return migrator.DropTable(&teamMigration{})
 }

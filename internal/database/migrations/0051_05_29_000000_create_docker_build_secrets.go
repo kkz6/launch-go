@@ -12,7 +12,6 @@ func init() {
 		Name:      "Create docker_application_build_secrets and docker_compose_build_secrets tables",
 		Timestamp: time.Date(2024, 5, 29, 0, 0, 0, 0, time.UTC),
 		Up:        createDockerBuildSecretsUp,
-		Down:      createDockerBuildSecretsDown,
 	})
 }
 
@@ -108,11 +107,4 @@ func createDockerBuildSecretsUp(db *gorm.DB) error {
 		"CREATE UNIQUE INDEX idx_docker_compose_build_secrets_unique " +
 			"ON docker_compose_build_secrets (compose_id, name, deleted_at)",
 	).Error
-}
-
-func createDockerBuildSecretsDown(db *gorm.DB) error {
-	if err := db.Migrator().DropTable(&dockerComposeBuildSecretMigration{}); err != nil {
-		return err
-	}
-	return db.Migrator().DropTable(&dockerApplicationBuildSecretMigration{})
 }

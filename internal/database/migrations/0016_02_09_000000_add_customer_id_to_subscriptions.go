@@ -12,20 +12,12 @@ func init() {
 		Name:      "Add customer_id column to subscriptions table",
 		Timestamp: time.Date(2016, 2, 9, 0, 0, 0, 0, time.UTC),
 		Up:        addCustomerIDToSubscriptionsUp,
-		Down:      addCustomerIDToSubscriptionsDown,
 	})
 }
 
 func addCustomerIDToSubscriptionsUp(db *gorm.DB) error {
 	if !columnExists(db, "subscriptions", "customer_id") {
 		return db.Exec("ALTER TABLE subscriptions ADD COLUMN customer_id VARCHAR(255) NULL").Error
-	}
-	return nil
-}
-
-func addCustomerIDToSubscriptionsDown(db *gorm.DB) error {
-	if columnExists(db, "subscriptions", "customer_id") {
-		return db.Exec("ALTER TABLE subscriptions DROP COLUMN IF EXISTS customer_id").Error
 	}
 	return nil
 }

@@ -73,23 +73,18 @@ type migrateRollbackCommand struct{}
 
 func (migrateRollbackCommand) Signature() string { return "migrate:rollback" }
 func (migrateRollbackCommand) Description() string {
-	return "Rollback the last batch of database migrations"
+	return "Disabled — migrations are up-only (rollback risks data loss)"
 }
 func (migrateRollbackCommand) Extend() console.Extend {
 	return console.Extend{Category: migrateCategory}
 }
 
+// Handle refuses immediately. Migrations are up-only: rolling one back risks
+// irreversible data loss, so there are no Down functions to run. We don't even
+// connect to the database — there's nothing a rollback could safely do.
 func (migrateRollbackCommand) Handle(ctx console.Context) error {
-	migrator, err := migrateBootstrap(ctx)
-	if err != nil {
-		return err
-	}
-	if err := migrator.Rollback(); err != nil {
-		ctx.Error(fmt.Sprintf("Rollback failed: %v", err))
-		return err
-	}
-	ctx.Success("Rollback completed successfully")
-	return nil
+	ctx.Error("rollback is disabled: migrations are up-only to prevent data loss")
+	return fmt.Errorf("rollback is disabled")
 }
 
 // migrate:fresh

@@ -17,14 +17,9 @@ func init() {
 		Name:      "Add task_id to backup_jobs",
 		Timestamp: time.Date(2026, 5, 31, 0, 0, 0, 0, time.UTC),
 		Up:        addTaskIDToBackupJobsUp,
-		Down:      addTaskIDToBackupJobsDown,
 	})
 }
 
 func addTaskIDToBackupJobsUp(db *gorm.DB) error {
 	return db.Exec(`ALTER TABLE backup_jobs ADD COLUMN IF NOT EXISTS task_id CHAR(26) NULL`).Error
-}
-
-func addTaskIDToBackupJobsDown(db *gorm.DB) error {
-	return db.Exec(`ALTER TABLE backup_jobs DROP COLUMN IF EXISTS task_id`).Error
 }

@@ -12,7 +12,6 @@ func init() {
 		Name:      "Create redirects table",
 		Timestamp: time.Date(2003, 6, 14, 0, 0, 3, 0, time.UTC),
 		Up:        createRedirectsTableUp,
-		Down:      createRedirectsTableDown,
 	})
 }
 
@@ -65,8 +64,4 @@ func createRedirectsTableUp(db *gorm.DB) error {
 	}
 
 	return migrator.CreateConstraint(&redirectWithUserFK{}, "User")
-}
-
-func createRedirectsTableDown(db *gorm.DB) error {
-	return db.Migrator().DropTable(&redirectMigration{})
 }

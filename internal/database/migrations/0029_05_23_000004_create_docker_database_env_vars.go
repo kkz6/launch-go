@@ -12,7 +12,6 @@ func init() {
 		Name:      "Create docker_database_env_vars table",
 		Timestamp: time.Date(2024, 5, 23, 0, 0, 4, 0, time.UTC),
 		Up:        createDockerDatabaseEnvVarsUp,
-		Down:      createDockerDatabaseEnvVarsDown,
 	})
 }
 
@@ -60,8 +59,4 @@ func createDockerDatabaseEnvVarsUp(db *gorm.DB) error {
 		"CREATE UNIQUE INDEX idx_docker_database_env_vars_unique " +
 			"ON docker_database_env_vars (database_id, key, deleted_at)",
 	).Error
-}
-
-func createDockerDatabaseEnvVarsDown(db *gorm.DB) error {
-	return db.Migrator().DropTable(&dockerDatabaseEnvVarMigration{})
 }

@@ -12,7 +12,6 @@ func init() {
 		Name:      "Create firewall_rules table",
 		Timestamp: time.Date(2002, 6, 14, 0, 0, 4, 0, time.UTC),
 		Up:        createFirewallRulesTableUp,
-		Down:      createFirewallRulesTableDown,
 	})
 }
 
@@ -56,8 +55,4 @@ func createFirewallRulesTableUp(db *gorm.DB) error {
 	}
 
 	return migrator.CreateConstraint(&firewallRuleWithFK{}, "Server")
-}
-
-func createFirewallRulesTableDown(db *gorm.DB) error {
-	return db.Migrator().DropTable(&firewallRuleMigration{})
 }

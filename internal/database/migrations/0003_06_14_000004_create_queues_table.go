@@ -12,7 +12,6 @@ func init() {
 		Name:      "Create queues table",
 		Timestamp: time.Date(2003, 6, 14, 0, 0, 4, 0, time.UTC),
 		Up:        createQueuesTableUp,
-		Down:      createQueuesTableDown,
 	})
 }
 
@@ -102,8 +101,4 @@ func createQueuesTableUp(db *gorm.DB) error {
 	}
 
 	return migrator.CreateConstraint(&queueWithUserFK{}, "User")
-}
-
-func createQueuesTableDown(db *gorm.DB) error {
-	return db.Migrator().DropTable(&queueMigration{})
 }

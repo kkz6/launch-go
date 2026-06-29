@@ -12,7 +12,6 @@ func init() {
 		Name:      "Add env_file column to docker_composes",
 		Timestamp: time.Date(2024, 5, 23, 0, 0, 8, 0, time.UTC),
 		Up:        addEnvFileToComposesUp,
-		Down:      addEnvFileToComposesDown,
 	})
 }
 
@@ -35,11 +34,5 @@ func init() {
 func addEnvFileToComposesUp(db *gorm.DB) error {
 	return db.Exec(
 		"ALTER TABLE docker_composes ADD COLUMN env_file TEXT NULL",
-	).Error
-}
-
-func addEnvFileToComposesDown(db *gorm.DB) error {
-	return db.Exec(
-		"ALTER TABLE docker_composes DROP COLUMN IF EXISTS env_file",
 	).Error
 }

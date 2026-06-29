@@ -12,7 +12,6 @@ func init() {
 		Name:      "Create backup_databases pivot table",
 		Timestamp: time.Date(2006, 6, 14, 0, 0, 2, 0, time.UTC),
 		Up:        createBackupDatabasesTableUp,
-		Down:      createBackupDatabasesTableDown,
 	})
 }
 
@@ -58,8 +57,4 @@ func createBackupDatabasesTableUp(db *gorm.DB) error {
 	}
 
 	return migrator.CreateConstraint(&backupDatabaseWithDatabaseFK{}, "Database")
-}
-
-func createBackupDatabasesTableDown(db *gorm.DB) error {
-	return db.Migrator().DropTable(&backupDatabaseMigration{})
 }

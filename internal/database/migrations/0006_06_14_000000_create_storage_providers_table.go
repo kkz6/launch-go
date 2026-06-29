@@ -12,7 +12,6 @@ func init() {
 		Name:      "Create storage_providers table",
 		Timestamp: time.Date(2006, 6, 14, 0, 0, 0, 0, time.UTC),
 		Up:        createStorageProvidersTableUp,
-		Down:      createStorageProvidersTableDown,
 	})
 }
 
@@ -68,8 +67,4 @@ func createStorageProvidersTableUp(db *gorm.DB) error {
 	}
 
 	return migrator.CreateConstraint(&storageProviderWithTeamFK{}, "Team")
-}
-
-func createStorageProvidersTableDown(db *gorm.DB) error {
-	return db.Migrator().DropTable(&storageProviderMigration{})
 }

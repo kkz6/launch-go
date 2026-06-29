@@ -13,7 +13,6 @@ func init() {
 		Name:      "Add team_id to all tables",
 		Timestamp: time.Date(2010, 1, 18, 0, 0, 0, 0, time.UTC),
 		Up:        addTeamIDToAllTablesUp,
-		Down:      addTeamIDToAllTablesDown,
 	})
 }
 
@@ -114,21 +113,4 @@ func addTeamIDColumn(db *gorm.DB, cfg tableConfig) error {
 		`ALTER TABLE "%s" ADD CONSTRAINT fk_%s_team_id FOREIGN KEY (team_id) REFERENCES teams(id) ON DELETE CASCADE`,
 		cfg.table, cfg.table,
 	)).Error
-}
-
-func addTeamIDToAllTablesDown(db *gorm.DB) error {
-	// Revert NOT NULL on existing tables
-	for _, table := range existingNullableTables {
-		db.Exec(fmt.Sprintf(`ALTER TABLE "%s" ALTER COLUMN team_id DROP NOT NULL`, table))
-	}
-
-	// Remove team_id from tables in reverse order
-	for i := len(tablesToUpdate) - 1; i >= 0; i-- {
-		cfg := tablesToUpdate[i]
-		db.Exec(fmt.Sprintf(`ALTER TABLE "%s" DROP CONSTRAINT IF EXISTS fk_%s_team_id`, cfg.table, cfg.table))
-		db.Exec(fmt.Sprintf(`DROP INDEX IF EXISTS idx_%s_team_id`, cfg.table))
-		db.Exec(fmt.Sprintf(`ALTER TABLE "%s" DROP COLUMN IF EXISTS team_id`, cfg.table))
-	}
-
-	return nil
 }

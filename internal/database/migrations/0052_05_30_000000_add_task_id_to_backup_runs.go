@@ -19,14 +19,9 @@ func init() {
 		Name:      "Add task_id to docker_database_backup_runs",
 		Timestamp: time.Date(2026, 5, 30, 0, 0, 0, 0, time.UTC),
 		Up:        addTaskIDToBackupRunsUp,
-		Down:      addTaskIDToBackupRunsDown,
 	})
 }
 
 func addTaskIDToBackupRunsUp(db *gorm.DB) error {
 	return db.Exec(`ALTER TABLE docker_database_backup_runs ADD COLUMN IF NOT EXISTS task_id CHAR(26) NULL`).Error
-}
-
-func addTaskIDToBackupRunsDown(db *gorm.DB) error {
-	return db.Exec(`ALTER TABLE docker_database_backup_runs DROP COLUMN IF EXISTS task_id`).Error
 }

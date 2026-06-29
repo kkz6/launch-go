@@ -12,7 +12,6 @@ func init() {
 		Name:      "Create dns_records table",
 		Timestamp: time.Date(2007, 5, 2, 0, 0, 2, 0, time.UTC),
 		Up:        createDNSRecordsTableUp,
-		Down:      createDNSRecordsTableDown,
 	})
 }
 
@@ -58,8 +57,4 @@ func createDNSRecordsTableUp(db *gorm.DB) error {
 	}
 
 	return migrator.CreateConstraint(&dnsRecordWithDomainFK{}, "Domain")
-}
-
-func createDNSRecordsTableDown(db *gorm.DB) error {
-	return db.Migrator().DropTable(&dnsRecordMigration{})
 }

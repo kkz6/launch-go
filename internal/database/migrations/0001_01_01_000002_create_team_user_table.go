@@ -12,7 +12,6 @@ func init() {
 		Name:      "Create team_user pivot table",
 		Timestamp: time.Date(2001, 1, 1, 0, 0, 2, 0, time.UTC),
 		Up:        createTeamUserTableUp,
-		Down:      createTeamUserTableDown,
 	})
 }
 
@@ -57,10 +56,4 @@ func createTeamUserTableUp(db *gorm.DB) error {
 
 	// Add foreign key constraint for team_user.user_id -> users.id
 	return migrator.CreateConstraint(&teamUserWithFK{}, "User")
-}
-
-func createTeamUserTableDown(db *gorm.DB) error {
-	migrator := db.Migrator()
-
-	return migrator.DropTable(&teamUserMigration{})
 }

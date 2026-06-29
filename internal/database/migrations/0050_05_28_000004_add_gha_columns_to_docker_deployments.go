@@ -29,7 +29,6 @@ func init() {
 		Name:      "Add trigger_source + gha_run_id + gha_run_url to docker_deployments",
 		Timestamp: time.Date(2026, 5, 28, 0, 0, 4, 0, time.UTC),
 		Up:        addGHAColumnsToDockerDeploymentsUp,
-		Down:      addGHAColumnsToDockerDeploymentsDown,
 	})
 }
 
@@ -46,17 +45,5 @@ func addGHAColumnsToDockerDeploymentsUp(db *gorm.DB) error {
 		CREATE UNIQUE INDEX idx_docker_deployments_gha_run_id
 			ON docker_deployments (target_type, target_id, gha_run_id)
 			WHERE gha_run_id IS NOT NULL
-	`).Error
-}
-
-func addGHAColumnsToDockerDeploymentsDown(db *gorm.DB) error {
-	if err := db.Exec(`DROP INDEX IF EXISTS idx_docker_deployments_gha_run_id`).Error; err != nil {
-		return err
-	}
-	return db.Exec(`
-		ALTER TABLE docker_deployments
-			DROP COLUMN IF EXISTS trigger_source,
-			DROP COLUMN IF EXISTS gha_run_id,
-			DROP COLUMN IF EXISTS gha_run_url
 	`).Error
 }
