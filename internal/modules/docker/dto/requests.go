@@ -101,10 +101,19 @@ type DockerfileSourceInput struct {
 }
 
 // UpdateApplicationRequest is the partial-update body for an application.
-// Only Name is mutable in phase 2a — source/build settings are immutable
-// until later slices add a "reconfigure" flow.
+// Name plus the build settings (build_type / dockerfile_path) are mutable;
+// the source itself (repo, image, branch) is not. BuildType / DockerfilePath
+// only apply to git-source apps; the service rejects them otherwise. For a
+// GitHub Actions app, changing them marks the committed workflow out of sync
+// so the user re-syncs it (the YAML embeds the dockerfile path).
 type UpdateApplicationRequest struct {
 	Name *string `json:"name,omitempty" validate:"omitempty,min=1,max=255"`
+	// BuildType is "nixpacks" (auto-detect a Dockerfile, else Nixpacks) or
+	// "dockerfile". Mirrors GitSourceInput.BuildType.
+	BuildType *string `json:"build_type,omitempty" validate:"omitempty,oneof=nixpacks dockerfile"`
+	// DockerfilePath is the path to the Dockerfile within the repo; only
+	// meaningful when BuildType is "dockerfile".
+	DockerfilePath *string `json:"dockerfile_path,omitempty" validate:"omitempty,max=512"`
 }
 
 // CreateComposeRequest registers a docker-compose stack inside a project.

@@ -46,6 +46,21 @@ func (r *ApplicationRepository) UpdateSourceConfig(
 		Update("source_config", cfg).Error
 }
 
+// UpdateBuildConfig writes the build_type and build_config columns together.
+// build_config is read-modify-written by the caller so unrelated keys (the
+// Advanced runtime knobs also stored there) are preserved.
+func (r *ApplicationRepository) UpdateBuildConfig(
+	ctx context.Context, id, buildType string, buildConfig dbtype.JSONMap,
+) error {
+	return r.DB.WithContext(ctx).
+		Model(&models.Application{}).
+		Where("id = ?", id).
+		Updates(map[string]any{
+			"build_type":   buildType,
+			"build_config": buildConfig,
+		}).Error
+}
+
 // FindByIDAndTeamServer returns the application iff the (id, team, server)
 // triple matches. Same tenancy-defence as ProjectRepository — wrong
 // team/server returns NotFound rather than leaking that an ID exists.

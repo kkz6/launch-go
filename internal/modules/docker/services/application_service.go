@@ -252,6 +252,10 @@ func (s *ApplicationService) UpdateApplication(
 		}
 	}
 
+	if err := s.applyBuildConfigUpdate(ctx, app, teamID, serverID, req); err != nil {
+		return dto.ApplicationResponse{}, err
+	}
+
 	reloaded, err := s.Repos().Application().FindByIDAndTeamServer(ctx, id, teamID, serverID)
 	if err != nil {
 		return dto.ApplicationResponse{}, err
@@ -259,6 +263,94 @@ func (s *ApplicationService) UpdateApplication(
 	resp := dto.ToApplicationResponse(reloaded)
 	s.BroadcastToTeam(teamID, "docker.application.updated", resp)
 	return *resp, nil
+}
+
+// applyBuildConfigUpdate applies build_type / dockerfile_path changes from an
+// update request. Only git-source apps have a build step, so the change is
+// rejected on image/dockerfile sources. dockerfile_path lives in the
+// build_config JSON alongside the Advanced runtime knobs, so it is read-
+// modify-written to preserve those. When the app builds via GitHub Actions a
+// real change marks the committed workflow out of sync (the YAML embeds the
+// path + build type) — the same mechanism a build-secret change uses; the user
+// re-syncs explicitly. No-op when nothing changed.
+func (s *ApplicationService) applyBuildConfigUpdate(
+	ctx context.Context, app *models.Application, teamID, serverID string,
+	req *dto.UpdateApplicationRequest,
+) error {
+	if req.BuildType == nil && req.DockerfilePath == nil {
+		return nil
+	}
+	if app.SourceType != dockertypes.SourceTypeGit {
+		return fiberutil.BadRequest("Build settings can only be changed on git-source applications")
+	}
+
+	newBuildType, newConfig, changed := resolveBuildConfigChange(app.BuildType, app.BuildConfig, req)
+	if !changed {
+		return nil
+	}
+
+	if err := s.Repos().Application().UpdateBuildConfig(ctx, app.ID, string(newBuildType), newConfig); err != nil {
+		return err
+	}
+
+	if app.BuildLocation == dockertypes.BuildLocationGitHubActions {
+		cfg, pending := bumpGHAPendingChanges(app.SourceConfig)
+		if err := s.Repos().Application().UpdateSourceConfig(ctx, app.ID, cfg); err != nil {
+			s.LogError(err, "persist gha pending-changes", "application_id", app.ID)
+		} else {
+			s.BroadcastToTeam(teamID, "docker.application.gha_out_of_sync", map[string]any{
+				"application_id":  app.ID,
+				"server_id":       serverID,
+				"team_id":         teamID,
+				"pending_changes": pending,
+			})
+		}
+	}
+	return nil
+}
+
+// resolveBuildConfigChange computes the new build_type + build_config for a
+// build-settings update and reports whether anything actually changed. Pure:
+// no DB, no side effects. dockerfile_path lives in build_config alongside
+// unrelated runtime keys, which are preserved. A nixpacks build drops the
+// dockerfile path; a dockerfile build keeps the existing path unless the
+// request supplies a new one.
+func resolveBuildConfigChange(
+	currentType *dockertypes.BuildType, currentConfig dbtype.JSONMap,
+	req *dto.UpdateApplicationRequest,
+) (dockertypes.BuildType, dbtype.JSONMap, bool) {
+	newType := dockertypes.BuildTypeNixpacks
+	if req.BuildType != nil {
+		newType = dockertypes.BuildType(*req.BuildType)
+	} else if currentType != nil {
+		newType = *currentType
+	}
+
+	newConfig := dbtype.JSONMap{}
+	for k, v := range currentConfig {
+		newConfig[k] = v
+	}
+	oldPath, _ := currentConfig["dockerfile_path"].(string)
+	newPath := oldPath
+	if newType == dockertypes.BuildTypeDockerfile {
+		if req.DockerfilePath != nil {
+			newPath = strings.TrimSpace(*req.DockerfilePath)
+		}
+	} else {
+		newPath = ""
+	}
+	if newPath != "" {
+		newConfig["dockerfile_path"] = newPath
+	} else {
+		delete(newConfig, "dockerfile_path")
+	}
+
+	oldType := ""
+	if currentType != nil {
+		oldType = string(*currentType)
+	}
+	changed := oldType != string(newType) || oldPath != newPath
+	return newType, newConfig, changed
 }
 
 // DeleteApplication soft-deletes the row AND dispatches a docker
