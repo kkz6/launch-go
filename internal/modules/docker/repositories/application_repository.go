@@ -48,17 +48,23 @@ func (r *ApplicationRepository) UpdateSourceConfig(
 
 // UpdateBuildConfig writes the build_type and build_config columns together.
 // build_config is read-modify-written by the caller so unrelated keys (the
-// Advanced runtime knobs also stored there) are preserved.
+// Advanced runtime knobs also stored there) are preserved. A nil buildType
+// sets build_type to NULL — the auto-detect state. A map update (not a struct)
+// is used precisely so the NULL is written rather than skipped as a zero value.
 func (r *ApplicationRepository) UpdateBuildConfig(
-	ctx context.Context, id, buildType string, buildConfig dbtype.JSONMap,
+	ctx context.Context, id string, buildType *string, buildConfig dbtype.JSONMap,
 ) error {
+	updates := map[string]any{
+		"build_config": buildConfig,
+		"build_type":   nil,
+	}
+	if buildType != nil {
+		updates["build_type"] = *buildType
+	}
 	return r.DB.WithContext(ctx).
 		Model(&models.Application{}).
 		Where("id = ?", id).
-		Updates(map[string]any{
-			"build_type":   buildType,
-			"build_config": buildConfig,
-		}).Error
+		Updates(updates).Error
 }
 
 // FindByIDAndTeamServer returns the application iff the (id, team, server)

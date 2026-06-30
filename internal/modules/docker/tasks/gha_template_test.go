@@ -9,6 +9,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gopkg.in/yaml.v3"
 )
 
 // updateGolden lets us refresh the golden files when an intentional
@@ -53,11 +54,12 @@ func TestRenderComposeWorkflow_GoldenStable(t *testing.T) {
 	assertGolden(t, goldenCompose, got)
 }
 
-// TestRenderApplicationWorkflow_RespectsBuildType pins that an explicit
-// build method is honoured in the Detect-builder step rather than
-// auto-detected: "dockerfile" fails loudly if the Dockerfile is missing,
-// "nixpacks" forces nixpacks, and "" (auto) falls back to detection.
-func TestRenderApplicationWorkflow_RespectsBuildType(t *testing.T) {
+// TestRenderApplicationWorkflow_BuildTypeBranches pins that a fixed build
+// method emits a minimal workflow — only its one build step — while auto
+// ("") carries the Detect-builder step plus both build steps. The runtime
+// `case` is gone: the build type is known at render time, so the branch is
+// chosen here, not in the generated shell.
+func TestRenderApplicationWorkflow_BuildTypeBranches(t *testing.T) {
 	base := func(bt string) ApplicationWorkflowData {
 		return ApplicationWorkflowData{
 			Branch:            "main",
@@ -71,23 +73,58 @@ func TestRenderApplicationWorkflow_RespectsBuildType(t *testing.T) {
 		}
 	}
 
+	// Fixed dockerfile: only the Dockerfile build, no detect, no nixpacks,
+	// no runtime conditional.
 	df, err := RenderApplicationWorkflow(base("dockerfile"))
 	require.NoError(t, err)
-	// Explicit dockerfile: guards the file and errors clearly if absent;
-	// no silent nixpacks fallback in the case body.
-	assert.Contains(t, df, `case "dockerfile" in`)
-	assert.Contains(t, df, `if [ ! -f "Dockerfile" ]`)
-	assert.Contains(t, df, "Build method is 'dockerfile' but Dockerfile was not found")
+	assert.Contains(t, df, "Build (Dockerfile)")
+	assert.Contains(t, df, "file: Dockerfile")
+	assert.NotContains(t, df, "Detect builder")
+	assert.NotContains(t, df, "Build (Nixpacks)")
+	assert.NotContains(t, df, "steps.builder.outputs.kind")
 
+	// Fixed nixpacks: only the Nixpacks build.
 	np, err := RenderApplicationWorkflow(base("nixpacks"))
 	require.NoError(t, err)
-	assert.Contains(t, np, `case "nixpacks" in`)
+	assert.Contains(t, np, "Build (Nixpacks)")
+	assert.Contains(t, np, "nixpacks build")
+	assert.NotContains(t, np, "Detect builder")
+	assert.NotContains(t, np, "Build (Dockerfile)")
+	assert.NotContains(t, np, "steps.builder.outputs.kind")
 
+	// Auto: detect by Dockerfile presence, then both conditional builds.
 	auto, err := RenderApplicationWorkflow(base(""))
 	require.NoError(t, err)
-	// Auto (empty): detect by Dockerfile presence in the fallback arm.
-	assert.Contains(t, auto, `case "" in`)
+	assert.Contains(t, auto, "Detect builder")
 	assert.Contains(t, auto, `if [ -f "Dockerfile" ]`)
+	assert.Contains(t, auto, "Build (Dockerfile)")
+	assert.Contains(t, auto, "Build (Nixpacks)")
+	assert.Contains(t, auto, "steps.builder.outputs.kind == 'dockerfile'")
+	// The old runtime build-method case is gone — no Dockerfile-missing arm.
+	assert.NotContains(t, auto, "Build method is 'dockerfile' but")
+}
+
+// TestRenderApplicationWorkflow_AllBuildTypesValidYAML guards the build-type
+// branching: every branch (auto / dockerfile / nixpacks) must still parse as
+// valid YAML. A whitespace slip in one of the conditional arms would otherwise
+// only blow up when GitHub Actions tries to load the committed workflow.
+func TestRenderApplicationWorkflow_AllBuildTypesValidYAML(t *testing.T) {
+	for _, bt := range []string{"", "dockerfile", "nixpacks"} {
+		got, err := RenderApplicationWorkflow(ApplicationWorkflowData{
+			Branch:            "main",
+			DockerfilePath:    "docker/Dockerfile",
+			BuildType:         bt,
+			LaunchBaseURL:     "https://launchctl.io",
+			AppID:             "01HJX",
+			ImagePackage:      "kkz6/testapp",
+			Platform:          "linux/amd64",
+			DeployTokenSecret: "LAUNCH_DEPLOY_TOKEN_TESTAPP",
+			BuildSecretNames:  []string{"NPM_TOKEN"},
+		})
+		require.NoError(t, err)
+		var doc any
+		require.NoError(t, yaml.Unmarshal([]byte(got), &doc), "build_type %q must render valid YAML", bt)
+	}
 }
 
 // TestRenderApplicationWorkflow_AutoDeployTrigger pins the auto-deploy

@@ -35,22 +35,11 @@ jobs:
       - name: Detect builder
         id: builder
         run: |
-          case "" in
-            dockerfile)
-              if [ ! -f "Dockerfile" ]; then
-                echo "::error::Build method is 'dockerfile' but Dockerfile was not found in the repo. Add the Dockerfile, or switch the build method to Nixpacks in Launch."
-                exit 1
-              fi
-              echo "kind=dockerfile" >> $GITHUB_OUTPUT ;;
-            nixpacks)
-              echo "kind=nixpacks" >> $GITHUB_OUTPUT ;;
-            *)
-              if [ -f "Dockerfile" ]; then
-                echo "kind=dockerfile" >> $GITHUB_OUTPUT
-              else
-                echo "kind=nixpacks" >> $GITHUB_OUTPUT
-              fi ;;
-          esac
+          if [ -f "Dockerfile" ]; then
+            echo "kind=dockerfile" >> $GITHUB_OUTPUT
+          else
+            echo "kind=nixpacks" >> $GITHUB_OUTPUT
+          fi
 
       - name: Build (Dockerfile)
         if: steps.builder.outputs.kind == 'dockerfile'

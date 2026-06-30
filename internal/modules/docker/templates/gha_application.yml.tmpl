@@ -40,25 +40,44 @@ jobs:
           username: ${{ "{{" }} github.actor {{ "}}" }}
           password: ${{ "{{" }} secrets.GITHUB_TOKEN {{ "}}" }}
 
+{{- if eq .BuildType "dockerfile" }}
+
+      - name: Build (Dockerfile)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: {{.DockerfilePath}}
+          push: true
+          platforms: {{.Platform}}
+          tags: ${{ "{{" }} steps.meta.outputs.image {{ "}}" }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          {{- if .BuildSecretNames}}
+          secrets: |
+{{- range .BuildSecretNames}}
+            {{.}}=${{ "{{" }} secrets.LAUNCH_BUILD_{{.}} {{ "}}" }}
+{{- end}}
+          {{- end}}
+{{- else if eq .BuildType "nixpacks" }}
+
+      - name: Build (Nixpacks)
+        env:
+          IMAGE: ${{ "{{" }} steps.meta.outputs.image {{ "}}" }}
+        run: |
+          set -euo pipefail
+          curl -sSL https://nixpacks.com/install.sh | bash
+          nixpacks build . --name "$IMAGE"
+          docker push "$IMAGE"
+{{- else }}
+
       - name: Detect builder
         id: builder
         run: |
-          case "{{.BuildType}}" in
-            dockerfile)
-              if [ ! -f "{{.DockerfilePath}}" ]; then
-                echo "::error::Build method is 'dockerfile' but {{.DockerfilePath}} was not found in the repo. Add the Dockerfile, or switch the build method to Nixpacks in Launch."
-                exit 1
-              fi
-              echo "kind=dockerfile" >> $GITHUB_OUTPUT ;;
-            nixpacks)
-              echo "kind=nixpacks" >> $GITHUB_OUTPUT ;;
-            *)
-              if [ -f "{{.DockerfilePath}}" ]; then
-                echo "kind=dockerfile" >> $GITHUB_OUTPUT
-              else
-                echo "kind=nixpacks" >> $GITHUB_OUTPUT
-              fi ;;
-          esac
+          if [ -f "{{.DockerfilePath}}" ]; then
+            echo "kind=dockerfile" >> $GITHUB_OUTPUT
+          else
+            echo "kind=nixpacks" >> $GITHUB_OUTPUT
+          fi
 
       - name: Build (Dockerfile)
         if: steps.builder.outputs.kind == 'dockerfile'
@@ -87,6 +106,7 @@ jobs:
           curl -sSL https://nixpacks.com/install.sh | bash
           nixpacks build . --name "$IMAGE"
           docker push "$IMAGE"
+{{- end }}
 
       - name: Mint GHCR pull token
         id: ghcr_token

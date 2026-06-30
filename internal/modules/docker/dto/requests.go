@@ -108,9 +108,10 @@ type DockerfileSourceInput struct {
 // so the user re-syncs it (the YAML embeds the dockerfile path).
 type UpdateApplicationRequest struct {
 	Name *string `json:"name,omitempty" validate:"omitempty,min=1,max=255"`
-	// BuildType is "nixpacks" (auto-detect a Dockerfile, else Nixpacks) or
-	// "dockerfile". Mirrors GitSourceInput.BuildType.
-	BuildType *string `json:"build_type,omitempty" validate:"omitempty,oneof=nixpacks dockerfile"`
+	// BuildType is "auto" (detect a Dockerfile at build time, else Nixpacks),
+	// "nixpacks" (forced), or "dockerfile" (forced). "auto" clears the stored
+	// build type to NULL.
+	BuildType *string `json:"build_type,omitempty" validate:"omitempty,oneof=auto nixpacks dockerfile"`
 	// DockerfilePath is the path to the Dockerfile within the repo; only
 	// meaningful when BuildType is "dockerfile".
 	DockerfilePath *string `json:"dockerfile_path,omitempty" validate:"omitempty,max=512"`

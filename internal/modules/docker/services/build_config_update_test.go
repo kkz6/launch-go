@@ -20,8 +20,8 @@ func TestResolveBuildConfigChange_SetsDockerfilePath(t *testing.T) {
 	if !changed {
 		t.Fatal("expected changed=true")
 	}
-	if newType != dockertypes.BuildTypeDockerfile {
-		t.Errorf("build type = %q, want dockerfile", newType)
+	if newType == nil || *newType != dockertypes.BuildTypeDockerfile {
+		t.Errorf("build type = %v, want dockerfile", newType)
 	}
 	if got := cfg["dockerfile_path"]; got != "docker/Dockerfile" {
 		t.Errorf("dockerfile_path = %v, want trimmed 'docker/Dockerfile'", got)
@@ -79,7 +79,24 @@ func TestResolveBuildConfigChange_PathOnlyKeepsType(t *testing.T) {
 	newType, cfg, changed := resolveBuildConfigChange(cur, dbtype.JSONMap{"dockerfile_path": "a/Dockerfile"}, &dto.UpdateApplicationRequest{
 		DockerfilePath: strptr("b/Dockerfile"),
 	})
-	if !changed || newType != dockertypes.BuildTypeDockerfile || cfg["dockerfile_path"] != "b/Dockerfile" {
-		t.Errorf("got type=%q path=%v changed=%v", newType, cfg["dockerfile_path"], changed)
+	if !changed || newType == nil || *newType != dockertypes.BuildTypeDockerfile || cfg["dockerfile_path"] != "b/Dockerfile" {
+		t.Errorf("got type=%v path=%v changed=%v", newType, cfg["dockerfile_path"], changed)
+	}
+}
+
+// Switching to auto clears the build type to nil and drops the dockerfile path.
+func TestResolveBuildConfigChange_AutoClearsType(t *testing.T) {
+	cur := btptr(dockertypes.BuildTypeDockerfile)
+	newType, cfg, changed := resolveBuildConfigChange(cur, dbtype.JSONMap{"dockerfile_path": "docker/Dockerfile"}, &dto.UpdateApplicationRequest{
+		BuildType: strptr("auto"),
+	})
+	if !changed {
+		t.Fatal("expected changed=true")
+	}
+	if newType != nil {
+		t.Errorf("auto build type should be nil, got %v", *newType)
+	}
+	if _, ok := cfg["dockerfile_path"]; ok {
+		t.Errorf("dockerfile_path should be dropped for auto, got %v", cfg["dockerfile_path"])
 	}
 }

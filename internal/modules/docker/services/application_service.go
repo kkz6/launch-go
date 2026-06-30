@@ -289,7 +289,12 @@ func (s *ApplicationService) applyBuildConfigUpdate(
 		return nil
 	}
 
-	if err := s.Repos().Application().UpdateBuildConfig(ctx, app.ID, string(newBuildType), newConfig); err != nil {
+	var buildTypeStr *string
+	if newBuildType != nil {
+		v := string(*newBuildType)
+		buildTypeStr = &v
+	}
+	if err := s.Repos().Application().UpdateBuildConfig(ctx, app.ID, buildTypeStr, newConfig); err != nil {
 		return err
 	}
 
@@ -318,12 +323,17 @@ func (s *ApplicationService) applyBuildConfigUpdate(
 func resolveBuildConfigChange(
 	currentType *dockertypes.BuildType, currentConfig dbtype.JSONMap,
 	req *dto.UpdateApplicationRequest,
-) (dockertypes.BuildType, dbtype.JSONMap, bool) {
-	newType := dockertypes.BuildTypeNixpacks
+) (*dockertypes.BuildType, dbtype.JSONMap, bool) {
+	// "auto" (and an omitted build type with a nil current) maps to nil, which
+	// the deploy job + GHA workflow treat as auto-detect.
+	newType := currentType
 	if req.BuildType != nil {
-		newType = dockertypes.BuildType(*req.BuildType)
-	} else if currentType != nil {
-		newType = *currentType
+		if *req.BuildType == "auto" {
+			newType = nil
+		} else {
+			bt := dockertypes.BuildType(*req.BuildType)
+			newType = &bt
+		}
 	}
 
 	newConfig := dbtype.JSONMap{}
@@ -332,11 +342,12 @@ func resolveBuildConfigChange(
 	}
 	oldPath, _ := currentConfig["dockerfile_path"].(string)
 	newPath := oldPath
-	if newType == dockertypes.BuildTypeDockerfile {
+	if newType != nil && *newType == dockertypes.BuildTypeDockerfile {
 		if req.DockerfilePath != nil {
 			newPath = strings.TrimSpace(*req.DockerfilePath)
 		}
 	} else {
+		// Nixpacks and auto don't carry an explicit dockerfile path.
 		newPath = ""
 	}
 	if newPath != "" {
@@ -345,11 +356,14 @@ func resolveBuildConfigChange(
 		delete(newConfig, "dockerfile_path")
 	}
 
-	oldType := ""
+	oldTypeStr, newTypeStr := "", ""
 	if currentType != nil {
-		oldType = string(*currentType)
+		oldTypeStr = string(*currentType)
 	}
-	changed := oldType != string(newType) || oldPath != newPath
+	if newType != nil {
+		newTypeStr = string(*newType)
+	}
+	changed := oldTypeStr != newTypeStr || oldPath != newPath
 	return newType, newConfig, changed
 }
 
@@ -1203,14 +1217,14 @@ func buildSourceConfig(req *dto.CreateApplicationRequest) (
 		if req.Git.SourceControlID != nil && *req.Git.SourceControlID != "" {
 			source["source_control_id"] = *req.Git.SourceControlID
 		}
-		// Build type defaults to nixpacks; the deploy job will auto-detect
-		// a Dockerfile at the repo root and override unless the user has
-		// explicitly chosen.
-		bt := dockertypes.BuildTypeNixpacks
+		// An omitted build type stays nil = auto-detect: the deploy job and
+		// the GHA workflow detect a Dockerfile at build time and fall back to
+		// Nixpacks. An explicit "nixpacks"/"dockerfile" is honoured verbatim —
+		// a fixed choice the workflow renders without the detection step.
 		if req.Git.BuildType != nil {
-			bt = dockertypes.BuildType(*req.Git.BuildType)
+			bt := dockertypes.BuildType(*req.Git.BuildType)
+			buildType = &bt
 		}
-		buildType = &bt
 		buildConfig = dbtype.JSONMap{}
 		if req.Git.DockerfilePath != nil && strings.TrimSpace(*req.Git.DockerfilePath) != "" {
 			buildConfig["dockerfile_path"] = strings.TrimSpace(*req.Git.DockerfilePath)
