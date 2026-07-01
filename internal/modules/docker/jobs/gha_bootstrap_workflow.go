@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -193,22 +194,26 @@ func (j *GHABootstrapWorkflowJob) handleApplication(ctx context.Context) error {
 	// onto the row. The image repository is what the webhook handler
 	// validates incoming `image_tag` against — without it, every GHA
 	// deploy notify fails closed at validation.
-	updates := map[string]any{
-		"source_config": appendSourceConfig(app.SourceConfig, map[string]any{
-			"gha_workflow_sha":       cfg.LastCommitSHA,
-			"gha_workflow_path":      cfg.WorkflowPath,
-			"gha_deploy_secret_name": cfg.DeployTokenSecret,
-			"gha_image_repository":   "ghcr.io/" + cfg.ImagePackage,
-			// Success clears any previous failure state so a retry
-			// after the customer grants permissions flips the banner
-			// off without the UI having to track it separately.
-			"gha_install_status": string(dockertypes.GHAInstallStatusOK),
-			// A successful sync flushes every pending build-secret
-			// change — the committed workflow + repo secrets now match
-			// the DB, so the "out of sync" banner clears.
-			"gha_pending_changes": 0,
-		}),
+	// Merge only these keys into source_config at the DB level. A full-column
+	// rewrite here raced the auto_deploy toggle that triggers this re-sync —
+	// this job loads the row before the toggle commits, so overwriting the
+	// whole column dropped auto_deploy. A jsonb `||` merge touches only the
+	// keys below and leaves auto_deploy (and anything else) intact.
+	scMerge, err := sourceConfigMergeExpr(map[string]any{
+		"gha_workflow_sha":       cfg.LastCommitSHA,
+		"gha_workflow_path":      cfg.WorkflowPath,
+		"gha_deploy_secret_name": cfg.DeployTokenSecret,
+		"gha_image_repository":   "ghcr.io/" + cfg.ImagePackage,
+		// Success clears any previous failure state so a retry after the
+		// customer grants permissions flips the banner off.
+		"gha_install_status": string(dockertypes.GHAInstallStatusOK),
+		// A successful sync flushes every pending build-secret change.
+		"gha_pending_changes": 0,
+	})
+	if err != nil {
+		return fmt.Errorf("gha bootstrap: build source_config merge: %w", err)
 	}
+	updates := map[string]any{"source_config": scMerge}
 	if tokenHash != "" {
 		updates["gha_deploy_token_hash"] = tokenHash
 	}
@@ -364,16 +369,21 @@ func (j *GHABootstrapWorkflowJob) recordBootstrapFailure(
 	// survives reloads. Best-effort — a DB hiccup here logs but
 	// shouldn't block the broadcast/email, which are the actionable
 	// signals.
-	newCfg := appendSourceConfig(sourceConfig, map[string]any{
+	// Merge just the status flag (jsonb ||) so a stale full-column write
+	// doesn't drop other source_config keys such as auto_deploy.
+	scMerge, mergeErr := sourceConfigMergeExpr(map[string]any{
 		"gha_install_status": string(status),
 	})
 	var persistErr error
-	if app != nil {
+	switch {
+	case mergeErr != nil:
+		persistErr = mergeErr
+	case app != nil:
 		persistErr = j.Deps.DB.WithContext(ctx).Model(app).
-			Update("source_config", newCfg).Error
-	} else {
+			Update("source_config", scMerge).Error
+	default:
 		persistErr = j.Deps.DB.WithContext(ctx).Model(compose).
-			Update("source_config", newCfg).Error
+			Update("source_config", scMerge).Error
 	}
 	if persistErr != nil {
 		j.Deps.Logger.Warn().Err(persistErr).
@@ -572,14 +582,18 @@ func (j *GHABootstrapWorkflowJob) handleCompose(ctx context.Context) error {
 		return j.recordBootstrapFailure(ctx, nil, &compose, "compose", err)
 	}
 
-	updates := map[string]any{
-		"source_config": appendSourceConfig(compose.SourceConfig, map[string]any{
-			"gha_workflow_sha":     cfg.LastCommitSHA,
-			"gha_image_repository": "ghcr.io/" + cfg.ImagePackage,
-			"gha_install_status":   string(dockertypes.GHAInstallStatusOK),
-			"gha_pending_changes":  0,
-		}),
+	// Merge only these keys (jsonb ||) so the re-sync can't clobber a
+	// concurrently-set auto_deploy — same fix as the application path.
+	scMerge, err := sourceConfigMergeExpr(map[string]any{
+		"gha_workflow_sha":     cfg.LastCommitSHA,
+		"gha_image_repository": "ghcr.io/" + cfg.ImagePackage,
+		"gha_install_status":   string(dockertypes.GHAInstallStatusOK),
+		"gha_pending_changes":  0,
+	})
+	if err != nil {
+		return fmt.Errorf("gha bootstrap: build source_config merge: %w", err)
 	}
+	updates := map[string]any{"source_config": scMerge}
 	if tokenHash != "" {
 		updates["gha_deploy_token_hash"] = tokenHash
 	}
@@ -870,17 +884,17 @@ func firstNonEmpty(s, fallback string) string {
 	return s
 }
 
-// appendSourceConfig returns a NEW map with updates merged in. Doesn't
-// mutate the original — GORM JSON serialization needs a fresh map.
-func appendSourceConfig(orig map[string]any, updates map[string]any) map[string]any {
-	out := make(map[string]any, len(orig)+len(updates))
-	for k, v := range orig {
-		out[k] = v
+// sourceConfigMergeExpr returns a GORM expression that merges patch into the
+// source_config JSONB column (source_config || patch) rather than overwriting
+// it. A DB-level merge keeps a concurrent writer's keys — notably the
+// auto_deploy flag toggled while a workflow re-sync is in flight — from being
+// lost to a full-column read-modify-write taken from a stale snapshot.
+func sourceConfigMergeExpr(patch map[string]any) (any, error) {
+	b, err := json.Marshal(patch)
+	if err != nil {
+		return nil, err
 	}
-	for k, v := range updates {
-		out[k] = v
-	}
-	return out
+	return gorm.Expr("COALESCE(source_config, '{}'::jsonb) || ?::jsonb", string(b)), nil
 }
 
 // mintTokenIfNeeded generates a fresh deploy token + sha256 hash when rotation

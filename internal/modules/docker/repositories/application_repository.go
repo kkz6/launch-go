@@ -2,6 +2,7 @@ package repositories
 
 import (
 	"context"
+	"encoding/json"
 
 	"gorm.io/gorm"
 
@@ -44,6 +45,25 @@ func (r *ApplicationRepository) UpdateSourceConfig(
 		Model(&models.Application{}).
 		Where("id = ?", id).
 		Update("source_config", cfg).Error
+}
+
+// MergeSourceConfig merges patch into the source_config JSONB column at the
+// database level (source_config || patch), preserving every key the caller
+// doesn't set. Unlike a read-modify-write of the whole column, two writers
+// touching different keys can't lose each other's updates — this is what kept
+// the auto_deploy flag from surviving an in-flight workflow re-sync (the async
+// bootstrap rewrote the whole column from a snapshot taken before the toggle).
+func (r *ApplicationRepository) MergeSourceConfig(
+	ctx context.Context, id string, patch map[string]any,
+) error {
+	b, err := json.Marshal(patch)
+	if err != nil {
+		return err
+	}
+	return r.DB.WithContext(ctx).
+		Model(&models.Application{}).
+		Where("id = ?", id).
+		Update("source_config", gorm.Expr("COALESCE(source_config, '{}'::jsonb) || ?::jsonb", string(b))).Error
 }
 
 // UpdateBuildConfig writes the build_type and build_config columns together.

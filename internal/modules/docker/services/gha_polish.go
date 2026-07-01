@@ -77,17 +77,6 @@ func (s *ApplicationService) ResyncGHA(
 	return s.EnqueueTask(task)
 }
 
-// withAutoDeploy returns a copy of a source_config map with auto_deploy set.
-// Copy (not mutate) so GORM's JSON serializer sees a fresh value.
-func withAutoDeploy(orig map[string]any, enabled bool) map[string]any {
-	out := make(map[string]any, len(orig)+1)
-	for k, v := range orig {
-		out[k] = v
-	}
-	out["auto_deploy"] = enabled
-	return out
-}
-
 // SetAutoDeployGHA flips auto-deploy for a GHA application and re-syncs the
 // committed workflow so its `on:` trigger reflects the change: push to the
 // deploy branch (+ manual workflow_dispatch) when on, manual-only when off.
@@ -105,8 +94,12 @@ func (s *ApplicationService) SetAutoDeployGHA(
 	if app.BuildLocation != dockertypes.BuildLocationGitHubActions {
 		return fiberutil.Validation("Application is not configured for GitHub Actions builds")
 	}
-	if err := s.Repos().Application().UpdateFields(ctx, app.ID, map[string]any{
-		"source_config": withAutoDeploy(app.SourceConfig, enabled),
+	// Merge only the auto_deploy key at the DB level. A full-column write
+	// here would race the workflow re-sync we kick off below — that job
+	// rewrites source_config too, and whichever ran on a stale snapshot
+	// dropped the other's change (this is why the toggle didn't stick).
+	if err := s.Repos().Application().MergeSourceConfig(ctx, app.ID, map[string]any{
+		"auto_deploy": enabled,
 	}); err != nil {
 		return err
 	}
@@ -218,8 +211,10 @@ func (s *ComposeService) SetAutoDeployGHA(
 	if compose.BuildLocation != dockertypes.BuildLocationGitHubActions {
 		return fiberutil.Validation("Compose stack is not configured for GitHub Actions builds")
 	}
-	if err := s.Repos().Compose().UpdateFields(ctx, compose.ID, map[string]any{
-		"source_config": withAutoDeploy(compose.SourceConfig, enabled),
+	// Merge only auto_deploy (see the application path) so the re-sync
+	// job we enqueue below can't clobber it with a stale full-column write.
+	if err := s.Repos().Compose().MergeSourceConfig(ctx, compose.ID, map[string]any{
+		"auto_deploy": enabled,
 	}); err != nil {
 		return err
 	}

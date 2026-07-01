@@ -2,6 +2,7 @@ package repositories
 
 import (
 	"context"
+	"encoding/json"
 
 	"gorm.io/gorm"
 
@@ -19,6 +20,22 @@ type ComposeRepository struct {
 // NewComposeRepository wires the base repository for compose stacks.
 func NewComposeRepository(db *gorm.DB) *ComposeRepository {
 	return &ComposeRepository{Base: repository.NewBase[models.Compose](db)}
+}
+
+// MergeSourceConfig merges patch into the source_config JSONB column at the
+// database level (source_config || patch), preserving keys the caller doesn't
+// set. See ApplicationRepository.MergeSourceConfig — same lost-update fix.
+func (r *ComposeRepository) MergeSourceConfig(
+	ctx context.Context, id string, patch map[string]any,
+) error {
+	b, err := json.Marshal(patch)
+	if err != nil {
+		return err
+	}
+	return r.DB.WithContext(ctx).
+		Model(&models.Compose{}).
+		Where("id = ?", id).
+		Update("source_config", gorm.Expr("COALESCE(source_config, '{}'::jsonb) || ?::jsonb", string(b))).Error
 }
 
 // FindByIDAndTeamServer fetches a compose stack scoped to the (team,
