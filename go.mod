@@ -29,7 +29,7 @@ require (
 	github.com/spf13/viper v1.21.0
 	github.com/standard-webhooks/standard-webhooks/libraries v0.0.0-20260114220421-3f69fd681bb0
 	github.com/stretchr/testify v1.11.1
-	github.com/yuin/goldmark v1.7.16
+	github.com/yuin/goldmark v1.7.17
 	golang.org/x/crypto v0.52.0
 	golang.org/x/sync v0.20.0
 	golang.org/x/term v0.43.0
