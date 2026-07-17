@@ -81,6 +81,7 @@ func (j *UpdateProviderDeploymentStatusJob) Handle(ctx context.Context) error {
 		DeploymentID: deployment.ID,
 		RepoFullName: repo.FullName,
 		SiteURL:      site.GetURL(),
+		LogURL:       deploymentLogURL(j.Deps.FrontendURL, site.ServerID, site.ID, deployment.ID),
 		ProjectID:    projectID,
 	}
 

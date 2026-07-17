@@ -257,10 +257,15 @@ func TestCreateDeployment_UsesCommitAsRefAndBypassesRequiredContexts(t *testing.
 	p.SetSourceControl(&SourceControlData{InstallationID: &installationID})
 
 	result, err := p.CreateDeployment(context.Background(), &DeploymentInfo{
+		ServerID:     "server-1",
+		SiteID:       "site-1",
+		DeploymentID: "deployment-1",
 		RepoFullName: "kkz6/test-repo",
 		Branch:       "main",
 		GitHash:      "abc123def456",
 		SiteURL:      "https://example.test",
+		LogURL:       "https://launch.test/servers/server-1/sites/site-1?deployment=deployment-1&tab=deployments",
+		Environment:  "production",
 		Description:  "Deployment via Launch",
 	})
 	require.NoError(t, err)
@@ -279,8 +284,27 @@ func TestCreateDeployment_UsesCommitAsRefAndBypassesRequiredContexts(t *testing.
 	assert.Equal(t, "abc123def456", body["ref"])
 	assert.Equal(t, false, body["auto_merge"])
 	assert.Equal(t, []any{}, body["required_contexts"])
+	assert.Equal(t, "production", body["environment"])
+	assert.Equal(t, true, body["production_environment"])
+	assert.Equal(t, false, body["transient_environment"])
+	payload, ok := body["payload"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "deployment-1", payload["deployment_id"])
+	assert.Equal(t, "https://example.test", payload["site_url"])
 	assert.NotContains(t, body, "sha")
 	assert.Equal(t, "/repos/kkz6/test-repo/deployments/42/statuses", requests[2].Path)
+	var statusBody map[string]any
+	require.NoError(t, json.Unmarshal([]byte(requests[2].Body), &statusBody))
+	assert.Equal(t, "https://launch.test/servers/server-1/sites/site-1?deployment=deployment-1&tab=deployments", statusBody["log_url"])
+	assert.Equal(t, statusBody["log_url"], statusBody["environment_url"])
+}
+
+func TestDeploymentTargetURLFallsBackToSite(t *testing.T) {
+	assert.Equal(t, "https://launch.test/deployments/1", deploymentTargetURL(&DeploymentInfo{
+		SiteURL: "https://site.test",
+		LogURL:  "https://launch.test/deployments/1",
+	}))
+	assert.Equal(t, "https://site.test", deploymentTargetURL(&DeploymentInfo{SiteURL: "https://site.test"}))
 }
 
 func TestCreateDeploymentPreservesProviderErrors(t *testing.T) {
