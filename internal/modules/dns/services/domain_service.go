@@ -60,7 +60,8 @@ func (s *DomainService) buildAndDispatchDomain(ctx context.Context, teamID, user
 	domain.TeamID = teamID
 
 	err = s.Repos().Domain().Transaction(ctx, func(tx *gorm.DB) error {
-		if err := s.Repos().Domain().Create(ctx, domain); err != nil {
+		txRepos := s.Repos().WithDB(tx)
+		if err := txRepos.Domain().Create(ctx, domain); err != nil {
 			return err
 		}
 
@@ -81,7 +82,7 @@ func (s *DomainService) buildAndDispatchDomain(ctx context.Context, teamID, user
 				TTL:        3600,
 			}
 			nsRecord.TeamID = teamID
-			if err := s.Repos().DNSRecord().Create(ctx, nsRecord); err != nil {
+			if err := txRepos.DNSRecord().Create(ctx, nsRecord); err != nil {
 				s.Logger.Warn().Err(err).Str("ns", ns).Msg("Failed to create NS record")
 			}
 		}

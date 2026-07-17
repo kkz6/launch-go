@@ -2,7 +2,6 @@ package repositories
 
 import (
 	"context"
-	"errors"
 
 	"gorm.io/gorm"
 
@@ -61,24 +60,13 @@ func (r *DomainRepository) FindByAddressAndProvider(ctx context.Context, address
 // UpdateOrCreate updates an existing domain matching `where`, or creates one.
 func (r *DomainRepository) UpdateOrCreate(ctx context.Context, where map[string]interface{}, update map[string]interface{}) (*models.Domain, error) {
 	var domain models.Domain
-
-	err := r.DB.WithContext(ctx).Where(where).First(&domain).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		for k, v := range where {
-			update[k] = v
-		}
-		domain = models.Domain{}
-		if err := r.DB.WithContext(ctx).Model(&domain).Create(update).Error; err != nil {
-			return nil, err
-		}
-		return r.FindByAddressAndProvider(ctx, where["address"].(string), where["domain_provider_id"].(string))
-	}
+	err := r.DB.WithContext(ctx).
+		Where(where).
+		Assign(update).
+		FirstOrCreate(&domain).Error
 	if err != nil {
 		return nil, err
 	}
 
-	if err := r.DB.WithContext(ctx).Model(&domain).Updates(update).Error; err != nil {
-		return nil, err
-	}
 	return &domain, nil
 }
