@@ -14,7 +14,7 @@ type SourceControlRepository interface {
 	Create(ctx context.Context, sc *models.SourceControl) error
 	Update(ctx context.Context, sc *models.SourceControl) error
 	UpdateFields(ctx context.Context, id string, updates SourceControlUpdates) error
-	Delete(ctx context.Context, id string) error
+	DeleteWithRepositories(ctx context.Context, id string) error
 	FindByID(ctx context.Context, id string) (*models.SourceControl, error)
 	FindByIDAndTeam(ctx context.Context, id, teamID string) (*models.SourceControl, error)
 	FindAllByTeam(ctx context.Context, teamID string) ([]models.SourceControl, error)
@@ -35,13 +35,11 @@ type SourceControlUpdates struct {
 
 // SourceControlRepoRepository defines the interface for source control repository database operations
 type SourceControlRepoRepository interface {
-	DeleteRepositoriesBySourceControlID(ctx context.Context, sourceControlID string) error
 	DeleteRepositoriesByIDs(ctx context.Context, ids []string) error
 	FindRepositoryByID(ctx context.Context, id string) (*models.SourceControlRepository, error)
 	FindRepositoriesBySourceControlID(ctx context.Context, sourceControlID string) ([]models.SourceControlRepository, error)
 	GetInstallationRepositories(ctx context.Context, provider gittypes.GitProviderType, installationID string, teamID string) ([]models.SourceControlRepository, error)
 	UpsertRepository(ctx context.Context, sourceControlID string, data *dto.RepositoryData) (*models.SourceControlRepository, error)
-	CountRepositoriesBySourceControlID(ctx context.Context, sourceControlID string) (int64, error)
 }
 
 // InstallationQueryOptions holds options for installation queries

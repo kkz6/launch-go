@@ -169,6 +169,53 @@ func TestDeleteByInstallationIDRollsBackChildDeletion(t *testing.T) {
 	assert.Equal(t, int64(1), repositoryCount)
 }
 
+func TestDeleteWithRepositoriesIsAtomic(t *testing.T) {
+	db := setupGitRepositoryDB(t)
+	sourceControl := createSourceControl(t, db, gittypes.GitProviderGitHub, "installation-1", "team-1")
+	repository := &models.SourceControlRepository{
+		SourceControlID: sourceControl.ID,
+		Name:            "app",
+		FullName:        "owner/app",
+		SSHURL:          "ssh://example/app",
+		DefaultBranch:   "main",
+	}
+	require.NoError(t, db.Create(repository).Error)
+
+	require.NoError(t, NewSourceControlRepository(db).DeleteWithRepositories(context.Background(), sourceControl.ID))
+
+	var sourceControlCount, repositoryCount int64
+	require.NoError(t, db.Model(&models.SourceControl{}).Count(&sourceControlCount).Error)
+	require.NoError(t, db.Model(&models.SourceControlRepository{}).Count(&repositoryCount).Error)
+	assert.Zero(t, sourceControlCount)
+	assert.Zero(t, repositoryCount)
+}
+
+func TestDeleteWithRepositoriesRollsBackChildDeletion(t *testing.T) {
+	db := setupGitRepositoryDB(t)
+	sourceControl := createSourceControl(t, db, gittypes.GitProviderGitHub, "installation-1", "team-1")
+	require.NoError(t, db.Create(&models.SourceControlRepository{
+		SourceControlID: sourceControl.ID,
+		Name:            "app",
+		FullName:        "owner/app",
+		SSHURL:          "ssh://example/app",
+		DefaultBranch:   "main",
+	}).Error)
+	require.NoError(t, db.Exec(`
+		CREATE TRIGGER reject_direct_source_control_delete
+		BEFORE DELETE ON source_controls
+		BEGIN
+			SELECT RAISE(ABORT, 'delete rejected');
+		END
+	`).Error)
+
+	err := NewSourceControlRepository(db).DeleteWithRepositories(context.Background(), sourceControl.ID)
+	require.Error(t, err)
+
+	var repositoryCount int64
+	require.NoError(t, db.Model(&models.SourceControlRepository{}).Count(&repositoryCount).Error)
+	assert.Equal(t, int64(1), repositoryCount)
+}
+
 func TestInstallationQueriesShareProviderAndTeamScoping(t *testing.T) {
 	db := setupGitRepositoryDB(t)
 	githubTeamOne := createSourceControl(t, db, gittypes.GitProviderGitHub, "github-1", "team-1")

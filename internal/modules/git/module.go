@@ -134,5 +134,5 @@ func (m *Module) RegisterJobs(mux *asynq.ServeMux) {
 	svc := m.createServices()
 
 	// Register job handlers
-	jobs.Register(mux, deps, m.repos, svc.SourceControl(), m.providerFactory)
+	jobs.Register(mux, deps, svc.SourceControl(), m.providerFactory)
 }

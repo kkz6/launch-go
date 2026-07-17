@@ -83,12 +83,18 @@ func (r *SourceControlRepository) UpdateFields(ctx context.Context, id string, u
 		Updates(fields).Error
 }
 
-// Delete soft-deletes a source control record
-func (r *SourceControlRepository) Delete(ctx context.Context, id string) error {
-	return r.DB.WithContext(ctx).Delete(&models.SourceControl{}, "id = ?", id).Error
+// DeleteWithRepositories atomically deletes a source control and its cached repositories.
+func (r *SourceControlRepository) DeleteWithRepositories(ctx context.Context, id string) error {
+	return r.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("source_control_id = ?", id).
+			Delete(&models.SourceControlRepository{}).Error; err != nil {
+			return err
+		}
+		return tx.Delete(&models.SourceControl{}, "id = ?", id).Error
+	})
 }
 
-// FindByID finds a source control by ID
+// FindByID finds a source control by ID.
 func (r *SourceControlRepository) FindByID(ctx context.Context, id string) (*models.SourceControl, error) {
 	return repository.FindOne[models.SourceControl](ctx, r.DB,
 		repository.WithID(id),

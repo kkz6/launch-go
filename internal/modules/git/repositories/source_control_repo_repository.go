@@ -25,13 +25,6 @@ func NewSourceControlRepoRepository(db *gorm.DB) *SourceControlRepoRepository {
 	}
 }
 
-// DeleteRepositoriesBySourceControlID deletes all repositories for a source control
-func (r *SourceControlRepoRepository) DeleteRepositoriesBySourceControlID(ctx context.Context, sourceControlID string) error {
-	return r.DB.WithContext(ctx).
-		Where("source_control_id = ?", sourceControlID).
-		Delete(&models.SourceControlRepository{}).Error
-}
-
 // DeleteRepositoriesByIDs deletes repositories by their IDs
 func (r *SourceControlRepoRepository) DeleteRepositoriesByIDs(ctx context.Context, ids []string) error {
 	if len(ids) == 0 {
@@ -43,7 +36,7 @@ func (r *SourceControlRepoRepository) DeleteRepositoriesByIDs(ctx context.Contex
 		Delete(&models.SourceControlRepository{}).Error
 }
 
-// FindRepositoryByID finds a repository by ID
+// FindRepositoryByID finds a repository by ID.
 func (r *SourceControlRepoRepository) FindRepositoryByID(ctx context.Context, id string) (*models.SourceControlRepository, error) {
 	return repository.FindOne[models.SourceControlRepository](ctx, r.DB,
 		repository.WithID(id),
@@ -134,15 +127,4 @@ func (r *SourceControlRepoRepository) UpsertRepository(ctx context.Context, sour
 	}
 
 	return &repo, nil
-}
-
-// CountRepositoriesBySourceControlID counts repositories for a source control
-func (r *SourceControlRepoRepository) CountRepositoriesBySourceControlID(ctx context.Context, sourceControlID string) (int64, error) {
-	var count int64
-	err := r.DB.WithContext(ctx).
-		Model(&models.SourceControlRepository{}).
-		Where("source_control_id = ?", sourceControlID).
-		Count(&count).Error
-
-	return count, err
 }
