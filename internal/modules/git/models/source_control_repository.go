@@ -4,9 +4,9 @@ package models
 // Note: Uses auto-increment ID for high-volume repository records
 type SourceControlRepository struct {
 	ID              uint64  `gorm:"primaryKey;autoIncrement" json:"id"`
-	SourceControlID string  `gorm:"column:source_control_id;type:char(26);not null;index" json:"source_control_id"`
+	SourceControlID string  `gorm:"column:source_control_id;type:char(26);not null;index;uniqueIndex:idx_source_control_repos_scid_fullname" json:"source_control_id"`
 	Name            string  `gorm:"type:varchar(255);not null" json:"name"`
-	FullName        string  `gorm:"column:full_name;type:varchar(255);not null" json:"full_name"`
+	FullName        string  `gorm:"column:full_name;type:varchar(255);not null;uniqueIndex:idx_source_control_repos_scid_fullname" json:"full_name"`
 	Public          bool    `gorm:"default:false" json:"public"`
 	SSHURL          string  `gorm:"column:ssh_url;type:varchar(255);not null" json:"ssh_url"`
 	DefaultBranch   string  `gorm:"column:default_branch;type:varchar(255);not null" json:"default_branch"`

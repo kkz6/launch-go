@@ -20,6 +20,13 @@ func NewRegistry(db *gorm.DB) *Registry {
 	}
 }
 
+// WithDB returns a repository registry bound to the supplied database handle.
+// Use this inside transactions so every repository operation participates in
+// the same transaction.
+func (r *Registry) WithDB(db *gorm.DB) *Registry {
+	return NewRegistry(db)
+}
+
 // Provider returns the domain provider repository
 func (r *Registry) Provider() *DomainProviderRepository { return r.provider }
 

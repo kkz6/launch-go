@@ -440,17 +440,16 @@ func (j *DeployJob) createProviderDeployment(ctx context.Context, site *models.S
 	}
 
 	result, err := provider.CreateDeployment(ctx, info)
-	if err != nil {
-		j.Deps.Logger.Error().Err(err).Msg("Failed to create deployment on provider")
-		return
-	}
-
 	if result != nil && result.Data != nil {
 		// Update deployment with VCS data
 		deployment.VcsData = result.Data
 		if err := j.Deps.Repos.Deployment().Update(ctx, deployment); err != nil {
 			j.Deps.Logger.Error().Err(err).Msg("Failed to update deployment with VCS data")
 		}
+	}
+
+	if err != nil {
+		j.Deps.Logger.Error().Err(err).Msg("Failed to create deployment on provider")
 	}
 }
 

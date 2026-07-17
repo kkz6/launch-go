@@ -65,9 +65,8 @@ func (j *SyncInstallationReposJob) Handle(ctx context.Context) error {
 	}
 
 	// Update repository count
-	if err := j.Deps.Repos.SourceControl().UpdateFields(ctx, sc.ID, map[string]any{
-		"repository_count": len(repositories),
-	}); err != nil {
+	repositoryCount := len(repositories)
+	if err := j.Deps.Service.UpdateRepositoryCount(ctx, sc.ID, repositoryCount); err != nil {
 		j.Deps.Logger.Warn().Err(err).Msg("Failed to update repository count")
 	}
 

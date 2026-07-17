@@ -2,7 +2,6 @@ package repositories
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 
 	"gorm.io/gorm"
@@ -34,23 +33,68 @@ func (r *SourceControlRepository) Create(ctx context.Context, sc *models.SourceC
 
 // Update updates an existing source control record
 func (r *SourceControlRepository) Update(ctx context.Context, sc *models.SourceControl) error {
-	return r.DB.WithContext(ctx).Save(sc).Error
+	return r.DB.WithContext(ctx).
+		Model(&models.SourceControl{}).
+		Where("id = ?", sc.ID).
+		Updates(map[string]any{
+			"user_id":                   sc.UserID,
+			"team_id":                   sc.TeamID,
+			"provider_id":               sc.ProviderID,
+			"provider_account_id":       sc.ProviderAccountID,
+			"login":                     sc.Login,
+			"name":                      sc.Name,
+			"type":                      sc.Type,
+			"avatar_url":                sc.AvatarURL,
+			"html_url":                  sc.HTMLURL,
+			"installation_id":           sc.InstallationID,
+			"permissions":               sc.Permissions,
+			"repository_selection":      sc.RepositorySelection,
+			"has_multiple_repositories": sc.HasMultipleRepositories,
+			"repository_count":          sc.RepositoryCount,
+			"connected_at":              sc.ConnectedAt,
+			"last_synced_at":            sc.LastSyncedAt,
+			"additional_data":           sc.AdditionalData,
+			"provider":                  sc.Provider,
+			"url":                       sc.URL,
+			"provider_data":             sc.ProviderData,
+			"token_expires_at":          sc.TokenExpiresAt,
+		}).Error
 }
 
 // UpdateFields updates specific fields of a source control record
-func (r *SourceControlRepository) UpdateFields(ctx context.Context, id string, fields map[string]interface{}) error {
+func (r *SourceControlRepository) UpdateFields(ctx context.Context, id string, updates contracts.SourceControlUpdates) error {
+	fields := make(map[string]any, 3)
+	if updates.RepositoryCount != nil {
+		fields["repository_count"] = *updates.RepositoryCount
+	}
+	if updates.LastSyncedAt != nil {
+		fields["last_synced_at"] = *updates.LastSyncedAt
+	}
+	if updates.ProviderData != nil {
+		fields["provider_data"] = *updates.ProviderData
+	}
+	if len(fields) == 0 {
+		return nil
+	}
+
 	return r.DB.WithContext(ctx).
 		Model(&models.SourceControl{}).
 		Where("id = ?", id).
 		Updates(fields).Error
 }
 
-// Delete soft-deletes a source control record
-func (r *SourceControlRepository) Delete(ctx context.Context, id string) error {
-	return r.DB.WithContext(ctx).Delete(&models.SourceControl{}, "id = ?", id).Error
+// DeleteWithRepositories atomically deletes a source control and its cached repositories.
+func (r *SourceControlRepository) DeleteWithRepositories(ctx context.Context, id string) error {
+	return r.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("source_control_id = ?", id).
+			Delete(&models.SourceControlRepository{}).Error; err != nil {
+			return err
+		}
+		return tx.Delete(&models.SourceControl{}, "id = ?", id).Error
+	})
 }
 
-// FindByID finds a source control by ID
+// FindByID finds a source control by ID.
 func (r *SourceControlRepository) FindByID(ctx context.Context, id string) (*models.SourceControl, error) {
 	return repository.FindOne[models.SourceControl](ctx, r.DB,
 		repository.WithID(id),
@@ -74,29 +118,6 @@ func (r *SourceControlRepository) FindAllByTeam(ctx context.Context, teamID stri
 		Preload("Repositories").
 		Where("team_id = ?", teamID).
 		Order("created_at DESC").
-		Find(&sourceControls).Error
-
-	return sourceControls, err
-}
-
-// FindAllByUser finds all source controls for a user
-func (r *SourceControlRepository) FindAllByUser(ctx context.Context, userID string) ([]models.SourceControl, error) {
-	var sourceControls []models.SourceControl
-	err := r.DB.WithContext(ctx).
-		Preload("Repositories").
-		Where("user_id = ?", userID).
-		Order("created_at DESC").
-		Find(&sourceControls).Error
-
-	return sourceControls, err
-}
-
-// FindByProvider finds all source controls for a specific provider
-func (r *SourceControlRepository) FindByProvider(ctx context.Context, provider gittypes.GitProviderType) ([]models.SourceControl, error) {
-	var sourceControls []models.SourceControl
-	err := r.DB.WithContext(ctx).
-		Preload("Repositories").
-		Where("provider = ?", provider).
 		Find(&sourceControls).Error
 
 	return sourceControls, err
@@ -133,53 +154,6 @@ func (r *SourceControlRepository) FindByProviderAndInstallationAndTeam(
 	return &sc, err
 }
 
-// FirstOrCreateByProviderAndInstallationAndTeam finds or creates a source control
-func (r *SourceControlRepository) FirstOrCreateByProviderAndInstallationAndTeam(
-	ctx context.Context,
-	provider gittypes.GitProviderType,
-	installationID string,
-	teamID string,
-	defaults map[string]interface{},
-) (*models.SourceControl, bool, error) {
-	var sc models.SourceControl
-	err := r.DB.WithContext(ctx).
-		Where("provider = ? AND provider_id = ? AND team_id = ?", provider, installationID, teamID).
-		First(&sc).Error
-
-	if err == nil {
-		return &sc, false, nil
-	}
-
-	if !errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil, false, err
-	}
-
-	// Create new record
-	sc = models.SourceControl{
-		Provider:   provider,
-		ProviderID: installationID,
-	}
-	sc.TeamID = teamID
-
-	// Apply defaults
-	if userID, ok := defaults["user_id"].(string); ok {
-		sc.UserID = userID
-	}
-
-	if providerData, ok := defaults["provider_data"].(map[string]interface{}); ok {
-		if jsonBytes, err := json.Marshal(providerData); err == nil {
-			jsonStr := string(jsonBytes)
-			sc.ProviderData = &jsonStr
-		}
-	}
-
-	if err := r.DB.WithContext(ctx).Create(&sc).Error; err != nil {
-		return nil, false, err
-	}
-
-	return &sc, true, nil
-}
-
 // FindByInstallationID finds all source controls by installation ID
 func (r *SourceControlRepository) FindByInstallationID(ctx context.Context, installationID string) ([]models.SourceControl, error) {
 	var sourceControls []models.SourceControl
@@ -192,38 +166,37 @@ func (r *SourceControlRepository) FindByInstallationID(ctx context.Context, inst
 }
 
 // DeleteByInstallationID deletes all source controls and their repositories by installation ID
-func (r *SourceControlRepository) DeleteByInstallationID(ctx context.Context, installationID string) (int64, error) {
-	// First, get all source control IDs
-	var sourceControls []models.SourceControl
-	if err := r.DB.WithContext(ctx).
-		Select("id").
-		Where("provider_id = ?", installationID).
-		Find(&sourceControls).Error; err != nil {
-		return 0, err
-	}
+func (r *SourceControlRepository) DeleteByInstallationID(
+	ctx context.Context,
+	provider gittypes.GitProviderType,
+	installationID string,
+) (int64, error) {
+	var deleted int64
+	err := r.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var sourceControlIDs []string
+		if err := tx.Model(&models.SourceControl{}).
+			Where("provider = ? AND provider_id = ?", provider, installationID).
+			Pluck("id", &sourceControlIDs).Error; err != nil {
+			return err
+		}
 
-	if len(sourceControls) == 0 {
-		return 0, nil
-	}
+		if len(sourceControlIDs) == 0 {
+			return nil
+		}
 
-	ids := make([]string, len(sourceControls))
-	for i, sc := range sourceControls {
-		ids[i] = sc.ID
-	}
+		if err := tx.Where("source_control_id IN ?", sourceControlIDs).
+			Delete(&models.SourceControlRepository{}).Error; err != nil {
+			return err
+		}
 
-	// Delete repositories
-	if err := r.DB.WithContext(ctx).
-		Where("source_control_id IN ?", ids).
-		Delete(&models.SourceControlRepository{}).Error; err != nil {
-		return 0, err
-	}
+		result := tx.Where("provider = ? AND provider_id = ?", provider, installationID).
+			Delete(&models.SourceControl{})
+		deleted = result.RowsAffected
 
-	// Delete source controls
-	result := r.DB.WithContext(ctx).
-		Where("provider_id = ?", installationID).
-		Delete(&models.SourceControl{})
+		return result.Error
+	})
 
-	return result.RowsAffected, result.Error
+	return deleted, err
 }
 
 // GetInstallations gets installations with flexible filtering
@@ -232,33 +205,8 @@ func (r *SourceControlRepository) GetInstallations(
 	provider gittypes.GitProviderType,
 	opts ...contracts.InstallationQueryOption,
 ) ([]models.SourceControl, error) {
-	query := r.DB.WithContext(ctx).
-		Preload("Repositories").
-		Where("provider = ?", provider)
-
-	options := &contracts.InstallationQueryOptions{}
-	for _, opt := range opts {
-		opt(options)
-	}
-
-	if options.UserID != "" {
-		query = query.Where("user_id = ?", options.UserID)
-	}
-
-	if options.TeamID != "" {
-		query = query.Where("team_id = ?", options.TeamID)
-	}
-
-	if options.ProviderID != "" {
-		query = query.Where("provider_id = ?", options.ProviderID)
-	}
-
-	if options.RequireInstallationID {
-		query = query.Where("installation_id IS NOT NULL")
-	}
-
 	var sourceControls []models.SourceControl
-	err := query.Find(&sourceControls).Error
+	err := r.installationsQuery(ctx, provider, opts...).Find(&sourceControls).Error
 
 	return sourceControls, err
 }
@@ -269,37 +217,42 @@ func (r *SourceControlRepository) GetFirstInstallation(
 	provider gittypes.GitProviderType,
 	opts ...contracts.InstallationQueryOption,
 ) (*models.SourceControl, error) {
-	query := r.DB.WithContext(ctx).
-		Preload("Repositories").
-		Where("provider = ?", provider)
-
-	options := &contracts.InstallationQueryOptions{}
-	for _, opt := range opts {
-		opt(options)
-	}
-
-	if options.UserID != "" {
-		query = query.Where("user_id = ?", options.UserID)
-	}
-
-	if options.TeamID != "" {
-		query = query.Where("team_id = ?", options.TeamID)
-	}
-
-	if options.ProviderID != "" {
-		query = query.Where("provider_id = ?", options.ProviderID)
-	}
-
-	if options.RequireInstallationID {
-		query = query.Where("installation_id IS NOT NULL")
-	}
-
 	var sc models.SourceControl
-	err := query.First(&sc).Error
+	err := r.installationsQuery(ctx, provider, opts...).First(&sc).Error
 
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, fiberutil.NotFound()
 	}
 
 	return &sc, err
+}
+
+func (r *SourceControlRepository) installationsQuery(
+	ctx context.Context,
+	provider gittypes.GitProviderType,
+	opts ...contracts.InstallationQueryOption,
+) *gorm.DB {
+	options := &contracts.InstallationQueryOptions{}
+	for _, opt := range opts {
+		opt(options)
+	}
+
+	query := r.DB.WithContext(ctx).
+		Preload("Repositories").
+		Where("provider = ?", provider)
+
+	if options.UserID != "" {
+		query = query.Where("user_id = ?", options.UserID)
+	}
+	if options.TeamID != "" {
+		query = query.Where("team_id = ?", options.TeamID)
+	}
+	if options.ProviderID != "" {
+		query = query.Where("provider_id = ?", options.ProviderID)
+	}
+	if options.RequireInstallationID {
+		query = query.Where("installation_id IS NOT NULL")
+	}
+
+	return query
 }

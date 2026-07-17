@@ -51,24 +51,13 @@ func (r *DNSRecordRepository) FindByDomain(ctx context.Context, domainID string)
 // UpdateOrCreate updates an existing record matching `where`, or creates one.
 func (r *DNSRecordRepository) UpdateOrCreate(ctx context.Context, where map[string]interface{}, update map[string]interface{}) (*models.DNSRecord, error) {
 	var record models.DNSRecord
-
-	err := r.DB.WithContext(ctx).Where(where).First(&record).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		for k, v := range where {
-			update[k] = v
-		}
-		record = models.DNSRecord{}
-		if err := r.DB.WithContext(ctx).Model(&record).Create(update).Error; err != nil {
-			return nil, err
-		}
-		return &record, nil
-	}
+	err := r.DB.WithContext(ctx).
+		Where(where).
+		Assign(update).
+		FirstOrCreate(&record).Error
 	if err != nil {
 		return nil, err
 	}
 
-	if err := r.DB.WithContext(ctx).Model(&record).Updates(update).Error; err != nil {
-		return nil, err
-	}
 	return &record, nil
 }

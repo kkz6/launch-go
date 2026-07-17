@@ -5,7 +5,6 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/kkz6/launch-go/internal/modules/git/providers"
-	"github.com/kkz6/launch-go/internal/modules/git/repositories"
 	"github.com/kkz6/launch-go/internal/modules/git/services"
 	"github.com/kkz6/launch-go/internal/pkg/app"
 	"github.com/kkz6/launch-go/internal/pkg/broadcast"
@@ -16,7 +15,6 @@ import (
 // JobDeps holds all dependencies for git jobs.
 type JobDeps struct {
 	*pkgjobs.Deps
-	Repos           *repositories.Registry
 	Service         *services.SourceControlService
 	ProviderFactory *providers.ProviderFactory
 }
@@ -24,7 +22,6 @@ type JobDeps struct {
 // NewJobDeps creates a new JobDeps from app dependencies.
 func NewJobDeps(
 	appDeps app.Deps,
-	repos *repositories.Registry,
 	service *services.SourceControlService,
 	providerFactory *providers.ProviderFactory,
 ) *JobDeps {
@@ -35,7 +32,6 @@ func NewJobDeps(
 			Queue:       appDeps.Queue,
 			Broadcaster: appDeps.WebSocket,
 		},
-		Repos:           repos,
 		Service:         service,
 		ProviderFactory: providerFactory,
 	}
@@ -47,7 +43,6 @@ func NewJobDepsWithParams(
 	logger *zerolog.Logger,
 	ws broadcast.TeamBroadcaster,
 	queueClient *queue.Client,
-	repos *repositories.Registry,
 	service *services.SourceControlService,
 	providerFactory *providers.ProviderFactory,
 ) *JobDeps {
@@ -58,7 +53,6 @@ func NewJobDepsWithParams(
 			Queue:       queueClient,
 			Broadcaster: ws,
 		},
-		Repos:           repos,
 		Service:         service,
 		ProviderFactory: providerFactory,
 	}

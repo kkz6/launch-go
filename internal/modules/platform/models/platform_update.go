@@ -46,8 +46,8 @@ func (ServerPlatformUpdate) TableName() string {
 // PlatformUpdateDismissal tracks which users have dismissed the banner for a given update
 type PlatformUpdateDismissal struct {
 	ID               string     `gorm:"type:char(26);primaryKey" json:"id"`
-	UserID           string     `gorm:"column:user_id;type:char(26);not null" json:"user_id"`
-	PlatformUpdateID string     `gorm:"column:platform_update_id;type:char(26);not null" json:"platform_update_id"`
+	UserID           string     `gorm:"column:user_id;type:char(26);not null;uniqueIndex:idx_user_platform_update_dismissal" json:"user_id"`
+	PlatformUpdateID string     `gorm:"column:platform_update_id;type:char(26);not null;uniqueIndex:idx_user_platform_update_dismissal" json:"platform_update_id"`
 	CreatedAt        *time.Time `gorm:"type:timestamp null" json:"created_at,omitempty"`
 }
 

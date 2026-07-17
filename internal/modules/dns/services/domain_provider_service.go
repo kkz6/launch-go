@@ -159,8 +159,9 @@ func (s *DomainProviderService) SyncDomains(ctx context.Context, id, teamID, use
 	}
 
 	err = s.Repos().Provider().Transaction(ctx, func(tx *gorm.DB) error {
+		txRepos := s.Repos().WithDB(tx)
 		for providerID, domainName := range domainsList {
-			domain, err := s.Repos().Domain().UpdateOrCreate(ctx, map[string]interface{}{
+			domain, err := txRepos.Domain().UpdateOrCreate(ctx, map[string]interface{}{
 				"provider_id":        providerID,
 				"domain_provider_id": dp.ID,
 				"address":            domainName,
@@ -182,7 +183,7 @@ func (s *DomainProviderService) SyncDomains(ctx context.Context, id, teamID, use
 
 			for _, r := range records {
 				pr := fromProviderRecord(r)
-				_, err := s.Repos().DNSRecord().UpdateOrCreate(ctx, map[string]interface{}{
+				_, err := txRepos.DNSRecord().UpdateOrCreate(ctx, map[string]interface{}{
 					"domain_id":   domain.ID,
 					"type":        pr.Type,
 					"name":        pr.Name,

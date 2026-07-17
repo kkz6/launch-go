@@ -3,12 +3,9 @@ package repositories
 import (
 	"context"
 	"encoding/json"
-	"errors"
-	"strings"
 
 	"gorm.io/gorm"
-
-	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
+	"gorm.io/gorm/clause"
 
 	"github.com/kkz6/launch-go/internal/modules/git/dto"
 	"github.com/kkz6/launch-go/internal/modules/git/models"
@@ -28,28 +25,6 @@ func NewSourceControlRepoRepository(db *gorm.DB) *SourceControlRepoRepository {
 	}
 }
 
-// CreateRepository creates a new source control repository
-func (r *SourceControlRepoRepository) CreateRepository(ctx context.Context, repo *models.SourceControlRepository) error {
-	return r.DB.WithContext(ctx).Create(repo).Error
-}
-
-// UpdateRepository updates an existing repository
-func (r *SourceControlRepoRepository) UpdateRepository(ctx context.Context, repo *models.SourceControlRepository) error {
-	return r.DB.WithContext(ctx).Save(repo).Error
-}
-
-// DeleteRepository deletes a repository
-func (r *SourceControlRepoRepository) DeleteRepository(ctx context.Context, id string) error {
-	return r.DB.WithContext(ctx).Delete(&models.SourceControlRepository{}, "id = ?", id).Error
-}
-
-// DeleteRepositoriesBySourceControlID deletes all repositories for a source control
-func (r *SourceControlRepoRepository) DeleteRepositoriesBySourceControlID(ctx context.Context, sourceControlID string) error {
-	return r.DB.WithContext(ctx).
-		Where("source_control_id = ?", sourceControlID).
-		Delete(&models.SourceControlRepository{}).Error
-}
-
 // DeleteRepositoriesByIDs deletes repositories by their IDs
 func (r *SourceControlRepoRepository) DeleteRepositoriesByIDs(ctx context.Context, ids []string) error {
 	if len(ids) == 0 {
@@ -61,26 +36,12 @@ func (r *SourceControlRepoRepository) DeleteRepositoriesByIDs(ctx context.Contex
 		Delete(&models.SourceControlRepository{}).Error
 }
 
-// FindRepositoryByID finds a repository by ID
+// FindRepositoryByID finds a repository by ID.
 func (r *SourceControlRepoRepository) FindRepositoryByID(ctx context.Context, id string) (*models.SourceControlRepository, error) {
 	return repository.FindOne[models.SourceControlRepository](ctx, r.DB,
 		repository.WithID(id),
 		repository.Preload("SourceControl"),
 	)
-}
-
-// FindRepositoryByFullName finds a repository by its full name
-func (r *SourceControlRepoRepository) FindRepositoryByFullName(ctx context.Context, fullName string) (*models.SourceControlRepository, error) {
-	var repo models.SourceControlRepository
-	err := r.DB.WithContext(ctx).
-		Preload("SourceControl").
-		First(&repo, "full_name = ?", fullName).Error
-
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil, fiberutil.NotFound()
-	}
-
-	return &repo, err
 }
 
 // FindRepositoriesBySourceControlID finds all repositories for a source control
@@ -89,17 +50,6 @@ func (r *SourceControlRepoRepository) FindRepositoriesBySourceControlID(ctx cont
 	err := r.DB.WithContext(ctx).
 		Where("source_control_id = ?", sourceControlID).
 		Order("full_name ASC").
-		Find(&repos).Error
-
-	return repos, err
-}
-
-// FindPublicRepositories finds all public repositories
-func (r *SourceControlRepoRepository) FindPublicRepositories(ctx context.Context) ([]models.SourceControlRepository, error) {
-	var repos []models.SourceControlRepository
-	err := r.DB.WithContext(ctx).
-		Preload("SourceControl").
-		Where("public = ?", true).
 		Find(&repos).Error
 
 	return repos, err
@@ -132,95 +82,49 @@ func (r *SourceControlRepoRepository) GetInstallationRepositories(
 
 // UpsertRepository creates or updates a repository
 func (r *SourceControlRepoRepository) UpsertRepository(ctx context.Context, sourceControlID string, data *dto.RepositoryData) (*models.SourceControlRepository, error) {
-	var repo models.SourceControlRepository
-	err := r.DB.WithContext(ctx).
-		Where("source_control_id = ? AND full_name = ?", sourceControlID, data.FullName).
-		First(&repo).Error
-
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		// Convert AdditionalData to *string
-		var additionalData *string
-		if data.AdditionalData != nil {
-			if jsonBytes, err := json.Marshal(data.AdditionalData); err == nil {
-				jsonStr := string(jsonBytes)
-				additionalData = &jsonStr
-			}
-		}
-
-		// Create new
-		repo = models.SourceControlRepository{
-			SourceControlID: sourceControlID,
-			Name:            data.Name,
-			FullName:        data.FullName,
-			Public:          data.IsPublic,
-			DefaultBranch:   data.DefaultBranch,
-			HTMLURL:         &data.HTMLURL,
-			SSHURL:          data.SSHURL,
-			AdditionalData:  additionalData,
-		}
-
-		if err := r.DB.WithContext(ctx).Create(&repo).Error; err != nil {
-			// Handle duplicate key error - another goroutine may have created it concurrently
-			if strings.Contains(err.Error(), "Duplicate entry") || strings.Contains(err.Error(), "duplicate key") || strings.Contains(err.Error(), "UNIQUE constraint") {
-				// Retry: find the record and update it
-				var existingRepo models.SourceControlRepository
-				if findErr := r.DB.WithContext(ctx).
-					Where("source_control_id = ? AND full_name = ?", sourceControlID, data.FullName).
-					First(&existingRepo).Error; findErr != nil {
-					return nil, err // Return original error if we can't find it
-				}
-				existingRepo.Name = data.Name
-				existingRepo.Public = data.IsPublic
-				existingRepo.DefaultBranch = data.DefaultBranch
-				existingRepo.HTMLURL = &data.HTMLURL
-				existingRepo.SSHURL = data.SSHURL
-				existingRepo.AdditionalData = additionalData
-				if updateErr := r.DB.WithContext(ctx).Save(&existingRepo).Error; updateErr != nil {
-					return nil, updateErr
-				}
-				return &existingRepo, nil
-			}
+	var additionalData *string
+	if data.AdditionalData != nil {
+		jsonBytes, err := json.Marshal(data.AdditionalData)
+		if err != nil {
 			return nil, err
 		}
-
-		return &repo, nil
+		jsonString := string(jsonBytes)
+		additionalData = &jsonString
 	}
 
+	repo := models.SourceControlRepository{
+		SourceControlID: sourceControlID,
+		Name:            data.Name,
+		FullName:        data.FullName,
+		Public:          data.IsPublic,
+		DefaultBranch:   data.DefaultBranch,
+		HTMLURL:         &data.HTMLURL,
+		SSHURL:          data.SSHURL,
+		AdditionalData:  additionalData,
+	}
+
+	err := r.DB.WithContext(ctx).
+		Clauses(clause.OnConflict{
+			Columns: []clause.Column{{Name: "source_control_id"}, {Name: "full_name"}},
+			DoUpdates: clause.AssignmentColumns([]string{
+				"name",
+				"public",
+				"default_branch",
+				"html_url",
+				"ssh_url",
+				"additional_data",
+			}),
+		}).
+		Create(&repo).Error
 	if err != nil {
 		return nil, err
 	}
 
-	// Convert AdditionalData to *string
-	var additionalData *string
-	if data.AdditionalData != nil {
-		if jsonBytes, err := json.Marshal(data.AdditionalData); err == nil {
-			jsonStr := string(jsonBytes)
-			additionalData = &jsonStr
-		}
-	}
-
-	// Update existing
-	repo.Name = data.Name
-	repo.Public = data.IsPublic
-	repo.DefaultBranch = data.DefaultBranch
-	repo.HTMLURL = &data.HTMLURL
-	repo.SSHURL = data.SSHURL
-	repo.AdditionalData = additionalData
-
-	if err := r.DB.WithContext(ctx).Save(&repo).Error; err != nil {
+	if err := r.DB.WithContext(ctx).
+		Where("source_control_id = ? AND full_name = ?", sourceControlID, data.FullName).
+		First(&repo).Error; err != nil {
 		return nil, err
 	}
 
 	return &repo, nil
-}
-
-// CountRepositoriesBySourceControlID counts repositories for a source control
-func (r *SourceControlRepoRepository) CountRepositoriesBySourceControlID(ctx context.Context, sourceControlID string) (int64, error) {
-	var count int64
-	err := r.DB.WithContext(ctx).
-		Model(&models.SourceControlRepository{}).
-		Where("source_control_id = ?", sourceControlID).
-		Count(&count).Error
-
-	return count, err
 }

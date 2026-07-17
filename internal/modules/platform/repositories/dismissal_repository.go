@@ -6,6 +6,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/platform/models"
 	"github.com/kkz6/launch-go/internal/pkg/util"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // DismissalRepository handles user dismissals for platform update banners
@@ -26,10 +27,12 @@ func (r *DismissalRepository) Dismiss(ctx context.Context, userID, platformUpdat
 		PlatformUpdateID: platformUpdateID,
 	}
 
-	// Use FirstOrCreate to handle duplicate dismissals gracefully
 	return r.db.WithContext(ctx).
-		Where("user_id = ? AND platform_update_id = ?", userID, platformUpdateID).
-		FirstOrCreate(dismissal).Error
+		Clauses(clause.OnConflict{
+			Columns:   []clause.Column{{Name: "user_id"}, {Name: "platform_update_id"}},
+			DoNothing: true,
+		}).
+		Create(dismissal).Error
 }
 
 // IsDismissed checks if a user has dismissed a specific update

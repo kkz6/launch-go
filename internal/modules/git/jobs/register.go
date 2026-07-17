@@ -4,7 +4,6 @@ import (
 	"github.com/hibiken/asynq"
 
 	"github.com/kkz6/launch-go/internal/modules/git/providers"
-	"github.com/kkz6/launch-go/internal/modules/git/repositories"
 	"github.com/kkz6/launch-go/internal/modules/git/services"
 	"github.com/kkz6/launch-go/internal/pkg/app"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
@@ -16,11 +15,10 @@ var deps *JobDeps
 func Register(
 	mux *asynq.ServeMux,
 	appDeps app.Deps,
-	repos *repositories.Registry,
 	service *services.SourceControlService,
 	providerFactory *providers.ProviderFactory,
 ) {
-	deps = NewJobDeps(appDeps, repos, service, providerFactory)
+	deps = NewJobDeps(appDeps, service, providerFactory)
 	registerHandlers(mux)
 }
 

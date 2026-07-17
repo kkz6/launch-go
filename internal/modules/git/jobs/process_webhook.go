@@ -90,7 +90,7 @@ func (j *ProcessGitWebhookJob) processGitHubWebhook(ctx context.Context, data ma
 			case "created":
 				return j.handleInstallationCreated(ctx, data, installationID)
 			case "deleted":
-				return j.handleInstallationDeleted(ctx, installationID)
+				return j.handleInstallationDeleted(ctx, gittypes.GitProviderGitHub, installationID)
 			case "repositories_added", "repositories_removed":
 				return j.handleRepositoriesChanged(ctx, installationID)
 			case "new_permissions_accepted":
@@ -221,13 +221,11 @@ func (j *ProcessGitWebhookJob) handleInstallationCreated(ctx context.Context, da
 	}
 	providerDataStr := string(providerDataJSON)
 
-	return j.Deps.Service.GetSourceControlRepo().UpdateFields(ctx, sc.ID, map[string]any{
-		"provider_data": providerDataStr,
-	})
+	return j.Deps.Service.UpdateProviderData(ctx, sc.ID, providerDataStr)
 }
 
-func (j *ProcessGitWebhookJob) handleInstallationDeleted(ctx context.Context, installationID string) error {
-	return j.Deps.Service.DeleteByInstallationID(ctx, installationID)
+func (j *ProcessGitWebhookJob) handleInstallationDeleted(ctx context.Context, provider gittypes.GitProviderType, installationID string) error {
+	return j.Deps.Service.DeleteByInstallationID(ctx, provider, installationID)
 }
 
 func (j *ProcessGitWebhookJob) handleRepositoriesChanged(ctx context.Context, installationID string) error {
@@ -242,7 +240,7 @@ func (j *ProcessGitWebhookJob) triggerDeployments(ctx context.Context, repositor
 		Msg("Triggering deployments for repository")
 
 	// Find sites that match this repository and branch
-	sites, err := j.findSitesByRepositoryAndBranch(ctx, repository, branch)
+	sites, err := j.findSitesByRepositoryAndBranch(ctx, providerType, repository, branch)
 	if err != nil {
 		return fmt.Errorf("failed to find sites: %w", err)
 	}
@@ -285,13 +283,25 @@ type Site struct {
 	SourceControlID *string
 }
 
-func (j *ProcessGitWebhookJob) findSitesByRepositoryAndBranch(ctx context.Context, repository, branch string) ([]Site, error) {
+func (j *ProcessGitWebhookJob) findSitesByRepositoryAndBranch(
+	ctx context.Context,
+	provider gittypes.GitProviderType,
+	repository string,
+	branch string,
+) ([]Site, error) {
 	var sites []Site
 	err := j.Deps.DB.WithContext(ctx).
 		Table("sites").
 		Select("sites.id, sites.source_control_id").
 		Joins("JOIN source_control_repositories ON source_control_repositories.id = sites.source_control_repositories_id").
-		Where("source_control_repositories.full_name = ? AND sites.repository_branch = ? AND sites.auto_deployment = ?", repository, branch, true).
+		Joins("JOIN source_controls ON source_controls.id = sites.source_control_id").
+		Where(
+			"source_controls.provider = ? AND source_control_repositories.full_name = ? AND sites.repository_branch = ? AND sites.auto_deployment = ?",
+			provider,
+			repository,
+			branch,
+			true,
+		).
 		Find(&sites).Error
 
 	return sites, err

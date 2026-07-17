@@ -24,7 +24,7 @@ type SourceControlService interface {
 	SyncUserInstallation(ctx context.Context, providerType gittypes.GitProviderType, installationID, teamID, userID string) error
 	SyncRepositoriesForInstallation(ctx context.Context, installationID string) error
 	GetInstallationsWithRepositoryCounts(ctx context.Context, teamID string) (map[string][]dto.InstallationSummaryData, error)
-	DeleteByInstallationID(ctx context.Context, installationID string) error
+	DeleteByInstallationID(ctx context.Context, provider gittypes.GitProviderType, installationID string) error
 	GetSourceControlByInstallation(ctx context.Context, providerType gittypes.GitProviderType, installationID string, opts ...InstallationQueryOption) (*models.SourceControl, error)
 	TestConnection(ctx context.Context, providerType gittypes.GitProviderType) error
 	// SaveRepository fetches a repository from the git provider and saves it to the database

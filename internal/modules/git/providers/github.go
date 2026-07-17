@@ -374,12 +374,15 @@ func (p *GitHubProvider) CreateDeployment(ctx context.Context, info *DeploymentI
 
 	// Create deployment
 	path := fmt.Sprintf("/repos/%s/deployments", info.RepoFullName)
-	body := map[string]interface{}{
-		"ref":         info.Branch,
-		"description": info.Description,
-	}
+	ref := info.Branch
 	if info.GitHash != "" {
-		body["sha"] = info.GitHash
+		ref = info.GitHash
+	}
+	body := map[string]interface{}{
+		"ref":               ref,
+		"description":       info.Description,
+		"auto_merge":        false,
+		"required_contexts": []string{},
 	}
 
 	resp, err := p.DoRaw(ctx, http.MethodPost, path, token, body)
@@ -389,8 +392,8 @@ func (p *GitHubProvider) CreateDeployment(ctx context.Context, info *DeploymentI
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusCreated {
-		_, _ = io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("failed to create deployment: status %d", resp.StatusCode)
+		responseBody, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("failed to create deployment: status %d: %s", resp.StatusCode, strings.TrimSpace(string(responseBody)))
 	}
 
 	var deploymentResp map[string]interface{}
@@ -401,23 +404,28 @@ func (p *GitHubProvider) CreateDeployment(ctx context.Context, info *DeploymentI
 	deploymentID := ExtractFloatID(deploymentResp, "id")
 	statusesURL, _ := deploymentResp["statuses_url"].(string)
 
-	// Create initial status (in_progress)
-	if statusesURL != "" {
-		p.createDeploymentStatus(ctx, statusesURL, token, info.SiteURL, DeploymentStatusInProgress)
-	}
-
 	// Remove creator from data to avoid storing sensitive info
 	delete(deploymentResp, "creator")
 
-	return &DeploymentResult{
+	result := &DeploymentResult{
 		ID:          deploymentID,
 		StatusesURL: statusesURL,
 		Data:        deploymentResp,
-	}, nil
+	}
+
+	if statusesURL == "" {
+		return result, nil
+	}
+
+	if err := p.createDeploymentStatus(ctx, statusesURL, token, info.SiteURL, DeploymentStatusInProgress); err != nil {
+		return result, err
+	}
+
+	return result, nil
 }
 
 // createDeploymentStatus creates a deployment status
-func (p *GitHubProvider) createDeploymentStatus(ctx context.Context, statusesURL, token, siteURL string, status DeploymentStatus) {
+func (p *GitHubProvider) createDeploymentStatus(ctx context.Context, statusesURL, token, siteURL string, status DeploymentStatus) error {
 	statusBody := map[string]interface{}{
 		"state":           status.GitHubStatus(),
 		"description":     "Deployment " + string(status),
@@ -432,14 +440,21 @@ func (p *GitHubProvider) createDeploymentStatus(ctx context.Context, statusesURL
 		JSONBody(statusBody).
 		Build()
 	if err != nil {
-		return
+		return fmt.Errorf("failed to build deployment status request: %w", err)
 	}
 
 	resp, err := httpclient.Default().Do(req)
 	if err != nil {
-		return
+		return fmt.Errorf("failed to create deployment status: %w", err)
 	}
-	_ = resp.Body.Close()
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusCreated {
+		responseBody, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("failed to create deployment status: status %d: %s", resp.StatusCode, strings.TrimSpace(string(responseBody)))
+	}
+
+	return nil
 }
 
 // UpdateDeploymentStatus updates the status of a deployment on GitHub
@@ -459,8 +474,7 @@ func (p *GitHubProvider) UpdateDeploymentStatus(ctx context.Context, info *Deplo
 		return fmt.Errorf("failed to get installation token: %w", err)
 	}
 
-	p.createDeploymentStatus(ctx, statusesURL, token, info.SiteURL, status)
-	return nil
+	return p.createDeploymentStatus(ctx, statusesURL, token, info.SiteURL, status)
 }
 
 // mapInstallationData maps raw installation data to AppInstallationData

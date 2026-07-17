@@ -12,7 +12,6 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/git/dto"
 	"github.com/kkz6/launch-go/internal/modules/git/models"
 	"github.com/kkz6/launch-go/internal/modules/git/providers"
-	"github.com/kkz6/launch-go/internal/modules/git/repositories"
 	gittypes "github.com/kkz6/launch-go/internal/modules/git/types"
 	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 )
@@ -166,35 +165,8 @@ func (s *SourceControlService) connectInstallation(ctx context.Context, teamID, 
 	sc.UserID = userID
 	sc.TeamID = teamID
 
-	// Check if already exists and update, or create new
-	existing, err := s.Repos().SourceControl().FindByProviderAndInstallationAndTeam(ctx, providerType, installationID, teamID)
-	if err == nil {
-		// Update existing
-		existing.UserID = userID
-		existing.ProviderData = sc.ProviderData
-		existing.ProviderAccountID = sc.ProviderAccountID
-		existing.Login = sc.Login
-		existing.Name = sc.Name
-		existing.Type = sc.Type
-		existing.AvatarURL = sc.AvatarURL
-		existing.HTMLURL = sc.HTMLURL
-		existing.Permissions = sc.Permissions
-		existing.RepositorySelection = sc.RepositorySelection
-		existing.HasMultipleRepositories = sc.HasMultipleRepositories
-		nowTime := time.Now()
-		existing.LastSyncedAt = &nowTime
-
-		if err := s.Repos().SourceControl().Update(ctx, existing); err != nil {
-			return nil, err
-		}
-
-		sc = existing
-	} else if fiberutil.IsNotFound(err) {
-		// Create new
-		if err := s.Repos().SourceControl().Create(ctx, sc); err != nil {
-			return nil, err
-		}
-	} else {
+	sc, err = s.saveInstallation(ctx, installationID, sc)
+	if err != nil {
 		return nil, err
 	}
 
@@ -234,12 +206,7 @@ func (s *SourceControlService) Disconnect(ctx context.Context, id, teamID, userI
 		}
 	}
 
-	// Delete repositories first
-	if err := s.Repos().SourceControlRepo().DeleteRepositoriesBySourceControlID(ctx, sc.ID); err != nil {
-		return err
-	}
-
-	return s.Repos().SourceControl().Delete(ctx, sc.ID)
+	return s.Repos().SourceControl().DeleteWithRepositories(ctx, sc.ID)
 }
 
 // GetInstallationURL gets the installation URL for a provider
@@ -364,9 +331,10 @@ func (s *SourceControlService) SyncInstallationRepositories(ctx context.Context,
 
 	// Update repository count
 	now := time.Now()
-	return s.Repos().SourceControl().UpdateFields(ctx, sc.ID, map[string]interface{}{
-		"repository_count": len(repos),
-		"last_synced_at":   now,
+	repositoryCount := len(repos)
+	return s.Repos().SourceControl().UpdateFields(ctx, sc.ID, contracts.SourceControlUpdates{
+		RepositoryCount: &repositoryCount,
+		LastSyncedAt:    &now,
 	})
 }
 
@@ -444,33 +412,8 @@ func (s *SourceControlService) SyncUserInstallation(ctx context.Context, provide
 	sc.TeamID = teamID
 	sc.UserID = userID
 
-	// Find-or-update to prevent duplicates (e.g., double-click on callback URL)
-	existing, err := s.Repos().SourceControl().FindByProviderAndInstallationAndTeam(ctx, providerType, installationID, teamID)
-	if err == nil {
-		// Update existing record
-		existing.UserID = userID
-		existing.ProviderData = sc.ProviderData
-		existing.ProviderAccountID = sc.ProviderAccountID
-		existing.Login = sc.Login
-		existing.Name = sc.Name
-		existing.Type = sc.Type
-		existing.AvatarURL = sc.AvatarURL
-		existing.HTMLURL = sc.HTMLURL
-		existing.Permissions = sc.Permissions
-		existing.RepositorySelection = sc.RepositorySelection
-		existing.HasMultipleRepositories = sc.HasMultipleRepositories
-		nowTime := time.Now()
-		existing.LastSyncedAt = &nowTime
-
-		if err := s.Repos().SourceControl().Update(ctx, existing); err != nil {
-			return err
-		}
-		sc = existing
-	} else if fiberutil.IsNotFound(err) {
-		if err := s.Repos().SourceControl().Create(ctx, sc); err != nil {
-			return err
-		}
-	} else {
+	sc, err = s.saveInstallation(ctx, installationID, sc)
+	if err != nil {
 		return err
 	}
 
@@ -528,8 +471,8 @@ func (s *SourceControlService) GetInstallationsWithRepositoryCounts(ctx context.
 }
 
 // DeleteByInstallationID deletes all source controls by installation ID (webhook handler)
-func (s *SourceControlService) DeleteByInstallationID(ctx context.Context, installationID string) error {
-	_, err := s.Repos().SourceControl().DeleteByInstallationID(ctx, installationID)
+func (s *SourceControlService) DeleteByInstallationID(ctx context.Context, provider gittypes.GitProviderType, installationID string) error {
+	_, err := s.Repos().SourceControl().DeleteByInstallationID(ctx, provider, installationID)
 	return err
 }
 
@@ -537,6 +480,47 @@ func (s *SourceControlService) DeleteByInstallationID(ctx context.Context, insta
 func (s *SourceControlService) GetSourceControlByInstallation(ctx context.Context, providerType gittypes.GitProviderType, installationID string, opts ...contracts.InstallationQueryOption) (*models.SourceControl, error) {
 	opts = append(opts, contracts.WithProviderID(installationID))
 	return s.Repos().SourceControl().GetFirstInstallation(ctx, providerType, opts...)
+}
+
+func (s *SourceControlService) saveInstallation(
+	ctx context.Context,
+	installationID string,
+	candidate *models.SourceControl,
+) (*models.SourceControl, error) {
+	repository := s.Repos().SourceControl()
+	existing, err := repository.FindByProviderAndInstallationAndTeam(
+		ctx,
+		candidate.Provider,
+		installationID,
+		candidate.TeamID,
+	)
+	if fiberutil.IsNotFound(err) {
+		if err := repository.Create(ctx, candidate); err != nil {
+			return nil, err
+		}
+		return candidate, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	existing.UserID = candidate.UserID
+	existing.ProviderData = candidate.ProviderData
+	existing.ProviderAccountID = candidate.ProviderAccountID
+	existing.Login = candidate.Login
+	existing.Name = candidate.Name
+	existing.Type = candidate.Type
+	existing.AvatarURL = candidate.AvatarURL
+	existing.HTMLURL = candidate.HTMLURL
+	existing.Permissions = candidate.Permissions
+	existing.RepositorySelection = candidate.RepositorySelection
+	existing.HasMultipleRepositories = candidate.HasMultipleRepositories
+	existing.LastSyncedAt = candidate.LastSyncedAt
+
+	if err := repository.Update(ctx, existing); err != nil {
+		return nil, err
+	}
+	return existing, nil
 }
 
 // TestConnection tests the connection to a provider
@@ -549,9 +533,19 @@ func (s *SourceControlService) TestConnection(ctx context.Context, providerType 
 	return provider.TestConnection(ctx)
 }
 
-// GetSourceControlRepo returns the source control repository for webhook handlers
-func (s *SourceControlService) GetSourceControlRepo() *repositories.SourceControlRepository {
-	return s.Repos().SourceControl()
+// UpdateProviderData updates provider-owned metadata without exposing the
+// persistence layer to callers.
+func (s *SourceControlService) UpdateProviderData(ctx context.Context, sourceControlID, providerData string) error {
+	return s.Repos().SourceControl().UpdateFields(ctx, sourceControlID, contracts.SourceControlUpdates{
+		ProviderData: &providerData,
+	})
+}
+
+// UpdateRepositoryCount records the number of repositories visible to an installation.
+func (s *SourceControlService) UpdateRepositoryCount(ctx context.Context, sourceControlID string, count int) error {
+	return s.Repos().SourceControl().UpdateFields(ctx, sourceControlID, contracts.SourceControlUpdates{
+		RepositoryCount: &count,
+	})
 }
 
 // GetRepositoriesBySourceControlID gets all repositories for a source control

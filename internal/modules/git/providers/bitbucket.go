@@ -69,8 +69,7 @@ func (p *BitbucketProvider) GetRepository(ctx context.Context, installationID, o
 
 // ValidateWebhook validates a webhook signature
 func (p *BitbucketProvider) ValidateWebhook(payload []byte, signature string) bool {
-	// Bitbucket uses X-Hook-UUID for identification, but we can use HMAC for validation
-	return p.VerifyHMACSHA256Signature(payload, signature, "")
+	return p.VerifyHMACSHA256Signature(payload, signature, "sha256=")
 }
 
 // GetCommitData extracts commit data from a webhook payload
