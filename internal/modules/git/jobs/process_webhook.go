@@ -7,6 +7,7 @@ import (
 
 	"github.com/hibiken/asynq"
 
+	"github.com/kkz6/launch-go/internal/modules/git/contracts"
 	"github.com/kkz6/launch-go/internal/modules/git/gitref"
 	"github.com/kkz6/launch-go/internal/modules/git/providers"
 	gittypes "github.com/kkz6/launch-go/internal/modules/git/types"
@@ -221,8 +222,8 @@ func (j *ProcessGitWebhookJob) handleInstallationCreated(ctx context.Context, da
 	}
 	providerDataStr := string(providerDataJSON)
 
-	return j.Deps.Service.GetSourceControlRepo().UpdateFields(ctx, sc.ID, map[string]any{
-		"provider_data": providerDataStr,
+	return j.Deps.Service.GetSourceControlRepo().UpdateFields(ctx, sc.ID, contracts.SourceControlUpdates{
+		ProviderData: &providerDataStr,
 	})
 }
 

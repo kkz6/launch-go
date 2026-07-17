@@ -364,9 +364,10 @@ func (s *SourceControlService) SyncInstallationRepositories(ctx context.Context,
 
 	// Update repository count
 	now := time.Now()
-	return s.Repos().SourceControl().UpdateFields(ctx, sc.ID, map[string]interface{}{
-		"repository_count": len(repos),
-		"last_synced_at":   now,
+	repositoryCount := len(repos)
+	return s.Repos().SourceControl().UpdateFields(ctx, sc.ID, contracts.SourceControlUpdates{
+		RepositoryCount: &repositoryCount,
+		LastSyncedAt:    &now,
 	})
 }
 
