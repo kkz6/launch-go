@@ -3,8 +3,15 @@ package websocket
 import (
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/gofiber/contrib/websocket"
+)
+
+const (
+	clientWriteWait = 10 * time.Second
+	clientPongWait  = 60 * time.Second
+	clientPingEvery = 50 * time.Second
 )
 
 // Client represents a connected WebSocket client
@@ -35,7 +42,11 @@ func NewClient(hub *Hub, conn *websocket.Conn, userID, teamID string) *Client {
 
 // Close marks the client as closing to prevent send-on-closed-channel panics
 func (c *Client) Close() {
-	c.closing.Store(true)
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.closing.CompareAndSwap(false, true) {
+		close(c.Send)
+	}
 }
 
 // IsClosing returns true if the client is in closing state
@@ -46,6 +57,8 @@ func (c *Client) IsClosing() bool {
 // SafeSend attempts to send a message to the client
 // Returns false if the client is closing or the send buffer is full
 func (c *Client) SafeSend(data []byte) bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
 	if c.IsClosing() {
 		return false
 	}
@@ -66,6 +79,11 @@ func (c *Client) ReadPump() {
 		c.hub.unregister <- c
 		c.Conn.Close()
 	}()
+
+	_ = c.Conn.SetReadDeadline(time.Now().Add(clientPongWait))
+	c.Conn.SetPongHandler(func(string) error {
+		return c.Conn.SetReadDeadline(time.Now().Add(clientPongWait))
+	})
 
 	for {
 		var msg struct {
@@ -90,10 +108,28 @@ func (c *Client) ReadPump() {
 // This should be run in its own goroutine
 func (c *Client) WritePump() {
 	defer c.Conn.Close()
+	ticker := time.NewTicker(clientPingEvery)
+	defer ticker.Stop()
 
-	for message := range c.Send {
-		if err := c.Conn.WriteMessage(websocket.TextMessage, message); err != nil {
-			break
+	for {
+		select {
+		case message, ok := <-c.Send:
+			_ = c.Conn.SetWriteDeadline(time.Now().Add(clientWriteWait))
+			if !ok {
+				_ = c.Conn.WriteMessage(websocket.CloseMessage, nil)
+				return
+			}
+			if err := c.Conn.WriteMessage(websocket.TextMessage, message); err != nil {
+				return
+			}
+		case <-ticker.C:
+			if err := c.Conn.WriteControl(
+				websocket.PingMessage,
+				nil,
+				time.Now().Add(clientWriteWait),
+			); err != nil {
+				return
+			}
 		}
 	}
 }

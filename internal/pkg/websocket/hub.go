@@ -76,10 +76,9 @@ func (h *Hub) removeClient(client *Client) {
 	client.Close()
 
 	delete(h.clients, client)
-	close(client.Send)
 
 	// Remove from all channels
-	for channel := range client.Channels {
+	for _, channel := range client.GetChannels() {
 		if clients, ok := h.channels[channel]; ok {
 			delete(clients, client)
 			if len(clients) == 0 {
