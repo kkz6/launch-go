@@ -196,3 +196,25 @@ func TestInstallationQueriesShareProviderAndTeamScoping(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, githubTeamOne.ID, installation.ID)
 }
+
+func TestUpdateFieldsSupportsTypedPartialAndEmptyUpdates(t *testing.T) {
+	db := setupGitRepositoryDB(t)
+	sourceControl := createSourceControl(t, db, gittypes.GitProviderGitHub, "installation-1", "team-1")
+	repository := NewSourceControlRepository(db)
+	ctx := context.Background()
+
+	require.NoError(t, repository.UpdateFields(ctx, sourceControl.ID, contracts.SourceControlUpdates{}))
+	repositoryCount := 0
+	providerData := `{"installer":"octocat"}`
+	require.NoError(t, repository.UpdateFields(ctx, sourceControl.ID, contracts.SourceControlUpdates{
+		RepositoryCount: &repositoryCount,
+		ProviderData:    &providerData,
+	}))
+
+	var updated models.SourceControl
+	require.NoError(t, db.First(&updated, "id = ?", sourceControl.ID).Error)
+	require.NotNil(t, updated.RepositoryCount)
+	assert.Zero(t, *updated.RepositoryCount)
+	require.NotNil(t, updated.ProviderData)
+	assert.JSONEq(t, providerData, *updated.ProviderData)
+}

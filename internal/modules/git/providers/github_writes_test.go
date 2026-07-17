@@ -40,6 +40,10 @@ type fakeGitHub struct {
 	// PutContents upsert path: non-empty → 200 with that blob sha (file
 	// exists), empty → 404 (file absent).
 	existingContentSHA string
+	deploymentStatus   int
+	deploymentBody     string
+	statusStatus       int
+	omitStatusesURL    bool
 
 	mu       sync.Mutex
 	requests []recordedRequest
@@ -87,13 +91,26 @@ func (f *fakeGitHub) serve(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusCreated)
 		_ = json.NewEncoder(w).Encode(map[string]any{"token": "ghs_fake_installation_token"})
 	case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/deployments"):
-		w.WriteHeader(http.StatusCreated)
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			"id":           42,
-			"statuses_url": f.srv.URL + "/repos/kkz6/test-repo/deployments/42/statuses",
-		})
+		status := f.deploymentStatus
+		if status == 0 {
+			status = http.StatusCreated
+		}
+		w.WriteHeader(status)
+		if f.deploymentBody != "" {
+			_, _ = w.Write([]byte(f.deploymentBody))
+			return
+		}
+		response := map[string]any{"id": 42}
+		if !f.omitStatusesURL {
+			response["statuses_url"] = f.srv.URL + "/repos/kkz6/test-repo/deployments/42/statuses"
+		}
+		_ = json.NewEncoder(w).Encode(response)
 	case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/deployments/42/statuses"):
-		w.WriteHeader(http.StatusCreated)
+		status := f.statusStatus
+		if status == 0 {
+			status = http.StatusCreated
+		}
+		w.WriteHeader(status)
 		_ = json.NewEncoder(w).Encode(map[string]any{"id": 99})
 	case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/actions/secrets/public-key"):
 		w.WriteHeader(http.StatusOK)
@@ -264,6 +281,53 @@ func TestCreateDeployment_UsesCommitAsRefAndBypassesRequiredContexts(t *testing.
 	assert.Equal(t, []any{}, body["required_contexts"])
 	assert.NotContains(t, body, "sha")
 	assert.Equal(t, "/repos/kkz6/test-repo/deployments/42/statuses", requests[2].Path)
+}
+
+func TestCreateDeploymentPreservesProviderErrors(t *testing.T) {
+	fake := newFakeGitHub(t)
+	defer fake.Close()
+	fake.deploymentStatus = http.StatusUnprocessableEntity
+	fake.deploymentBody = `{"message":"invalid ref"}`
+
+	p := testProvider(t, fake.srv.URL)
+	installationID := "100"
+	p.SetSourceControl(&SourceControlData{InstallationID: &installationID})
+
+	_, err := p.CreateDeployment(context.Background(), &DeploymentInfo{RepoFullName: "kkz6/test-repo", Branch: "missing"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "status 422")
+	assert.Contains(t, err.Error(), "invalid ref")
+}
+
+func TestCreateDeploymentReturnsResultWhenInitialStatusFails(t *testing.T) {
+	fake := newFakeGitHub(t)
+	defer fake.Close()
+	fake.statusStatus = http.StatusForbidden
+
+	p := testProvider(t, fake.srv.URL)
+	installationID := "100"
+	p.SetSourceControl(&SourceControlData{InstallationID: &installationID})
+
+	result, err := p.CreateDeployment(context.Background(), &DeploymentInfo{RepoFullName: "kkz6/test-repo", Branch: "main"})
+	require.Error(t, err)
+	require.NotNil(t, result)
+	assert.Equal(t, "42", result.ID)
+	assert.Contains(t, err.Error(), "status 403")
+}
+
+func TestCreateDeploymentAllowsMissingStatusesURL(t *testing.T) {
+	fake := newFakeGitHub(t)
+	defer fake.Close()
+	fake.omitStatusesURL = true
+
+	p := testProvider(t, fake.srv.URL)
+	installationID := "100"
+	p.SetSourceControl(&SourceControlData{InstallationID: &installationID})
+
+	result, err := p.CreateDeployment(context.Background(), &DeploymentInfo{RepoFullName: "kkz6/test-repo", Branch: "main"})
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	assert.Empty(t, result.StatusesURL)
 }
 
 func TestPutContents_SendsBase64BodyAndReturnsBlobSHA(t *testing.T) {
