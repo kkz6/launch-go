@@ -24,6 +24,7 @@ type JobDeps struct {
 	ServerRepos       *serverrepos.Registry
 	SourceControlRepo *gitrepos.SourceControlRepository
 	ProviderFactory   *gitproviders.ProviderFactory
+	FrontendURL       string
 	TaskRunnerDeps    *servertasks.TaskRunnerDeps
 }
 
@@ -35,7 +36,7 @@ func NewJobDeps(
 	sourceControlRepo *gitrepos.SourceControlRepository,
 	providerFactory *gitproviders.ProviderFactory,
 ) *JobDeps {
-	return &JobDeps{
+	jobDeps := &JobDeps{
 		Deps: &pkgjobs.Deps{
 			DB:          appDeps.DB,
 			Logger:      appDeps.Logger,
@@ -56,6 +57,10 @@ func NewJobDeps(
 			Notifier:    appDeps.Notifier,
 		},
 	}
+	if appDeps.Config != nil {
+		jobDeps.FrontendURL = appDeps.Config.App.Frontend()
+	}
+	return jobDeps
 }
 
 // NewJobDepsWithParams creates JobDeps with explicit parameters (for testing or custom setup).

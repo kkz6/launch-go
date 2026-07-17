@@ -378,11 +378,25 @@ func (p *GitHubProvider) CreateDeployment(ctx context.Context, info *DeploymentI
 	if info.GitHash != "" {
 		ref = info.GitHash
 	}
+	environment := info.Environment
+	if environment == "" {
+		environment = "production"
+	}
 	body := map[string]interface{}{
-		"ref":               ref,
-		"description":       info.Description,
-		"auto_merge":        false,
-		"required_contexts": []string{},
+		"ref":                    ref,
+		"environment":            environment,
+		"description":            info.Description,
+		"auto_merge":             false,
+		"required_contexts":      []string{},
+		"transient_environment":  false,
+		"production_environment": environment == "production",
+		"payload": map[string]string{
+			"server_id":     info.ServerID,
+			"site_id":       info.SiteID,
+			"deployment_id": info.DeploymentID,
+			"site_url":      info.SiteURL,
+			"log_url":       info.LogURL,
+		},
 	}
 
 	resp, err := p.DoRaw(ctx, http.MethodPost, path, token, body)
@@ -417,7 +431,7 @@ func (p *GitHubProvider) CreateDeployment(ctx context.Context, info *DeploymentI
 		return result, nil
 	}
 
-	if err := p.createDeploymentStatus(ctx, statusesURL, token, info.SiteURL, DeploymentStatusInProgress); err != nil {
+	if err := p.createDeploymentStatus(ctx, statusesURL, token, deploymentTargetURL(info), DeploymentStatusInProgress); err != nil {
 		return result, err
 	}
 
@@ -425,11 +439,14 @@ func (p *GitHubProvider) CreateDeployment(ctx context.Context, info *DeploymentI
 }
 
 // createDeploymentStatus creates a deployment status
-func (p *GitHubProvider) createDeploymentStatus(ctx context.Context, statusesURL, token, siteURL string, status DeploymentStatus) error {
+func (p *GitHubProvider) createDeploymentStatus(ctx context.Context, statusesURL, token, targetURL string, status DeploymentStatus) error {
 	statusBody := map[string]interface{}{
-		"state":           status.GitHubStatus(),
-		"description":     "Deployment " + string(status),
-		"environment_url": siteURL,
+		"state":       status.GitHubStatus(),
+		"description": "Deployment " + string(status),
+	}
+	if targetURL != "" {
+		statusBody["environment_url"] = targetURL
+		statusBody["log_url"] = targetURL
 	}
 
 	// Use a relative path if possible, or direct URL
@@ -474,7 +491,14 @@ func (p *GitHubProvider) UpdateDeploymentStatus(ctx context.Context, info *Deplo
 		return fmt.Errorf("failed to get installation token: %w", err)
 	}
 
-	return p.createDeploymentStatus(ctx, statusesURL, token, info.SiteURL, status)
+	return p.createDeploymentStatus(ctx, statusesURL, token, deploymentTargetURL(info), status)
+}
+
+func deploymentTargetURL(info *DeploymentInfo) string {
+	if info.LogURL != "" {
+		return info.LogURL
+	}
+	return info.SiteURL
 }
 
 // mapInstallationData maps raw installation data to AppInstallationData

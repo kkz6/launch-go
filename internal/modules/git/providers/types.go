@@ -435,6 +435,7 @@ type DeploymentInfo struct {
 	Branch       string
 	GitHash      string
 	SiteURL      string
+	LogURL       string
 	Environment  string
 	Description  string
 	ProjectID    string // For GitLab (numeric project ID from additional_data)

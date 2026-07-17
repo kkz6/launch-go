@@ -434,6 +434,7 @@ func (j *DeployJob) createProviderDeployment(ctx context.Context, site *models.S
 		Branch:       site.GetRepositoryBranch(),
 		GitHash:      gitHash,
 		SiteURL:      site.GetURL(),
+		LogURL:       deploymentLogURL(j.Deps.FrontendURL, serverID, site.ID, deployment.ID),
 		Environment:  "production",
 		Description:  description,
 		ProjectID:    projectID,
@@ -493,6 +494,7 @@ func (j *DeployJob) updateProviderDeploymentStatus(ctx context.Context, site *mo
 		DeploymentID: deployment.ID,
 		RepoFullName: repo.FullName,
 		SiteURL:      site.GetURL(),
+		LogURL:       deploymentLogURL(j.Deps.FrontendURL, site.ServerID, site.ID, deployment.ID),
 		ProjectID:    projectID,
 	}
 
