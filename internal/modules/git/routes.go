@@ -47,8 +47,7 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 // git providers (GitHub, GitLab, Bitbucket).
 func (m *Module) RegisterWebhookRoutes(router gofiber.Router) {
 	deps := m.Deps()
-	svc := m.createServices()
-	webhookHandler := handlers.NewWebhookHandler(svc.SourceControl(), m.providerFactory, deps.Logger)
+	webhookHandler := handlers.NewWebhookHandler(m.providerFactory, deps.Logger)
 	webhookHandler.SetQueueClient(deps.Queue)
 
 	router.Group("/webhooks/git").Post("/:provider", webhookHandler.HandleWebhook)

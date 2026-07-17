@@ -528,8 +528,8 @@ func (s *SourceControlService) GetInstallationsWithRepositoryCounts(ctx context.
 }
 
 // DeleteByInstallationID deletes all source controls by installation ID (webhook handler)
-func (s *SourceControlService) DeleteByInstallationID(ctx context.Context, installationID string) error {
-	_, err := s.Repos().SourceControl().DeleteByInstallationID(ctx, installationID)
+func (s *SourceControlService) DeleteByInstallationID(ctx context.Context, provider gittypes.GitProviderType, installationID string) error {
+	_, err := s.Repos().SourceControl().DeleteByInstallationID(ctx, provider, installationID)
 	return err
 }
 

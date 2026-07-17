@@ -23,7 +23,7 @@ type SourceControlRepository interface {
 	FindByProviderAndInstallationAndTeam(ctx context.Context, provider gittypes.GitProviderType, installationID string, teamID string) (*models.SourceControl, error)
 	FirstOrCreateByProviderAndInstallationAndTeam(ctx context.Context, provider gittypes.GitProviderType, installationID string, teamID string, defaults map[string]interface{}) (*models.SourceControl, bool, error)
 	FindByInstallationID(ctx context.Context, installationID string) ([]models.SourceControl, error)
-	DeleteByInstallationID(ctx context.Context, installationID string) (int64, error)
+	DeleteByInstallationID(ctx context.Context, provider gittypes.GitProviderType, installationID string) (int64, error)
 	GetInstallations(ctx context.Context, provider gittypes.GitProviderType, opts ...InstallationQueryOption) ([]models.SourceControl, error)
 	GetFirstInstallation(ctx context.Context, provider gittypes.GitProviderType, opts ...InstallationQueryOption) (*models.SourceControl, error)
 }

@@ -792,7 +792,7 @@ func TestBitbucketProvider_ValidateWebhook(t *testing.T) {
 	// Generate valid signature (Bitbucket uses HMAC)
 	mac := hmac.New(sha256.New, []byte(secret))
 	_, _ = mac.Write(payload)
-	validSignature := hex.EncodeToString(mac.Sum(nil))
+	validSignature := "sha256=" + hex.EncodeToString(mac.Sum(nil))
 
 	tests := []struct {
 		name      string

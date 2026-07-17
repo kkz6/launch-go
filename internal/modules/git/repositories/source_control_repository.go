@@ -192,12 +192,16 @@ func (r *SourceControlRepository) FindByInstallationID(ctx context.Context, inst
 }
 
 // DeleteByInstallationID deletes all source controls and their repositories by installation ID
-func (r *SourceControlRepository) DeleteByInstallationID(ctx context.Context, installationID string) (int64, error) {
+func (r *SourceControlRepository) DeleteByInstallationID(
+	ctx context.Context,
+	provider gittypes.GitProviderType,
+	installationID string,
+) (int64, error) {
 	// First, get all source control IDs
 	var sourceControls []models.SourceControl
 	if err := r.DB.WithContext(ctx).
 		Select("id").
-		Where("provider_id = ?", installationID).
+		Where("provider = ? AND provider_id = ?", provider, installationID).
 		Find(&sourceControls).Error; err != nil {
 		return 0, err
 	}
@@ -220,7 +224,7 @@ func (r *SourceControlRepository) DeleteByInstallationID(ctx context.Context, in
 
 	// Delete source controls
 	result := r.DB.WithContext(ctx).
-		Where("provider_id = ?", installationID).
+		Where("provider = ? AND provider_id = ?", provider, installationID).
 		Delete(&models.SourceControl{})
 
 	return result.RowsAffected, result.Error

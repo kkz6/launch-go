@@ -86,6 +86,15 @@ func (f *fakeGitHub) serve(w http.ResponseWriter, r *http.Request) {
 	case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/access_tokens"):
 		w.WriteHeader(http.StatusCreated)
 		_ = json.NewEncoder(w).Encode(map[string]any{"token": "ghs_fake_installation_token"})
+	case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/deployments"):
+		w.WriteHeader(http.StatusCreated)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"id":           42,
+			"statuses_url": f.srv.URL + "/repos/kkz6/test-repo/deployments/42/statuses",
+		})
+	case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/deployments/42/statuses"):
+		w.WriteHeader(http.StatusCreated)
+		_ = json.NewEncoder(w).Encode(map[string]any{"id": 99})
 	case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/actions/secrets/public-key"):
 		w.WriteHeader(http.StatusOK)
 		_ = json.NewEncoder(w).Encode(map[string]any{
@@ -220,6 +229,41 @@ func TestDecodeRepoPublicKey_RoundTrip(t *testing.T) {
 	got, err := decodeRepoPublicKey(b64)
 	require.NoError(t, err)
 	assert.Equal(t, pub[:], got)
+}
+
+func TestCreateDeployment_UsesCommitAsRefAndBypassesRequiredContexts(t *testing.T) {
+	fake := newFakeGitHub(t)
+	defer fake.Close()
+
+	p := testProvider(t, fake.srv.URL)
+	installationID := "100"
+	p.SetSourceControl(&SourceControlData{InstallationID: &installationID})
+
+	result, err := p.CreateDeployment(context.Background(), &DeploymentInfo{
+		RepoFullName: "kkz6/test-repo",
+		Branch:       "main",
+		GitHash:      "abc123def456",
+		SiteURL:      "https://example.test",
+		Description:  "Deployment via Launch",
+	})
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	assert.Equal(t, "42", result.ID)
+
+	fake.mu.Lock()
+	requests := append([]recordedRequest(nil), fake.requests...)
+	fake.mu.Unlock()
+
+	require.Len(t, requests, 3)
+	assert.Equal(t, "/repos/kkz6/test-repo/deployments", requests[1].Path)
+
+	var body map[string]any
+	require.NoError(t, json.Unmarshal([]byte(requests[1].Body), &body))
+	assert.Equal(t, "abc123def456", body["ref"])
+	assert.Equal(t, false, body["auto_merge"])
+	assert.Equal(t, []any{}, body["required_contexts"])
+	assert.NotContains(t, body, "sha")
+	assert.Equal(t, "/repos/kkz6/test-repo/deployments/42/statuses", requests[2].Path)
 }
 
 func TestPutContents_SendsBase64BodyAndReturnsBlobSHA(t *testing.T) {
