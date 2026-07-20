@@ -351,7 +351,7 @@ func (c *SSHClient) Upload(ctx context.Context, content []byte, remotePath strin
 
 	done := make(chan error, 1)
 	go func() {
-		done <- writeSCPFile(stdin, stdout, content, filepath.Base(remotePath), mode, session)
+		done <- writeSCPFile(stdin, stdout, content, filepath.Base(remotePath), mode, session.Wait)
 	}()
 
 	select {
@@ -366,7 +366,7 @@ func (c *SSHClient) Upload(ctx context.Context, content []byte, remotePath strin
 // writeSCPFile performs the acknowledgement-based SCP sink protocol used by
 // `scp -t`. Checking every acknowledgement prevents a failed remote write from
 // being reported as a successful upload.
-func writeSCPFile(stdin io.WriteCloser, stdout io.Reader, content []byte, name string, mode os.FileMode, session *ssh.Session) error {
+func writeSCPFile(stdin io.WriteCloser, stdout io.Reader, content []byte, name string, mode os.FileMode, wait func() error) error {
 	defer stdin.Close()
 	reader := bufio.NewReader(stdout)
 
@@ -388,7 +388,7 @@ func writeSCPFile(stdin io.WriteCloser, stdout io.Reader, content []byte, name s
 	if err := readSCPAck(reader); err != nil {
 		return err
 	}
-	if err := session.Wait(); err != nil {
+	if err := wait(); err != nil {
 		return fmt.Errorf("complete SCP upload: %w", err)
 	}
 	return nil
