@@ -499,11 +499,6 @@ func ghaOverallRunStatus(wfJobs []gitproviders.WorkflowJob) string {
 	}
 }
 
-// deploymentHistoryKeep caps how many deployment rows we retain per
-// workload. The Deployments subtab only needs the recent few, so older
-// rows are pruned on each new deploy (#103).
-const deploymentHistoryKeep = 10
-
 // newGHAStepsPollerTask builds the live step-timeline poller task (#87)
 // for a freshly dispatched GHA deploy. Returns an error (which callers
 // treat as "skip — no live timeline") when the placeholder row has no id

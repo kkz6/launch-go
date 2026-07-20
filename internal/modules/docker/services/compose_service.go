@@ -642,7 +642,6 @@ func (s *ComposeService) Deploy(
 		if err != nil {
 			return nil, err
 		}
-		s.pruneDeploymentHistory(ctx, "compose", composeID)
 		return dep, nil
 	}
 
@@ -684,16 +683,7 @@ func (s *ComposeService) Deploy(
 		"team_id":       teamID,
 		"status":        "pending",
 	})
-	s.pruneDeploymentHistory(ctx, "compose", composeID)
 	return deployment, nil
-}
-
-// pruneDeploymentHistory caps the compose stack's retained deployment
-// rows to deploymentHistoryKeep, deleting the oldest. Best-effort (#103).
-func (s *ComposeService) pruneDeploymentHistory(ctx context.Context, targetType, targetID string) {
-	if err := s.Repos().Deployment().PruneForTarget(ctx, targetType, targetID, deploymentHistoryKeep); err != nil {
-		s.LogError(err, "prune deployment history", "target_id", targetID)
-	}
 }
 
 // ListServices returns the docker compose service names currently

@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	gofiber "github.com/gofiber/fiber/v2"
 	"github.com/stretchr/testify/assert"
@@ -18,6 +19,7 @@ import (
 	"gorm.io/gorm/logger"
 
 	dockermodels "github.com/kkz6/launch-go/internal/modules/docker/models"
+	dockerrepositories "github.com/kkz6/launch-go/internal/modules/docker/repositories"
 	dockertypes "github.com/kkz6/launch-go/internal/modules/docker/types"
 	"github.com/kkz6/launch-go/internal/pkg/dbtype"
 	"github.com/kkz6/launch-go/internal/pkg/util"
@@ -169,6 +171,68 @@ func TestGHAApplicationDeploy_HappyPath_CreatesPendingDeployment(t *testing.T) {
 	assert.Equal(t, dockertypes.DeploymentTriggerGitHubActions, rows[0].TriggerSource)
 	require.NotNil(t, rows[0].GHARunID)
 	assert.Equal(t, "11111111", *rows[0].GHARunID)
+}
+
+func TestGHAApplicationDeploy_PrunesOldestDeployment(t *testing.T) {
+	app, db, application := setupHandler(t)
+	base := time.Date(2026, 7, 20, 0, 0, 0, 0, time.UTC)
+	var oldestID string
+
+	for i := 0; i < dockerrepositories.DeploymentHistoryLimit; i++ {
+		deployment := &dockermodels.Deployment{
+			TargetType: "application",
+			TargetID:   application.ID,
+			Status:     dockertypes.DeploymentStatusSuccess,
+		}
+		deployment.ID = util.NewULID()
+		deployment.TeamID = application.TeamID
+		deployment.ServerID = application.ServerID
+		createdAt := base.Add(time.Duration(i) * time.Minute)
+		deployment.CreatedAt = &createdAt
+		deployment.UpdatedAt = &createdAt
+		require.NoError(t, db.Create(deployment).Error)
+		if i == 0 {
+			oldestID = deployment.ID
+		}
+	}
+
+	body := applicationDeployPayload{
+		ImageTag:  "ghcr.io/kkz6/test-repo:launch-new",
+		CommitSHA: "new-commit",
+		Branch:    "main",
+		RunID:     "retention-run",
+		RunURL:    "https://github.com/kkz6/test-repo/actions/runs/retention-run",
+	}
+	resp, raw := post(t, app, "/api/webhooks/docker/applications/"+application.ID+"/deploy", rawToken, body)
+	require.Equal(t, http.StatusOK, resp.StatusCode, string(raw))
+
+	var count int64
+	require.NoError(t, db.Model(&dockermodels.Deployment{}).
+		Where("target_type = ? AND target_id = ?", "application", application.ID).
+		Count(&count).Error)
+	assert.Equal(t, int64(dockerrepositories.DeploymentHistoryLimit), count)
+
+	var oldestCount int64
+	require.NoError(t, db.Model(&dockermodels.Deployment{}).Where("id = ?", oldestID).Count(&oldestCount).Error)
+	assert.Zero(t, oldestCount)
+}
+
+func TestGHAApplicationDeploy_ReturnsErrorWhenRetainedInsertFails(t *testing.T) {
+	app, db, application := setupHandler(t)
+	require.NoError(t, db.Exec(`
+		CREATE TRIGGER prevent_deployment_insert
+		BEFORE INSERT ON docker_deployments
+		BEGIN
+			SELECT RAISE(FAIL, 'insertion disabled');
+		END
+	`).Error)
+
+	body := applicationDeployPayload{
+		ImageTag: "ghcr.io/kkz6/test-repo:launch-fail",
+		RunID:    "failed-insert-run",
+	}
+	resp, _ := post(t, app, "/api/webhooks/docker/applications/"+application.ID+"/deploy", rawToken, body)
+	assert.Equal(t, http.StatusInternalServerError, resp.StatusCode)
 }
 
 // Regression for #92: a single trigger creates a dispatch-time placeholder
