@@ -89,6 +89,12 @@ func (d *Dispatcher) GetStreamMonitor() *StreamMonitor {
 
 // Run executes a pending task
 func (d *Dispatcher) Run(ctx context.Context, pt *PendingTask) (*TaskResult, error) {
+	if pt == nil || pt.Task == nil {
+		return nil, fmt.Errorf("task is required")
+	}
+
+	pt.ensureTaskID()
+
 	if pt.Connection != nil {
 		return d.runRemote(ctx, pt)
 	}
@@ -177,12 +183,7 @@ func (d *Dispatcher) runRemote(ctx context.Context, pt *PendingTask) (*TaskResul
 		Msg("runRemote: SSH connected, creating script directory")
 
 	taskDir := conn.GetScriptPath()
-	taskID := pt.TaskID
-	if taskID == "" {
-		taskID = fmt.Sprintf("%d", time.Now().UnixNano())
-	}
-
-	taskPaths := paths.GetTaskPaths(taskDir, taskID)
+	taskPaths := paths.GetTaskPaths(taskDir, pt.TaskID)
 
 	// Ensure script directory exists
 	if _, err := sshClient.Run(ctx, fmt.Sprintf("mkdir -p %s", taskDir)); err != nil {

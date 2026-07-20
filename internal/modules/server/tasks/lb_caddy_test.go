@@ -6,13 +6,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kkz6/launch-go/internal/pkg/taskrunner/templates"
+	"github.com/kkz6/launch-go/internal/bootstrap/tasktemplates"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestMain(m *testing.M) {
-	templates.MustRegisterAll()
+	tasktemplates.MustRegisterAll()
 	os.Exit(m.Run())
 }
 

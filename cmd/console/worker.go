@@ -13,6 +13,7 @@ import (
 	"github.com/getsentry/sentry-go"
 	"github.com/hibiken/asynq"
 
+	"github.com/kkz6/launch-go/internal/bootstrap/tasktemplates"
 	"github.com/kkz6/launch-go/internal/config"
 	"github.com/kkz6/launch-go/internal/database"
 	"github.com/kkz6/launch-go/internal/middleware"
@@ -35,7 +36,6 @@ import (
 	"github.com/kkz6/launch-go/internal/pkg/queue"
 	"github.com/kkz6/launch-go/internal/pkg/signedurl"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
-	"github.com/kkz6/launch-go/internal/pkg/taskrunner/templates"
 	"github.com/kkz6/launch-go/internal/pkg/websocket"
 	"github.com/kkz6/launch-go/internal/schedule"
 )
@@ -54,7 +54,7 @@ func (workerCommand) Extend() console.Extend {
 // cmd/worker/main.go.
 func (workerCommand) Handle(ctx console.Context) error {
 	// Register all script templates at startup.
-	templates.MustRegisterAll()
+	tasktemplates.MustRegisterAll()
 
 	// Load configuration.
 	cfg, err := config.Load()

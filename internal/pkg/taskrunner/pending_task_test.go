@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner/markers"
+	"github.com/oklog/ulid/v2"
 )
 
 func TestNewPendingTask(t *testing.T) {
@@ -18,8 +19,8 @@ func TestNewPendingTask(t *testing.T) {
 	if pt.Background {
 		t.Error("expected Background to default to false")
 	}
-	if pt.TaskID != "" {
-		t.Error("expected TaskID to default to empty")
+	if _, err := ulid.Parse(pt.TaskID); err != nil {
+		t.Errorf("expected a generated ULID task ID, got %q: %v", pt.TaskID, err)
 	}
 }
 
@@ -48,6 +49,25 @@ func TestPendingTask_AsAlias(t *testing.T) {
 
 	if pt.TaskID != "my-id" {
 		t.Errorf("expected TaskID 'my-id', got '%s'", pt.TaskID)
+	}
+}
+
+func TestPendingTask_EnsureTaskIDRestoresAnEmptyID(t *testing.T) {
+	pt := NewPendingTask(NewBaseTask()).WithID("")
+	pt.ensureTaskID()
+
+	if _, err := ulid.Parse(pt.TaskID); err != nil {
+		t.Errorf("expected a generated ULID task ID, got %q: %v", pt.TaskID, err)
+	}
+}
+
+func TestDispatcherRunRejectsMissingTask(t *testing.T) {
+	dispatcher := NewDispatcher(nil, nil)
+
+	for _, pending := range []*PendingTask{nil, {}} {
+		if _, err := dispatcher.Run(context.Background(), pending); err == nil {
+			t.Fatal("expected missing task to be rejected")
+		}
 	}
 }
 
