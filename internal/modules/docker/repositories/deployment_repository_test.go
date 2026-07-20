@@ -178,3 +178,62 @@ func TestCreate_EnforcesHistoryLimitPerTarget(t *testing.T) {
 	require.NoError(t, db.Model(&models.Deployment{}).Where("id = ?", other.ID).Count(&otherCount).Error)
 	assert.Equal(t, int64(1), otherCount, "another workload's history must be untouched")
 }
+
+func TestCreate_RollsBackWhenInsertFails(t *testing.T) {
+	db := setupDeploymentDB(t)
+	repo := NewDeploymentRepository(db)
+	ctx := context.Background()
+
+	existing := makeDeployment(t, db, "application", "app-1", dockertypes.DeploymentStatusSuccess, time.Now())
+	duplicate := &models.Deployment{
+		TargetType: "application",
+		TargetID:   "app-1",
+		Status:     dockertypes.DeploymentStatusPending,
+	}
+	duplicate.ID = existing.ID
+	duplicate.TeamID = "team-a"
+	duplicate.ServerID = "srv-a"
+
+	require.Error(t, repo.Create(ctx, duplicate))
+
+	var count int64
+	require.NoError(t, db.Model(&models.Deployment{}).Count(&count).Error)
+	assert.Equal(t, int64(1), count)
+}
+
+func TestCreate_RollsBackWhenPruningFails(t *testing.T) {
+	db := setupDeploymentDB(t)
+	repo := NewDeploymentRepository(db)
+	ctx := context.Background()
+	base := time.Date(2026, 7, 20, 0, 0, 0, 0, time.UTC)
+
+	for i := 0; i < DeploymentHistoryLimit; i++ {
+		makeDeployment(t, db, "application", "app-1",
+			dockertypes.DeploymentStatusSuccess, base.Add(time.Duration(i)*time.Minute))
+	}
+	require.NoError(t, db.Exec(`
+		CREATE TRIGGER prevent_deployment_prune
+		BEFORE DELETE ON docker_deployments
+		BEGIN
+			SELECT RAISE(FAIL, 'pruning disabled');
+		END
+	`).Error)
+
+	next := &models.Deployment{
+		TargetType: "application",
+		TargetID:   "app-1",
+		Status:     dockertypes.DeploymentStatusPending,
+	}
+	next.ID = util.NewULID()
+	next.TeamID = "team-a"
+	next.ServerID = "srv-a"
+	createdAt := base.Add(DeploymentHistoryLimit * time.Minute)
+	next.CreatedAt = &createdAt
+	next.UpdatedAt = &createdAt
+
+	require.ErrorContains(t, repo.Create(ctx, next), "pruning disabled")
+
+	var count int64
+	require.NoError(t, db.Model(&models.Deployment{}).Count(&count).Error)
+	assert.Equal(t, int64(DeploymentHistoryLimit), count, "the insert must roll back with the failed prune")
+}
