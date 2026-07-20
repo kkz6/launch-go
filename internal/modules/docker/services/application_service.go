@@ -44,11 +44,7 @@ func (s *ApplicationService) ListApplications(
 	if err != nil {
 		return nil, err
 	}
-	out := make([]dto.ApplicationResponse, 0, len(apps))
-	for i := range apps {
-		out = append(out, *dto.ToApplicationResponse(&apps[i]))
-	}
-	return out, nil
+	return mapResponseValues(apps, dto.ToApplicationResponse), nil
 }
 
 // GetApplication returns a single app by ID, after verifying it lives in

@@ -31,11 +31,7 @@ func (s *ScheduleService) ListSchedules(
 	if err != nil {
 		return nil, err
 	}
-	out := make([]dto.ScheduleResponse, 0, len(rows))
-	for i := range rows {
-		out = append(out, *dto.ToScheduleResponse(&rows[i]))
-	}
-	return out, nil
+	return mapResponseValues(rows, dto.ToScheduleResponse), nil
 }
 
 func (s *ScheduleService) CreateSchedule(

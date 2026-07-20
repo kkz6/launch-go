@@ -50,6 +50,21 @@ type BaseService struct {
 	serviceDeps *ServiceDeps
 }
 
+// mapResponseValues converts model rows to value response DTOs. Docker DTO
+// converters return pointers so they can also represent optional resources;
+// collection endpoints always return concrete values.
+func mapResponseValues[M, R any](rows []M, convert func(*M) *R) []R {
+	if rows == nil {
+		return nil
+	}
+
+	responses := make([]R, len(rows))
+	for i := range rows {
+		responses[i] = *convert(&rows[i])
+	}
+	return responses
+}
+
 // NewBaseService builds the carrier from typed deps.
 func NewBaseService(deps *ServiceDeps) *BaseService {
 	return &BaseService{
