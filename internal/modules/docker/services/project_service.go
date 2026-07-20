@@ -37,11 +37,7 @@ func (s *ProjectService) ListProjects(
 		return nil, err
 	}
 
-	out := make([]dto.ProjectResponse, 0, len(projects))
-	for i := range projects {
-		out = append(out, *dto.ToProjectResponse(&projects[i]))
-	}
-	return out, nil
+	return mapResponseValues(projects, dto.ToProjectResponse), nil
 }
 
 // GetProject returns a single project by ID, with workload counts populated.

@@ -63,11 +63,7 @@ func (s *DomainService) ListDomains(
 	if err != nil {
 		return nil, err
 	}
-	out := make([]dto.DomainResponse, 0, len(rows))
-	for i := range rows {
-		out = append(out, *dto.ToDomainResponse(&rows[i]))
-	}
-	return out, nil
+	return mapResponseValues(rows, dto.ToDomainResponse), nil
 }
 
 // CreateDomain attaches a new hostname to the application. After the row
@@ -429,11 +425,7 @@ func (s *DomainService) ListComposeDomains(
 	if err != nil {
 		return nil, err
 	}
-	out := make([]dto.DomainResponse, 0, len(rows))
-	for i := range rows {
-		out = append(out, *dto.ToDomainResponse(&rows[i]))
-	}
-	return out, nil
+	return mapResponseValues(rows, dto.ToDomainResponse), nil
 }
 
 func (s *DomainService) CreateComposeDomain(

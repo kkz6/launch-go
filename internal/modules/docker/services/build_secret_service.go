@@ -48,11 +48,7 @@ func (s *BuildSecretService) ListBuildSecrets(
 	if err != nil {
 		return nil, err
 	}
-	out := make([]dto.BuildSecretResponse, 0, len(rows))
-	for i := range rows {
-		out = append(out, *dto.ToApplicationBuildSecretResponse(&rows[i]))
-	}
-	return out, nil
+	return mapResponseValues(rows, dto.ToApplicationBuildSecretResponse), nil
 }
 
 // CreateBuildSecret adds a name/value to the application. (app, name)

@@ -187,11 +187,7 @@ func (s *BackupService) ListRuns(
 	if err != nil {
 		return nil, err
 	}
-	out := make([]dto.BackupRunResponse, 0, len(rows))
-	for i := range rows {
-		out = append(out, *dto.ToBackupRunResponse(&rows[i]))
-	}
-	return out, nil
+	return mapResponseValues(rows, dto.ToBackupRunResponse), nil
 }
 
 // RunNow kicks off an immediate backup. Synchronous SSH call — fits a

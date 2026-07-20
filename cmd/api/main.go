@@ -15,6 +15,7 @@ import (
 	"github.com/rs/zerolog"
 	"gorm.io/gorm"
 
+	"github.com/kkz6/launch-go/internal/bootstrap/tasktemplates"
 	"github.com/kkz6/launch-go/internal/config"
 	"github.com/kkz6/launch-go/internal/database"
 	"github.com/kkz6/launch-go/internal/middleware"
@@ -60,7 +61,6 @@ import (
 	"github.com/kkz6/launch-go/internal/pkg/queue"
 	"github.com/kkz6/launch-go/internal/pkg/signedurl"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
-	"github.com/kkz6/launch-go/internal/pkg/taskrunner/templates"
 	"github.com/kkz6/launch-go/internal/pkg/websocket"
 )
 
@@ -94,7 +94,7 @@ var Version = "development"
 // bootstrap initializes all application dependencies
 func bootstrap() *Application {
 	// Register all script templates at startup
-	templates.MustRegisterAll()
+	tasktemplates.MustRegisterAll()
 
 	cfg, err := config.Load()
 	if err != nil {
