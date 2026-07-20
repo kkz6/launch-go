@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"crypto/sha256"
 	"encoding/base64"
 	"fmt"
 	"io"
@@ -15,6 +14,7 @@ import (
 	"time"
 
 	"github.com/kkz6/launch-go/internal/pkg/config"
+	"github.com/oklog/ulid/v2"
 
 	"golang.org/x/crypto/ssh"
 )
@@ -103,14 +103,16 @@ func makeHostKeyCallback(serverID, pinnedKey string) ssh.HostKeyCallback {
 	return func(hostname string, remote net.Addr, key ssh.PublicKey) error {
 		live := encodeHostKey(key)
 		if pinnedKey == "" {
-			// TOFU. Persist on a best-effort basis — failing to
-			// write back shouldn't abort the connection, but log
-			// it via the persister's own error path so we don't
-			// silently degrade to "trust forever".
-			if hostKeyPersister != nil && serverID != "" {
-				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-				defer cancel()
-				_ = hostKeyPersister(ctx, serverID, live)
+			// TOFU. A managed server must be pinned before its first
+			// connection is accepted; otherwise every later connection
+			// would silently trust whichever host answers the address.
+			if hostKeyPersister == nil {
+				return fmt.Errorf("SSH host key persister is not configured for server %s", serverID)
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			if err := hostKeyPersister(ctx, serverID, live); err != nil {
+				return fmt.Errorf("persist SSH host key for server %s: %w", serverID, err)
 			}
 			return nil
 		}
@@ -278,14 +280,14 @@ func (c *SSHClient) RunScript(ctx context.Context, script string) (*SSHCommandRe
 		}
 	}
 
-	sum := sha256.Sum256([]byte(script))
-	remotePath := fmt.Sprintf("/tmp/launch-runscript-%x.sh", sum[:8])
+	remotePath := fmt.Sprintf("/tmp/launch-runscript-%s.sh", ulid.Make())
 	if err := c.Upload(ctx, []byte(script), remotePath, 0o700); err != nil {
 		return nil, fmt.Errorf("upload script: %w", err)
 	}
 
 	// Run the file, then remove it while preserving the script's exit code.
-	cmd := fmt.Sprintf("bash %s; ec=$?; rm -f %s; exit $ec", remotePath, remotePath)
+	quotedPath := shellQuote(remotePath)
+	cmd := fmt.Sprintf("bash %s; ec=$?; rm -f %s; exit $ec", quotedPath, quotedPath)
 	return c.Run(ctx, cmd)
 }
 
@@ -334,22 +336,79 @@ func (c *SSHClient) Upload(ctx context.Context, content []byte, remotePath strin
 	}
 	defer session.Close()
 
-	go func() {
-		w, _ := session.StdinPipe()
-		defer w.Close()
+	stdin, err := session.StdinPipe()
+	if err != nil {
+		return fmt.Errorf("open SCP stdin: %w", err)
+	}
+	stdout, err := session.StdoutPipe()
+	if err != nil {
+		return fmt.Errorf("open SCP stdout: %w", err)
+	}
+	dir := filepath.Dir(remotePath)
+	if err := session.Start("scp -tr " + shellQuote(dir)); err != nil {
+		return fmt.Errorf("start SCP upload: %w", err)
+	}
 
-		_, _ = fmt.Fprintf(w, "C%04o %d %s\n", mode, len(content), filepath.Base(remotePath))
-		_, _ = w.Write(content)
-		_, _ = fmt.Fprint(w, "\x00")
+	done := make(chan error, 1)
+	go func() {
+		done <- writeSCPFile(stdin, stdout, content, filepath.Base(remotePath), mode, session)
 	}()
 
-	dir := filepath.Dir(remotePath)
-	return session.Run(fmt.Sprintf("scp -tr %s", dir))
+	select {
+	case err := <-done:
+		return err
+	case <-ctx.Done():
+		_ = session.Close()
+		return ctx.Err()
+	}
+}
+
+// writeSCPFile performs the acknowledgement-based SCP sink protocol used by
+// `scp -t`. Checking every acknowledgement prevents a failed remote write from
+// being reported as a successful upload.
+func writeSCPFile(stdin io.WriteCloser, stdout io.Reader, content []byte, name string, mode os.FileMode, session *ssh.Session) error {
+	defer stdin.Close()
+	reader := bufio.NewReader(stdout)
+
+	if err := readSCPAck(reader); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintf(stdin, "C%04o %d %s\n", mode.Perm(), len(content), name); err != nil {
+		return fmt.Errorf("write SCP header: %w", err)
+	}
+	if err := readSCPAck(reader); err != nil {
+		return err
+	}
+	if _, err := io.Copy(stdin, bytes.NewReader(content)); err != nil {
+		return fmt.Errorf("write SCP content: %w", err)
+	}
+	if _, err := stdin.Write([]byte{0}); err != nil {
+		return fmt.Errorf("finish SCP content: %w", err)
+	}
+	if err := readSCPAck(reader); err != nil {
+		return err
+	}
+	if err := session.Wait(); err != nil {
+		return fmt.Errorf("complete SCP upload: %w", err)
+	}
+	return nil
+}
+
+func readSCPAck(reader *bufio.Reader) error {
+	code, err := reader.ReadByte()
+	if err != nil {
+		return fmt.Errorf("read SCP acknowledgement: %w", err)
+	}
+	if code == 0 {
+		return nil
+	}
+	message, _ := reader.ReadString('\n')
+	return fmt.Errorf("SCP rejected upload (%d): %s", code, strings.TrimSpace(message))
 }
 
 // Download downloads content from a remote file
 func (c *SSHClient) Download(ctx context.Context, remotePath string) ([]byte, error) {
-	result, err := c.Run(ctx, fmt.Sprintf("cat %s", remotePath))
+	result, err := c.Run(ctx, "cat -- "+shellQuote(remotePath))
 	if err != nil {
 		return nil, err
 	}
@@ -358,25 +417,25 @@ func (c *SSHClient) Download(ctx context.Context, remotePath string) ([]byte, er
 
 // FileExists checks if a file exists on the remote server
 func (c *SSHClient) FileExists(ctx context.Context, path string) (bool, error) {
-	result, err := c.Run(ctx, fmt.Sprintf("test -f %s && echo 'exists'", path))
+	result, err := c.Run(ctx, "test -f "+shellQuote(path))
 	if err != nil {
-		return false, nil // File doesn't exist
+		return false, fmt.Errorf("check remote file: %w", err)
 	}
-	return strings.TrimSpace(result.Stdout) == "exists", nil
+	return result.ExitCode == 0, nil
 }
 
 // DirExists checks if a directory exists on the remote server
 func (c *SSHClient) DirExists(ctx context.Context, path string) (bool, error) {
-	result, err := c.Run(ctx, fmt.Sprintf("test -d %s && echo 'exists'", path))
+	result, err := c.Run(ctx, "test -d "+shellQuote(path))
 	if err != nil {
-		return false, nil
+		return false, fmt.Errorf("check remote directory: %w", err)
 	}
-	return strings.TrimSpace(result.Stdout) == "exists", nil
+	return result.ExitCode == 0, nil
 }
 
 // MkdirAll creates a directory and all parent directories on the remote server
 func (c *SSHClient) MkdirAll(ctx context.Context, path string) error {
-	_, err := c.Run(ctx, fmt.Sprintf("mkdir -p %s", path))
+	_, err := c.Run(ctx, "mkdir -p "+shellQuote(path))
 	return err
 }
 
@@ -501,6 +560,10 @@ func expandPath(path string) string {
 		return filepath.Join(home, path[2:])
 	}
 	return path
+}
+
+func shellQuote(value string) string {
+	return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'"
 }
 
 // SSHClientOption is a functional option for configuring SSHClient
