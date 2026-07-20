@@ -133,3 +133,48 @@ func TestPruneForTarget_NoOpWhenUnderCap(t *testing.T) {
 		Where("target_id = ?", "app-1").Count(&count).Error)
 	assert.Equal(t, int64(5), count)
 }
+
+func TestCreate_EnforcesHistoryLimitPerTarget(t *testing.T) {
+	db := setupDeploymentDB(t)
+	repo := NewDeploymentRepository(db)
+	ctx := context.Background()
+	base := time.Date(2026, 7, 20, 0, 0, 0, 0, time.UTC)
+
+	ids := make([]string, 0, DeploymentHistoryLimit+1)
+	for i := 0; i < DeploymentHistoryLimit+1; i++ {
+		d := &models.Deployment{
+			TargetType: "application",
+			TargetID:   "app-1",
+			Status:     dockertypes.DeploymentStatusSuccess,
+		}
+		d.ID = util.NewULID()
+		d.TeamID = "team-a"
+		d.ServerID = "srv-a"
+		createdAt := base.Add(time.Duration(i) * time.Minute)
+		d.CreatedAt = &createdAt
+		d.UpdatedAt = &createdAt
+		require.NoError(t, repo.Create(ctx, d))
+		ids = append(ids, d.ID)
+	}
+
+	other := &models.Deployment{
+		TargetType: "application",
+		TargetID:   "app-2",
+		Status:     dockertypes.DeploymentStatusSuccess,
+	}
+	other.ID = util.NewULID()
+	other.TeamID = "team-a"
+	other.ServerID = "srv-a"
+	require.NoError(t, repo.Create(ctx, other))
+
+	var remaining []models.Deployment
+	require.NoError(t, db.Where("target_type = ? AND target_id = ?", "application", "app-1").
+		Order("created_at ASC").Find(&remaining).Error)
+	require.Len(t, remaining, DeploymentHistoryLimit)
+	assert.Equal(t, ids[1], remaining[0].ID, "the oldest deployment should be removed")
+	assert.Equal(t, ids[DeploymentHistoryLimit], remaining[DeploymentHistoryLimit-1].ID)
+
+	var otherCount int64
+	require.NoError(t, db.Model(&models.Deployment{}).Where("id = ?", other.ID).Count(&otherCount).Error)
+	assert.Equal(t, int64(1), otherCount, "another workload's history must be untouched")
+}

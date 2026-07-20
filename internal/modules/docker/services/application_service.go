@@ -749,7 +749,6 @@ func (s *ApplicationService) Deploy(
 		if err != nil {
 			return nil, err
 		}
-		s.pruneDeploymentHistory(ctx, "application", applicationID)
 		return dep, nil
 	}
 
@@ -793,16 +792,7 @@ func (s *ApplicationService) Deploy(
 		"status":         "pending",
 	})
 
-	s.pruneDeploymentHistory(ctx, "application", applicationID)
 	return deployment, nil
-}
-
-// pruneDeploymentHistory caps the application's retained deployment rows
-// to deploymentHistoryKeep, deleting the oldest. Best-effort (#103).
-func (s *ApplicationService) pruneDeploymentHistory(ctx context.Context, targetType, targetID string) {
-	if err := s.Repos().Deployment().PruneForTarget(ctx, targetType, targetID, deploymentHistoryKeep); err != nil {
-		s.LogError(err, "prune deployment history", "target_id", targetID)
-	}
 }
 
 // UpdateAdvanced persists runtime knobs on the application by merging

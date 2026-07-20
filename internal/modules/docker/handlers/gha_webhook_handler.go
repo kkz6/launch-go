@@ -17,6 +17,7 @@ import (
 
 	dockerjobs "github.com/kkz6/launch-go/internal/modules/docker/jobs"
 	dockermodels "github.com/kkz6/launch-go/internal/modules/docker/models"
+	dockerrepositories "github.com/kkz6/launch-go/internal/modules/docker/repositories"
 	dockertypes "github.com/kkz6/launch-go/internal/modules/docker/types"
 	gitmodels "github.com/kkz6/launch-go/internal/modules/git/models"
 	gitproviders "github.com/kkz6/launch-go/internal/modules/git/providers"
@@ -767,7 +768,7 @@ func (h *GHAWebhookHandler) upsertGHADeployment(input ghaDeploymentUpsert) (*doc
 	deployment.TeamID = input.TeamID
 	deployment.ServerID = input.ServerID
 
-	if err := h.db.Create(deployment).Error; err != nil {
+	if err := dockerrepositories.NewDeploymentRepository(h.db).Create(context.Background(), deployment); err != nil {
 		return nil, err
 	}
 	return deployment, nil
@@ -821,7 +822,7 @@ func (h *GHAWebhookHandler) markGHADeploymentFailed(targetType, targetID, teamID
 	deployment.ID = newULID()
 	deployment.TeamID = teamID
 	deployment.ServerID = serverID
-	return h.db.Create(deployment).Error
+	return dockerrepositories.NewDeploymentRepository(h.db).Create(context.Background(), deployment)
 }
 
 // claimGHAPlaceholder returns the most recent dispatch-time placeholder
