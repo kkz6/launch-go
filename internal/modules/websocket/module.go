@@ -32,13 +32,12 @@ type Module struct {
 	membershipCache        *launchcache.TeamMembershipCache
 }
 
-// NewModule creates a new WebSocket module
-func NewModule(b *app.Builder) *Module {
+// NewModule creates a new WebSocket module. The hub is deliberately passed
+// separately from app dependencies: application modules publish events via
+// the shared Redis broadcaster, while this module alone owns socket clients.
+func NewModule(b *app.Builder, hub *ws.Hub) *Module {
 	deps := b.Deps()
 	jwtSecret := deps.Config.JWT.Secret
-
-	// Type assert to get the concrete Hub (only API server uses this module)
-	hub, _ := deps.WebSocket.(*ws.Hub)
 
 	// Create shared base for all WebSocket handlers
 	handlerBase := handlers.NewBase(deps.DB, jwtSecret, *deps.Logger, deps.MembershipCache)

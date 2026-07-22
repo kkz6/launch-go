@@ -12,6 +12,7 @@ const (
 	clientWriteWait = 10 * time.Second
 	clientPongWait  = 60 * time.Second
 	clientPingEvery = 50 * time.Second
+	clientSendQueue = 64
 )
 
 // Client represents a connected WebSocket client
@@ -35,7 +36,7 @@ func NewClient(hub *Hub, conn *websocket.Conn, userID, teamID string) *Client {
 		TeamID:   teamID,
 		Conn:     conn,
 		Channels: make(map[string]bool),
-		Send:     make(chan []byte, 256),
+		Send:     make(chan []byte, clientSendQueue),
 		hub:      hub,
 	}
 }
