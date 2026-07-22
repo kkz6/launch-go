@@ -153,7 +153,7 @@ func (m *StreamMonitor) StreamTaskOutput(
 	taskPaths := paths.GetTaskPaths(conn.GetScriptPath(), taskID)
 
 	// Wait for log file to exist (task may not have started writing yet)
-	waitCmd := fmt.Sprintf("while [ ! -f %s ]; do sleep 0.5; done; echo 'ready'", taskPaths.Output)
+	waitCmd := fmt.Sprintf("while [ ! -f %s ]; do sleep 0.5; done; echo 'ready'", ShellQuote(taskPaths.Output))
 	if _, err := sshClient.Run(streamCtx, waitCmd); err != nil {
 		if streamCtx.Err() != nil {
 			return streamCtx.Err()
@@ -163,7 +163,7 @@ func (m *StreamMonitor) StreamTaskOutput(
 
 	// Use tail -f to stream the log file
 	// -n +1 starts from the beginning of the file
-	tailCmd := fmt.Sprintf("tail -n +1 -f %s 2>/dev/null", taskPaths.Output)
+	tailCmd := fmt.Sprintf("tail -n +1 -f %s 2>/dev/null", ShellQuote(taskPaths.Output))
 
 	var outputBuffer strings.Builder
 	var lastBroadcast time.Time
@@ -411,7 +411,8 @@ func (m *StreamMonitor) MonitorBackgroundTask(
 
 	// Wait for log file to exist (task may not have started writing yet)
 	// Timeout after 30 seconds to avoid hanging forever
-	waitCmd := fmt.Sprintf("timeout 30 bash -c 'while [ ! -f %s ]; do sleep 0.1; done'; echo 'ready'", taskPaths.Output)
+	waitLoop := fmt.Sprintf("while [ ! -f %s ]; do sleep 0.1; done", ShellQuote(taskPaths.Output))
+	waitCmd := fmt.Sprintf("timeout 30 bash -c %s; echo 'ready'", ShellQuote(waitLoop))
 	m.logger.Debug().
 		Str("task_id", taskID).
 		Str("output_path", taskPaths.Output).
@@ -426,7 +427,7 @@ func (m *StreamMonitor) MonitorBackgroundTask(
 
 	// Use tail -f to stream the log file in real-time
 	// -n +1 starts from the beginning of the file
-	tailCmd := fmt.Sprintf("tail -n +1 -f %s 2>/dev/null", taskPaths.Output)
+	tailCmd := fmt.Sprintf("tail -n +1 -f %s 2>/dev/null", ShellQuote(taskPaths.Output))
 
 	m.logger.Info().
 		Str("task_id", taskID).

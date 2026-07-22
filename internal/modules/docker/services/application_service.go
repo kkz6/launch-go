@@ -466,7 +466,9 @@ func (s *ApplicationService) DeleteApplication(
 			// stuck on "deleting" forever waiting for a job that
 			// never came.
 			s.LogError(enqErr, "failed to dispatch app removal", "application_id", app.ID)
-			_ = s.Repos().Application().UpdateStatus(ctx, app.ID, previousStatus)
+			if restoreErr := s.Repos().Application().UpdateStatus(ctx, app.ID, previousStatus); restoreErr != nil {
+				s.LogError(restoreErr, "failed to restore application status after queue failure", "application_id", app.ID)
+			}
 			s.BroadcastToTeam(teamID, "docker.application.updated", map[string]any{
 				"id":         app.ID,
 				"project_id": app.ProjectID,
@@ -772,11 +774,13 @@ func (s *ApplicationService) Deploy(
 		// permanent spinner.
 		errMsg := err.Error()
 		finishedAt := time.Now().UTC()
-		_ = s.Repos().Deployment().UpdateFields(ctx, deployment.ID, map[string]any{
+		if updateErr := s.Repos().Deployment().UpdateFields(ctx, deployment.ID, map[string]any{
 			"status":      dockertypes.DeploymentStatusFailed,
 			"finished_at": finishedAt,
 			"error":       "failed to enqueue deploy job: " + errMsg,
-		})
+		}); updateErr != nil {
+			s.LogError(updateErr, "failed to mark application deployment enqueue failure", "deployment_id", deployment.ID)
+		}
 		return nil, err
 	}
 

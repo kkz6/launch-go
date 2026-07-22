@@ -3,6 +3,7 @@ package websocket
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/gofiber/contrib/websocket"
 
@@ -17,10 +18,13 @@ type Claims struct {
 }
 
 var (
-	ErrMissingToken  = errors.New("missing authentication token")
-	ErrMissingTeamID = errors.New("missing team_id parameter")
-	ErrNotTeamMember = errors.New("not a member of this team")
+	ErrMissingToken          = errors.New("missing authentication token")
+	ErrMissingTeamID         = errors.New("missing team_id parameter")
+	ErrNotTeamMember         = errors.New("not a member of this team")
+	ErrMembershipUnavailable = errors.New("team membership validation unavailable")
 )
+
+const websocketMembershipTimeout = 5 * time.Second
 
 // ValidateToken validates a JWT token and extracts user claims
 // Note: team_id is no longer in the JWT, it's passed separately
@@ -59,21 +63,30 @@ func AuthenticateWebSocket(c *websocket.Conn, jwtSecret string, membershipCache 
 		return nil, ErrMissingTeamID
 	}
 
-	// Validate team membership (with caching)
-	if membershipCache != nil {
-		isMember, err := membershipCache.IsMember(context.Background(), userID, teamID)
-		if err != nil {
-			return nil, err
-		}
-		if !isMember {
-			return nil, ErrNotTeamMember
-		}
+	ctx, cancel := context.WithTimeout(context.Background(), websocketMembershipTimeout)
+	defer cancel()
+	if err := validateTeamMembership(ctx, userID, teamID, membershipCache); err != nil {
+		return nil, err
 	}
 
 	return &Claims{
 		UserID: userID,
 		TeamID: teamID,
 	}, nil
+}
+
+func validateTeamMembership(ctx context.Context, userID, teamID string, membershipCache *launchcache.TeamMembershipCache) error {
+	if membershipCache == nil {
+		return ErrMembershipUnavailable
+	}
+	isMember, err := membershipCache.IsMember(ctx, userID, teamID)
+	if err != nil {
+		return err
+	}
+	if !isMember {
+		return ErrNotTeamMember
+	}
+	return nil
 }
 
 // AuthenticateWebSocketLegacy validates token with team_id in JWT (for backward compatibility)

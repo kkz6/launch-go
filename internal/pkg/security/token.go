@@ -51,6 +51,9 @@ func (g *TokenGenerator) WithPrefix(prefix string) *TokenGenerator {
 
 // Generate creates a new random token and returns it as a string.
 func (g *TokenGenerator) Generate() (string, error) {
+	if g.byteLength <= 0 {
+		return "", fmt.Errorf("length must be positive")
+	}
 	bytes := make([]byte, g.byteLength)
 
 	_, err := rand.Read(bytes)

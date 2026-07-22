@@ -81,9 +81,11 @@ func (j *ApplicationLifecycleJob) Handle(ctx context.Context) error {
 	//   start   → running
 	newStatus := j.statusForAction()
 	if newStatus != "" {
-		_ = j.Deps.Repos.Application().UpdateFields(ctx, j.Payload.ApplicationID, map[string]any{
+		if err := j.Deps.Repos.Application().UpdateFields(ctx, j.Payload.ApplicationID, map[string]any{
 			"status": newStatus,
-		})
+		}); err != nil {
+			return fmt.Errorf("persist application %s status: %w", j.Payload.Action, err)
+		}
 	}
 
 	j.broadcastTerminal(newStatus)

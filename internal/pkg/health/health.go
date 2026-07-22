@@ -76,13 +76,14 @@ func (a *Aggregator) Check(ctx context.Context) Result {
 		return result
 	}
 
-	var wg sync.WaitGroup
-	wg.Add(len(checkers))
+	type checkResult struct {
+		index int
+		check Check
+	}
+	results := make(chan checkResult, len(checkers))
 
 	for i, checker := range checkers {
 		go func(idx int, c Checker) {
-			defer wg.Done()
-
 			check := Check{
 				Name:   c.Name(),
 				Status: StatusHealthy,
@@ -97,11 +98,32 @@ func (a *Aggregator) Check(ctx context.Context) Result {
 				check.Message = err.Error()
 			}
 
-			result.Checks[idx] = check
+			results <- checkResult{index: idx, check: check}
 		}(i, checker)
 	}
 
-	wg.Wait()
+	received := make([]bool, len(checkers))
+	for remaining := len(checkers); remaining > 0; {
+		select {
+		case item := <-results:
+			result.Checks[item.index] = item.check
+			received[item.index] = true
+			remaining--
+		case <-ctx.Done():
+			for i, checker := range checkers {
+				if received[i] {
+					continue
+				}
+				result.Checks[i] = Check{
+					Name:    checker.Name(),
+					Status:  StatusUnhealthy,
+					Message: ctx.Err().Error(),
+				}
+			}
+			result.Status = StatusDegraded
+			return result
+		}
+	}
 
 	for _, check := range result.Checks {
 		if check.Status == StatusUnhealthy {

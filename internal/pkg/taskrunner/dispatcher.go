@@ -186,7 +186,7 @@ func (d *Dispatcher) runRemote(ctx context.Context, pt *PendingTask) (*TaskResul
 	taskPaths := paths.GetTaskPaths(taskDir, pt.TaskID)
 
 	// Ensure script directory exists
-	if _, err := sshClient.Run(ctx, fmt.Sprintf("mkdir -p %s", taskDir)); err != nil {
+	if _, err := sshClient.Run(ctx, fmt.Sprintf("mkdir -p %s", ShellQuote(taskDir))); err != nil {
 		_ = sshClient.Close()
 		return nil, fmt.Errorf("failed to create script directory: %w", err)
 	}
@@ -234,7 +234,7 @@ func (d *Dispatcher) runRemoteForeground(
 
 	// Run with timeout and tee output
 	command := fmt.Sprintf("timeout %ds bash %s 2>&1 | tee %s; exit ${PIPESTATUS[0]}",
-		timeout, taskPaths.Script, taskPaths.Output)
+		timeout, ShellQuote(taskPaths.Script), ShellQuote(taskPaths.Output))
 
 	cmdResult, err := client.Run(ctx, command)
 
@@ -295,10 +295,11 @@ func (d *Dispatcher) runRemoteBackground(
 	// client.Run() to block for the entire script duration, delaying the monitor goroutine
 	// and preventing real-time marker processing.
 	// The script's actual output is already captured inside the bash -c via "> taskPaths.Output 2>&1".
-	command := fmt.Sprintf(
-		"nohup bash -c 'stdbuf -oL timeout %ds bash %s > %s 2>&1; EXIT_CODE=$?; echo $EXIT_CODE > %s; echo \"::LAUNCH::exit_code::$EXIT_CODE\" >> %s' > /dev/null 2>&1 & echo $!",
-		timeout, taskPaths.Script, taskPaths.Output, taskPaths.ExitCode, taskPaths.Output,
+	innerCommand := fmt.Sprintf(
+		"stdbuf -oL timeout %ds bash %s > %s 2>&1; EXIT_CODE=$?; echo $EXIT_CODE > %s; echo \"::LAUNCH::exit_code::$EXIT_CODE\" >> %s",
+		timeout, ShellQuote(taskPaths.Script), ShellQuote(taskPaths.Output), ShellQuote(taskPaths.ExitCode), ShellQuote(taskPaths.Output),
 	)
+	command := fmt.Sprintf("nohup bash -c %s > /dev/null 2>&1 & echo $!", ShellQuote(innerCommand))
 
 	d.logger.Debug().
 		Str("task_id", pt.TaskID).

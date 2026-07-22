@@ -26,8 +26,7 @@ func NewRedirectService(deps *ServiceDeps) *RedirectService {
 // CreateDoubleNestedFunc: (ctx, parentID=siteID, grandparentID=serverID,
 // teamID, userID, req).
 func (s *RedirectService) Create(ctx context.Context, siteID, serverID, teamID, userID string, req *dto.CreateRedirectRequest) (dto.RedirectResponse, error) {
-	_ = teamID
-	site, err := s.Repos().Site().FindByIDAndServer(ctx, siteID, serverID)
+	site, err := s.findSite(ctx, siteID, serverID, teamID)
 	if err != nil {
 		return dto.RedirectResponse{}, err
 	}
@@ -53,8 +52,7 @@ func (s *RedirectService) Create(ctx context.Context, siteID, serverID, teamID, 
 
 // List returns all redirects for a site. Signature matches IndexDoubleNestedFunc.
 func (s *RedirectService) List(ctx context.Context, siteID, serverID, teamID string) ([]dto.RedirectResponse, error) {
-	_ = teamID
-	if _, err := s.Repos().Site().FindByIDAndServer(ctx, siteID, serverID); err != nil {
+	if _, err := s.findSite(ctx, siteID, serverID, teamID); err != nil {
 		return nil, err
 	}
 	redirects, err := s.Repos().Redirect().FindBySite(ctx, siteID)
@@ -76,8 +74,7 @@ func (s *RedirectService) List(ctx context.Context, siteID, serverID, teamID str
 // Status is reset to "pending" so the Caddyfile update job can flip
 // it back to "installed" on success — mirrors the Create lifecycle.
 func (s *RedirectService) Update(ctx context.Context, redirectID, siteID, serverID, teamID, userID string, req *dto.UpdateRedirectRequest) (dto.RedirectResponse, error) {
-	_ = teamID
-	if _, err := s.Repos().Site().FindByIDAndServer(ctx, siteID, serverID); err != nil {
+	if _, err := s.findSite(ctx, siteID, serverID, teamID); err != nil {
 		return dto.RedirectResponse{}, err
 	}
 	redirect, err := s.Repos().Redirect().FindByID(ctx, redirectID)
@@ -111,8 +108,7 @@ func (s *RedirectService) Update(ctx context.Context, redirectID, siteID, server
 
 // Delete deletes a redirect. Signature matches DeleteDoubleNestedFunc.
 func (s *RedirectService) Delete(ctx context.Context, redirectID, siteID, serverID, teamID, userID string) error {
-	_ = teamID
-	if _, err := s.Repos().Site().FindByIDAndServer(ctx, siteID, serverID); err != nil {
+	if _, err := s.findSite(ctx, siteID, serverID, teamID); err != nil {
 		return err
 	}
 
@@ -129,6 +125,17 @@ func (s *RedirectService) Delete(ctx context.Context, redirectID, siteID, server
 
 	s.dispatchCaddyfileUpdate(redirect.SiteID, userID)
 	return nil
+}
+
+func (s *RedirectService) findSite(ctx context.Context, siteID, serverID, teamID string) (*models.Site, error) {
+	site, err := s.Repos().Site().FindByIDAndServer(ctx, siteID, serverID)
+	if err != nil {
+		return nil, err
+	}
+	if site.TeamID != teamID {
+		return nil, fiberutil.NotFound()
+	}
+	return site, nil
 }
 
 // dispatchCaddyfileUpdate dispatches a Caddyfile update job for the site.

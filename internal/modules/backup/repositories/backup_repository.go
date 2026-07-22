@@ -63,10 +63,38 @@ func (r *BackupRepository) FindBackupByIDAndServer(ctx context.Context, id, serv
 	)
 }
 
+// FindBackupByIDAndServerAndTeam finds a backup inside the requested tenant.
+func (r *BackupRepository) FindBackupByIDAndServerAndTeam(ctx context.Context, id, serverID, teamID string) (*models.Backup, error) {
+	return repository.FindOne[models.Backup](ctx, r.DB,
+		repository.WithID(id),
+		repository.WithServerID(serverID),
+		repository.WithTeamID(teamID),
+		repository.PreloadWithScope("Jobs", func(db *gorm.DB) *gorm.DB {
+			return db.Order("created_at DESC").Limit(50)
+		}),
+		repository.Preload("StorageProvider"),
+		repository.Preload("Databases"),
+	)
+}
+
 // FindBackupsByServerID finds all backups for a server with preloads.
 func (r *BackupRepository) FindBackupsByServerID(ctx context.Context, serverID string) ([]models.Backup, error) {
 	return repository.FindAll[models.Backup](ctx, r.DB,
 		repository.WithServerID(serverID),
+		repository.OrderByCreatedDesc(),
+		repository.PreloadWithScope("Jobs", func(db *gorm.DB) *gorm.DB {
+			return db.Order("created_at DESC").Limit(50)
+		}),
+		repository.Preload("StorageProvider"),
+		repository.Preload("Databases"),
+	)
+}
+
+// FindBackupsByServerAndTeam lists backups inside the requested tenant.
+func (r *BackupRepository) FindBackupsByServerAndTeam(ctx context.Context, serverID, teamID string) ([]models.Backup, error) {
+	return repository.FindAll[models.Backup](ctx, r.DB,
+		repository.WithServerID(serverID),
+		repository.WithTeamID(teamID),
 		repository.OrderByCreatedDesc(),
 		repository.PreloadWithScope("Jobs", func(db *gorm.DB) *gorm.DB {
 			return db.Order("created_at DESC").Limit(50)

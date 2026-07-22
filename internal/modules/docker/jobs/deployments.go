@@ -56,7 +56,12 @@ func attachDeploymentTaskID(
 	if taskID != "" {
 		updates["task_id"] = taskID
 	}
-	_ = deps.Repos.Deployment().UpdateFields(ctx, deploymentID, updates)
+	if err := deps.Repos.Deployment().UpdateFields(ctx, deploymentID, updates); err != nil {
+		deps.Logger.Error().Err(err).
+			Str("deployment_id", deploymentID).
+			Str("task_id", taskID).
+			Msg("failed to attach task to deployment")
+	}
 }
 
 // broadcastDeploymentEvent emits a docker.{kind}.deployment.* event on
@@ -130,5 +135,10 @@ func finalizeDeploymentRow(
 		}
 		updates["error"] = errMsg
 	}
-	_ = deps.Repos.Deployment().UpdateFields(ctx, deploymentID, updates)
+	if err := deps.Repos.Deployment().UpdateFields(ctx, deploymentID, updates); err != nil {
+		deps.Logger.Error().Err(err).
+			Str("deployment_id", deploymentID).
+			Str("status", string(status)).
+			Msg("failed to finalize deployment")
+	}
 }

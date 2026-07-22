@@ -14,7 +14,9 @@ type BackupRepository interface {
 	CreateBackupWithDatabases(ctx context.Context, backup *models.Backup, databaseIDs []string) error
 	FindBackupByID(ctx context.Context, id string) (*models.Backup, error)
 	FindBackupByIDAndServer(ctx context.Context, id, serverID string) (*models.Backup, error)
+	FindBackupByIDAndServerAndTeam(ctx context.Context, id, serverID, teamID string) (*models.Backup, error)
 	FindBackupsByServerID(ctx context.Context, serverID string) ([]models.Backup, error)
+	FindBackupsByServerAndTeam(ctx context.Context, serverID, teamID string) ([]models.Backup, error)
 	UpdateBackup(ctx context.Context, backup *models.Backup) error
 	UpdateBackupWithDatabases(ctx context.Context, backup *models.Backup, databaseIDs []string) error
 	UpdateBackupFields(ctx context.Context, id string, fields map[string]interface{}) error

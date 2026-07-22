@@ -55,7 +55,7 @@ func New(config ...Config) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		signer := cfg.Signer
 		if signer == nil {
-			signer = defaultSigner
+			signer = GetDefaultSigner()
 		}
 
 		if signer == nil {
@@ -119,7 +119,7 @@ func RequireSignedURLWithoutExpiry(signer *Signer) fiber.Handler {
 func OptionalSignedURL(signer *Signer) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		if signer == nil {
-			signer = defaultSigner
+			signer = GetDefaultSigner()
 		}
 
 		if signer == nil {
@@ -157,7 +157,7 @@ func IsSignedURLValid(c *fiber.Ctx) bool {
 // ValidateSignedURL is a helper function to manually validate a signed URL in a handler
 func ValidateSignedURL(c *fiber.Ctx, signer *Signer) bool {
 	if signer == nil {
-		signer = defaultSigner
+		signer = GetDefaultSigner()
 	}
 
 	if signer == nil {

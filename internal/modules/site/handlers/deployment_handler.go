@@ -34,7 +34,11 @@ func (h *DeploymentHandler) Deploy(c *fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
-	deployment, err := h.deploymentService.Deploy(c.Context(), siteID, serverID, userID)
+	teamID, err := fiberctx.MustGetTeamID(c)
+	if err != nil {
+		return err
+	}
+	deployment, err := h.deploymentService.Deploy(c.Context(), siteID, serverID, teamID, userID)
 	if err != nil {
 		return err
 	}
@@ -53,7 +57,11 @@ func (h *DeploymentHandler) Rollback(c *fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
-	deployment, err := h.deploymentService.Rollback(c.Context(), siteID, serverID, targetDeploymentID, userID)
+	teamID, err := fiberctx.MustGetTeamID(c)
+	if err != nil {
+		return err
+	}
+	deployment, err := h.deploymentService.Rollback(c.Context(), siteID, serverID, teamID, targetDeploymentID, userID)
 	if err != nil {
 		return err
 	}
@@ -67,7 +75,11 @@ func (h *DeploymentHandler) CancelQueuedDeployments(c *fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
-	count, err := h.deploymentService.CancelQueued(c.Context(), siteID, serverID)
+	teamID, err := fiberctx.MustGetTeamID(c)
+	if err != nil {
+		return err
+	}
+	count, err := h.deploymentService.CancelQueued(c.Context(), siteID, serverID, teamID)
 	if err != nil {
 		return err
 	}
@@ -88,13 +100,17 @@ func (h *DeploymentHandler) ToggleAutoDeployment(c *fiber.Ctx) error {
 	if err := c.BodyParser(&body); err != nil {
 		return fiberctx.RespondBadRequest(c, "Invalid request body")
 	}
+	teamID, err := fiberctx.MustGetTeamID(c)
+	if err != nil {
+		return err
+	}
 	if body.Enabled {
-		if err := h.deploymentService.EnableAutoDeployment(c.Context(), siteID, serverID); err != nil {
+		if err := h.deploymentService.EnableAutoDeployment(c.Context(), siteID, serverID, teamID); err != nil {
 			return err
 		}
 		return fiberctx.OK(c, "Auto-deployment enabled", nil)
 	}
-	if err := h.deploymentService.DisableAutoDeployment(c.Context(), siteID, serverID); err != nil {
+	if err := h.deploymentService.DisableAutoDeployment(c.Context(), siteID, serverID, teamID); err != nil {
 		return err
 	}
 	return fiberctx.OK(c, "Auto-deployment disabled", nil)

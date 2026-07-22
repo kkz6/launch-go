@@ -10,13 +10,13 @@ import (
 	"github.com/gofiber/contrib/websocket"
 	"github.com/gofiber/fiber/v2"
 	"github.com/rs/zerolog"
-	"golang.org/x/crypto/ssh"
 	"gorm.io/gorm"
 
 	serverModels "github.com/kkz6/launch-go/internal/modules/server/models"
 	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 	launchcache "github.com/kkz6/launch-go/internal/pkg/launch/cache"
 	"github.com/kkz6/launch-go/internal/pkg/launch/status"
+	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 )
 
 // ServiceStatusMessage is the WebSocket message format
@@ -119,33 +119,15 @@ func (h *ServiceStatusHandler) monitorServices(c *websocket.Conn, server *server
 		return
 	}
 
-	// Parse private key
-	signer, err := ssh.ParsePrivateKey([]byte(sshConfig.PrivateKey))
+	// Establish the connection through taskrunner so host-key verification is
+	// consistent with deployments and other server operations.
+	conn, err := sshConfig.Dial(10 * time.Second)
 	if err != nil {
-		h.LogError(err, "Failed to parse private key")
-		h.sendError(c, "Invalid SSH key")
-		return
-	}
-
-	// SSH client config
-	config := &ssh.ClientConfig{
-		User: sshConfig.User,
-		Auth: []ssh.AuthMethod{
-			ssh.PublicKeys(signer),
-		},
-		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
-		Timeout:         10 * time.Second,
-	}
-
-	// Connect to SSH server
-	addr := fmt.Sprintf("%s:%d", sshConfig.Host, sshConfig.Port)
-	conn, err := ssh.Dial("tcp", addr, config)
-	if err != nil {
-		h.LogError(err, "Failed to connect to SSH", "addr", addr)
+		h.LogError(err, "Failed to connect to SSH", "host", sshConfig.Host)
 		h.sendError(c, fmt.Sprintf("SSH connection failed: %s", err.Error()))
 		return
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	// Send initial status
 	h.checkAndSendStatus(c, conn, services)
@@ -173,9 +155,10 @@ func (h *ServiceStatusHandler) monitorServices(c *websocket.Conn, server *server
 			return
 		case <-ticker.C:
 			// Check if SSH connection is still alive
-			if _, _, err := conn.SendRequest("keepalive@openssh.com", true, nil); err != nil {
+			if _, err := conn.SendRequest("keepalive@openssh.com", true, nil); err != nil {
 				// Try to reconnect
-				conn, err = ssh.Dial("tcp", addr, config)
+				_ = conn.Close()
+				conn, err = sshConfig.Dial(10 * time.Second)
 				if err != nil {
 					h.LogError(err, "Failed to reconnect SSH")
 					h.sendError(c, "SSH connection lost")
@@ -187,7 +170,7 @@ func (h *ServiceStatusHandler) monitorServices(c *websocket.Conn, server *server
 	}
 }
 
-func (h *ServiceStatusHandler) checkAndSendStatus(c *websocket.Conn, conn *ssh.Client, services []serverModels.InstalledService) {
+func (h *ServiceStatusHandler) checkAndSendStatus(c *websocket.Conn, conn *taskrunner.SSHClient, services []serverModels.InstalledService) {
 	statuses := make([]status.ServiceStatus, 0, len(services))
 
 	for _, svc := range services {
@@ -211,7 +194,7 @@ func (h *ServiceStatusHandler) checkAndSendStatus(c *websocket.Conn, conn *ssh.C
 	}
 }
 
-func (h *ServiceStatusHandler) getServiceStatus(conn *ssh.Client, svc *serverModels.InstalledService) status.ServiceStatus {
+func (h *ServiceStatusHandler) getServiceStatus(conn *taskrunner.SSHClient, svc *serverModels.InstalledService) status.ServiceStatus {
 	svcStatus := status.ServiceStatus{
 		ID:       svc.ID,
 		Software: svc.Software,
@@ -282,7 +265,7 @@ func (h *ServiceStatusHandler) getServiceStatus(conn *ssh.Client, svc *serverMod
 // "latest" placeholder). Best-effort: failures are logged, never fatal
 // to the status stream.
 func (h *ServiceStatusHandler) probeAndPersistVersion(
-	conn *ssh.Client, svc *serverModels.InstalledService, svcStatus *status.ServiceStatus, versionCmd string,
+	conn *taskrunner.SSHClient, svc *serverModels.InstalledService, svcStatus *status.ServiceStatus, versionCmd string,
 ) {
 	session, err := conn.NewSession()
 	if err != nil {
@@ -312,7 +295,7 @@ func (h *ServiceStatusHandler) probeAndPersistVersion(
 // State, not systemd. The launch SSH user already has docker access
 // (deploys run docker commands over the same connection).
 func (h *ServiceStatusHandler) getContainerServiceStatus(
-	conn *ssh.Client, svcStatus status.ServiceStatus, containerName string,
+	conn *taskrunner.SSHClient, svcStatus status.ServiceStatus, containerName string,
 ) status.ServiceStatus {
 	session, err := conn.NewSession()
 	if err != nil {

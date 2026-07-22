@@ -139,6 +139,24 @@ func TestExecute_DefaultPathReturnsAllRows(t *testing.T) {
 	}
 }
 
+func TestNormalizePaginationBoundsClientLimits(t *testing.T) {
+	page, perPage := normalizePagination(Request{Page: 1, PerPage: 10_000}, Config{})
+	require.Equal(t, 1, page)
+	require.Equal(t, 100, perPage)
+
+	_, perPage = normalizePagination(Request{Page: 1, PerPage: 10_000}, Config{MaxPerPage: 500})
+	require.Equal(t, 500, perPage)
+}
+
+func TestNormalizePaginationPreventsOffsetOverflow(t *testing.T) {
+	maxInt := int(^uint(0) >> 1)
+	page, perPage := normalizePagination(Request{Page: maxInt, PerPage: 100}, Config{})
+
+	require.Equal(t, 100, perPage)
+	require.LessOrEqual(t, page, maxInt/perPage+1)
+	require.GreaterOrEqual(t, (page-1)*perPage, 0)
+}
+
 // ─── 4. Declared-column projection (secret-safety) ──────────────────
 
 // account carries a secret column that must never reach the response.

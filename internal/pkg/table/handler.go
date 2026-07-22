@@ -119,11 +119,8 @@ func (h *handler) action(c *fiber.Ctx) error {
 
 func (h *handler) listViews(c *fiber.Ctx) error {
 	userID, _ := fiberctx.GetUserID(c)
-	out, err := h.views.List(c.Context(), h.table.Config().Name, userID)
-	if err != nil {
-		return err
-	}
-	return fiberctx.OK(c, "Views retrieved", out)
+	_, err := h.views.List(c.Context(), h.table.Config().Name, userID)
+	return err
 }
 
 func (h *handler) storeView(c *fiber.Ctx) error {
@@ -147,8 +144,5 @@ func (h *handler) storeView(c *fiber.Ctx) error {
 
 func (h *handler) deleteView(c *fiber.Ctx) error {
 	userID, _ := fiberctx.GetUserID(c)
-	if err := h.views.Delete(c.Context(), h.table.Config().Name, userID, c.Params("id")); err != nil {
-		return err
-	}
-	return fiberctx.OK(c, "View deleted", nil)
+	return h.views.Delete(c.Context(), h.table.Config().Name, userID, c.Params("id"))
 }

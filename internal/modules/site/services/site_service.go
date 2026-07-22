@@ -828,7 +828,16 @@ func (s *SiteService) updateSite(ctx context.Context, id, serverID, teamID, user
 			s.LogError(err, "Failed to update site pending caddyfile timestamp", "site_id", site.ID)
 			return nil, err
 		}
-		// TODO: Add UpdateCaddyfile job dispatch
+		userIDPtr := userID
+		task, err := jobs.NewUpdateCaddyfileTask(site.ID, &userIDPtr)
+		if err != nil {
+			s.LogError(err, "Failed to create Caddyfile update task", "site_id", site.ID)
+			return nil, err
+		}
+		if err := s.EnqueueTask(task); err != nil {
+			s.LogError(err, "Failed to enqueue Caddyfile update task", "site_id", site.ID)
+			return nil, err
+		}
 	}
 
 	// Load latest deployment

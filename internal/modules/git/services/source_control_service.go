@@ -28,6 +28,8 @@ type SourceControlService struct {
 	siteChecker SiteChecker
 }
 
+const backgroundRepositorySyncTimeout = 2 * time.Minute
+
 // NewSourceControlService creates a new source control service
 func NewSourceControlService(deps *ServiceDeps) *SourceControlService {
 	return &SourceControlService{
@@ -170,18 +172,9 @@ func (s *SourceControlService) connectInstallation(ctx context.Context, teamID, 
 		return nil, err
 	}
 
-	// Sync repositories in the background
-	go func() {
-		defer func() {
-			if r := recover(); r != nil {
-				s.Logger.Error().Interface("panic", r).Str("source_control_id", sc.ID).Msg("Panic in background repository sync during connection")
-			}
-		}()
-		bgCtx := context.Background()
-		if err := s.SyncRepositories(bgCtx, sc); err != nil {
-			s.Logger.Warn().Err(err).Str("source_control_id", sc.ID).Msg("Failed to sync repositories during connection")
-		}
-	}()
+	// Sync asynchronously so connecting a provider stays responsive, but bound
+	// the work so a stalled provider cannot leave a goroutine running forever.
+	s.syncRepositoriesAsync(sc, "connection")
 
 	return sc, nil
 }
@@ -417,20 +410,31 @@ func (s *SourceControlService) SyncUserInstallation(ctx context.Context, provide
 		return err
 	}
 
-	// Sync repositories in the background
+	s.syncRepositoriesAsync(sc, "installation sync")
+
+	return nil
+}
+
+func (s *SourceControlService) syncRepositoriesAsync(sc *models.SourceControl, source string) {
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
-				s.Logger.Error().Interface("panic", r).Str("source_control_id", sc.ID).Msg("Panic in background repository sync during installation sync")
+				s.Logger.Error().Interface("panic", r).
+					Str("source_control_id", sc.ID).
+					Str("source", source).
+					Msg("panic in background repository sync")
 			}
 		}()
-		bgCtx := context.Background()
-		if err := s.SyncRepositories(bgCtx, sc); err != nil {
-			s.Logger.Warn().Err(err).Str("source_control_id", sc.ID).Msg("Failed to sync repositories during installation sync")
+
+		ctx, cancel := context.WithTimeout(context.Background(), backgroundRepositorySyncTimeout)
+		defer cancel()
+		if err := s.SyncRepositories(ctx, sc); err != nil {
+			s.Logger.Warn().Err(err).
+				Str("source_control_id", sc.ID).
+				Str("source", source).
+				Msg("background repository sync failed")
 		}
 	}()
-
-	return nil
 }
 
 // SyncRepositoriesForInstallation syncs repositories for all teams with the installation (webhook handler)

@@ -220,7 +220,11 @@ func (j *CleanupFailedProvisioningJob) Failed(ctx context.Context, err error) {
 		Str("reason", j.Payload.Reason).
 		Msg("failed to cleanup failed provisioning")
 
-	_ = j.Deps.Repos.Server().UpdateStatus(ctx, j.Payload.ServerID, types.ServerStatusFailed)
+	if updateErr := j.Deps.Repos.Server().UpdateStatus(ctx, j.Payload.ServerID, types.ServerStatusFailed); updateErr != nil {
+		j.Deps.Logger.Error().Err(updateErr).
+			Str("server_id", j.Payload.ServerID).
+			Msg("Failed to mark server as failed during cleanup")
+	}
 
 	server, findErr := j.Deps.Repos.Server().FindByID(ctx, j.Payload.ServerID)
 	if findErr == nil {

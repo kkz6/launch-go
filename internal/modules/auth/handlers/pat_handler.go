@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -53,7 +54,11 @@ type createPATRequest struct {
 func toPATResponse(rec *models.PersonalAccessToken) patResponse {
 	var abilities []string
 	if rec.Abilities != nil {
-		_ = json.Unmarshal([]byte(*rec.Abilities), &abilities)
+		if err := json.Unmarshal([]byte(*rec.Abilities), &abilities); err != nil {
+			// Keep the response shape stable for legacy rows while refusing to
+			// expose partially decoded capabilities.
+			abilities = nil
+		}
 	}
 	if abilities == nil {
 		abilities = []string{}
@@ -134,7 +139,10 @@ func (h *PATHandler) Create(c *fiber.Ctx, req *createPATRequest) error {
 		expiresAt = &t
 	}
 
-	plainToken, hashedToken := generatePATToken()
+	plainToken, hashedToken, err := generatePATToken()
+	if err != nil {
+		return fiberctx.HandleError(c, err)
+	}
 
 	now := time.Now()
 	record := &models.PersonalAccessToken{
@@ -184,11 +192,13 @@ func (h *PATHandler) Delete(c *fiber.Ctx) error {
 	return fiberctx.NoContent(c)
 }
 
-func generatePATToken() (plainText, hashed string) {
+func generatePATToken() (plainText, hashed string, err error) {
 	b := make([]byte, 32)
-	_, _ = rand.Read(b)
+	if _, err := rand.Read(b); err != nil {
+		return "", "", fmt.Errorf("generate personal access token: %w", err)
+	}
 	plainText = hex.EncodeToString(b)
 	hash := sha256.Sum256([]byte(plainText))
 	hashed = hex.EncodeToString(hash[:])
-	return plainText, hashed
+	return plainText, hashed, nil
 }

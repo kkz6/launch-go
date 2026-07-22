@@ -75,9 +75,13 @@ func (j *UpdateConnectivityJob) Failed(ctx context.Context, err error) {
 		Msg("Failed to update connectivity")
 
 	// Mark server as disconnected on failure
-	_ = j.Deps.Repos.Server().UpdateFields(ctx, j.Payload.ServerID, map[string]any{
+	if updateErr := j.Deps.Repos.Server().UpdateFields(ctx, j.Payload.ServerID, map[string]any{
 		"connected": false,
-	})
+	}); updateErr != nil {
+		j.Deps.Logger.Error().Err(updateErr).
+			Str("server_id", j.Payload.ServerID).
+			Msg("Failed to mark server disconnected after connectivity failure")
+	}
 }
 
 // NewUpdateConnectivityTask creates an asynq task for updating server connectivity

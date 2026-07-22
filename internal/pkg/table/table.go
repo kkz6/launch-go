@@ -25,6 +25,9 @@ type Config struct {
 	Pagination     PaginationType
 	PerPageOptions []int
 	DefaultPerPage int
+	// MaxPerPage caps a client-supplied limit. When unset, the largest
+	// configured option (or 100) is used.
+	MaxPerPage int
 
 	// SoftDeletes makes the query service auto-add a TrashedFilter and the
 	// row actions list auto-include restore + forceDelete.

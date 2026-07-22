@@ -140,8 +140,8 @@ func (s *EmailVerificationServiceSuite) TestResendVerificationEmail_AllowsUnveri
 
 	s.userRepo.EXPECT().FindByID(mock.Anything, "user_001").Return(user, nil).Once()
 
-	// Currently a no-op (TODO in production code); the assertion here is
-	// just that the unverified branch returns nil rather than erroring.
+	// Self-hosted installations without an email sender keep the operation
+	// successful while leaving delivery disabled by configuration.
 	err := s.svc.ResendVerificationEmail(context.Background(), "user_001")
 	s.Require().NoError(err)
 }

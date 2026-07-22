@@ -67,19 +67,7 @@ func (j *SyncServerLaunchConfigJob) Handle(ctx context.Context) error {
 		Int("backup_jobs_count", totalBackupJobs).
 		Msg("found backup configurations")
 
-	// TODO: Generate and deploy the launch-agent configuration
-	// This would involve:
-	// 1. Generate JSON/YAML config with all backup definitions
-	// 2. Include backup schedules, retention policies, and storage credentials
-	// 3. Deploy config to /etc/launch/backups.json or similar
-	// 4. Ensure launch-agent service is running
-	// 5. Reload the agent to pick up new configuration
-
-	j.Deps.Logger.Info().
-		Str("server_id", j.server.ID).
-		Msg("Launch backup configuration synced successfully")
-
-	return nil
+	return fmt.Errorf("backup agent configuration sync is not implemented")
 }
 
 func (j *SyncServerLaunchConfigJob) Failed(ctx context.Context, err error) {

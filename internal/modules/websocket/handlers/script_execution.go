@@ -1,8 +1,11 @@
 package handlers
 
 import (
+	"errors"
 	"fmt"
+	"io"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/gofiber/contrib/websocket"
@@ -22,6 +25,8 @@ import (
 type ScriptExecutionHandler struct {
 	Base
 }
+
+const maxStoredScriptOutput = 10 << 20
 
 // NewScriptExecutionHandler creates a new script execution handler
 func NewScriptExecutionHandler(base Base) *ScriptExecutionHandler {
@@ -117,10 +122,14 @@ func (h *ScriptExecutionHandler) Handler() fiber.Handler {
 func (h *ScriptExecutionHandler) executeScript(c *websocket.Conn, execution *scriptModels.ScriptExecution, script *scriptModels.Script, server *serverModels.Server) {
 	// Update status to running
 	now := time.Now()
-	h.DB.Model(execution).Updates(map[string]any{
+	if err := h.DB.Model(execution).Updates(map[string]any{
 		"status":     scriptModels.ExecutionStatusRunning,
 		"started_at": now,
-	})
+	}).Error; err != nil {
+		h.LogError(err, "Failed to persist script execution start", "execution_id", execution.ID)
+		h.sendError(c, "Failed to start execution")
+		return
+	}
 
 	h.sendJSON(c, map[string]any{
 		"type":   "started",
@@ -139,29 +148,13 @@ func (h *ScriptExecutionHandler) executeScript(c *websocket.Conn, execution *scr
 		return
 	}
 
-	// Parse private key
-	signer, err := ssh.ParsePrivateKey([]byte(sshConfig.PrivateKey))
-	if err != nil {
-		h.finishWithError(c, execution, "Invalid SSH key")
-		return
-	}
-
 	// Resolve the run-as type to actual username from server
 	runAsUser := resolveRunAsUser(execution.RunAs, script.RunAs, server)
 
-	// SSH client config
-	config := &ssh.ClientConfig{
-		User: runAsUser,
-		Auth: []ssh.AuthMethod{
-			ssh.PublicKeys(signer),
-		},
-		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
-		Timeout:         10 * time.Second,
-	}
-
-	// Connect to SSH server
-	addr := fmt.Sprintf("%s:%d", sshConfig.Host, sshConfig.Port)
-	conn, err := ssh.Dial("tcp", addr, config)
+	// Use the managed taskrunner connection so script execution enforces the
+	// server's pinned/TOFU host key just like other remote tasks.
+	sshConfig.User = runAsUser
+	conn, err := sshConfig.Dial(10 * time.Second)
 	if err != nil {
 		h.finishWithError(c, execution, fmt.Sprintf("SSH connection failed: %s", err.Error()))
 		return
@@ -207,57 +200,67 @@ func (h *ScriptExecutionHandler) executeScript(c *websocket.Conn, execution *scr
 		return
 	}
 
-	// Collect output for storage
-	var outputBuffer []byte
-	done := make(chan struct{})
-
-	// Stream stdout
-	go func() {
+	// Collect output for storage. Gorilla WebSocket permits one concurrent
+	// writer, so both SSH streams are serialized before they reach the socket.
+	var (
+		outputBuffer []byte
+		outputMu     sync.Mutex
+		writeMu      sync.Mutex
+		readers      sync.WaitGroup
+	)
+	appendOutput := func(chunk []byte) {
+		outputMu.Lock()
+		defer outputMu.Unlock()
+		remaining := maxStoredScriptOutput - len(outputBuffer)
+		if remaining > 0 {
+			if len(chunk) > remaining {
+				chunk = chunk[:remaining]
+			}
+			outputBuffer = append(outputBuffer, chunk...)
+		}
+	}
+	stream := func(reader io.Reader) {
+		defer readers.Done()
 		buf := make([]byte, 4096)
 		for {
-			select {
-			case <-done:
-				return
-			default:
-				n, err := stdout.Read(buf)
-				if err != nil {
+			n, err := reader.Read(buf)
+			if n > 0 {
+				chunk := append([]byte(nil), buf[:n]...)
+				appendOutput(chunk)
+				writeMu.Lock()
+				writeErr := c.WriteMessage(websocket.TextMessage, chunk)
+				writeMu.Unlock()
+				if writeErr != nil {
+					h.LogError(writeErr, "Failed to stream script output", "execution_id", execution.ID)
 					return
 				}
-				if n > 0 {
-					outputBuffer = append(outputBuffer, buf[:n]...)
-					c.WriteMessage(websocket.TextMessage, buf[:n])
+			}
+			if err != nil {
+				if !errors.Is(err, io.EOF) {
+					h.LogError(err, "Failed to read script output", "execution_id", execution.ID)
 				}
+				return
 			}
 		}
-	}()
+	}
 
-	// Stream stderr
-	go func() {
-		buf := make([]byte, 4096)
-		for {
-			select {
-			case <-done:
-				return
-			default:
-				n, err := stderr.Read(buf)
-				if err != nil {
-					return
-				}
-				if n > 0 {
-					outputBuffer = append(outputBuffer, buf[:n]...)
-					c.WriteMessage(websocket.TextMessage, buf[:n])
-				}
-			}
-		}
-	}()
+	readers.Add(2)
+	go stream(stdout)
+	go stream(stderr)
 
 	// Wait for command to complete
 	err = session.Wait()
-	close(done)
+	readers.Wait()
+	outputMu.Lock()
+	output := string(outputBuffer)
+	outputMu.Unlock()
 
 	// Get exit code
 	exitCode := 0
 	if err != nil {
+		if _, ok := err.(*ssh.ExitError); !ok {
+			h.LogError(err, "Script process wait failed", "execution_id", execution.ID)
+		}
 		if exitErr, ok := err.(*ssh.ExitError); ok {
 			exitCode = exitErr.ExitStatus()
 		} else {
@@ -273,13 +276,17 @@ func (h *ScriptExecutionHandler) executeScript(c *websocket.Conn, execution *scr
 
 	// Update execution record
 	finishedAt := time.Now()
-	output := string(outputBuffer)
-	h.DB.Model(execution).Updates(map[string]any{
+	if err := h.DB.Model(execution).Updates(map[string]any{
 		"status":      finalStatus,
 		"exit_code":   exitCode,
 		"output":      output,
 		"finished_at": finishedAt,
-	})
+	}).Error; err != nil {
+		h.LogError(err, "Failed to persist script execution result", "execution_id", execution.ID)
+		h.sendError(c, "Failed to persist execution result")
+		c.Close()
+		return
+	}
 
 	// Send completion message
 	h.sendJSON(c, map[string]any{
@@ -305,11 +312,13 @@ func (h *ScriptExecutionHandler) finishWithError(c *websocket.Conn, execution *s
 
 	// Update execution record
 	finishedAt := time.Now()
-	h.DB.Model(execution).Updates(map[string]any{
+	if err := h.DB.Model(execution).Updates(map[string]any{
 		"status":      scriptModels.ExecutionStatusFailed,
 		"output":      errMsg,
 		"finished_at": finishedAt,
-	})
+	}).Error; err != nil {
+		h.LogError(err, "Failed to persist script execution failure", "execution_id", execution.ID)
+	}
 
 	h.sendJSON(c, map[string]any{
 		"type":    "error",
@@ -329,7 +338,9 @@ func (h *ScriptExecutionHandler) sendError(c *websocket.Conn, msg string) {
 }
 
 func (h *ScriptExecutionHandler) sendJSON(c *websocket.Conn, data map[string]any) {
-	_ = h.SendJSON(c, data)
+	if err := h.SendJSON(c, data); err != nil {
+		h.LogError(err, "Failed to send script execution event")
+	}
 }
 
 // resolveRunAsUser resolves the run-as type to the actual username from the server

@@ -24,8 +24,7 @@ func NewCommandService(deps *ServiceDeps) *CommandService {
 
 // Create creates and executes a command. Signature matches CreateDoubleNestedFunc.
 func (s *CommandService) Create(ctx context.Context, siteID, serverID, teamID, userID string, req *dto.CreateCommandRequest) (dto.CommandResponse, error) {
-	_ = teamID
-	site, err := s.Repos().Site().FindByIDAndServer(ctx, siteID, serverID)
+	site, err := s.findSite(ctx, siteID, serverID, teamID)
 	if err != nil {
 		return dto.CommandResponse{}, err
 	}
@@ -55,8 +54,7 @@ func (s *CommandService) Create(ctx context.Context, siteID, serverID, teamID, u
 
 // List returns all commands for a site. Signature matches IndexDoubleNestedFunc.
 func (s *CommandService) List(ctx context.Context, siteID, serverID, teamID string) ([]dto.CommandResponse, error) {
-	_ = teamID
-	if _, err := s.Repos().Site().FindByIDAndServer(ctx, siteID, serverID); err != nil {
+	if _, err := s.findSite(ctx, siteID, serverID, teamID); err != nil {
 		return nil, err
 	}
 	cmds, err := s.Repos().Command().FindBySite(ctx, siteID)
@@ -72,9 +70,8 @@ func (s *CommandService) List(ctx context.Context, siteID, serverID, teamID stri
 
 // Delete deletes a command by ID. Signature matches DeleteDoubleNestedFunc.
 func (s *CommandService) Delete(ctx context.Context, commandID, siteID, serverID, teamID, userID string) error {
-	_ = teamID
 	_ = userID
-	if _, err := s.Repos().Site().FindByIDAndServer(ctx, siteID, serverID); err != nil {
+	if _, err := s.findSite(ctx, siteID, serverID, teamID); err != nil {
 		return err
 	}
 
@@ -93,4 +90,15 @@ func (s *CommandService) Delete(ctx context.Context, commandID, siteID, serverID
 
 	s.LogInfo("Command deleted", "site_id", siteID, "command_id", commandID)
 	return nil
+}
+
+func (s *CommandService) findSite(ctx context.Context, siteID, serverID, teamID string) (*models.Site, error) {
+	site, err := s.Repos().Site().FindByIDAndServer(ctx, siteID, serverID)
+	if err != nil {
+		return nil, err
+	}
+	if site.TeamID != teamID {
+		return nil, fiberutil.NotFound()
+	}
+	return site, nil
 }

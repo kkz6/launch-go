@@ -35,8 +35,8 @@ func TestShellQuote(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := shellQuote(tc.input); got != tc.want {
-				t.Fatalf("shellQuote(%q) = %q, want %q", tc.input, got, tc.want)
+			if got := ShellQuote(tc.input); got != tc.want {
+				t.Fatalf("ShellQuote(%q) = %q, want %q", tc.input, got, tc.want)
 			}
 		})
 	}

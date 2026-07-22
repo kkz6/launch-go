@@ -7,6 +7,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/site/dto"
 	"github.com/kkz6/launch-go/internal/modules/site/jobs"
 	"github.com/kkz6/launch-go/internal/modules/site/models"
+	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 )
 
 const (
@@ -30,16 +31,15 @@ func NewQueueService(deps *ServiceDeps) *QueueService {
 
 // Create creates a new queue worker. Signature matches CreateDoubleNestedFunc.
 func (s *QueueService) Create(ctx context.Context, siteID, serverID, teamID, userID string, req *dto.CreateQueueRequest) (dto.QueueResponse, error) {
-	_ = teamID
-	queue, err := s.createQueue(ctx, siteID, serverID, userID, req)
+	queue, err := s.createQueue(ctx, siteID, serverID, teamID, userID, req)
 	if err != nil {
 		return dto.QueueResponse{}, err
 	}
 	return dto.ToQueueResponse(queue), nil
 }
 
-func (s *QueueService) createQueue(ctx context.Context, siteID, serverID, userID string, req *dto.CreateQueueRequest) (*models.Queue, error) {
-	site, err := s.Repos().Site().FindByIDAndServer(ctx, siteID, serverID)
+func (s *QueueService) createQueue(ctx context.Context, siteID, serverID, teamID, userID string, req *dto.CreateQueueRequest) (*models.Queue, error) {
+	site, err := s.findSite(ctx, siteID, serverID, teamID)
 	if err != nil {
 		return nil, err
 	}
@@ -134,8 +134,7 @@ func (s *QueueService) createQueue(ctx context.Context, siteID, serverID, userID
 
 // List returns all queues for a site. Signature matches IndexDoubleNestedFunc.
 func (s *QueueService) List(ctx context.Context, siteID, serverID, teamID string) ([]dto.QueueResponse, error) {
-	_ = teamID
-	if _, err := s.Repos().Site().FindByIDAndServer(ctx, siteID, serverID); err != nil {
+	if _, err := s.findSite(ctx, siteID, serverID, teamID); err != nil {
 		return nil, err
 	}
 	queues, err := s.Repos().Queue().FindBySite(ctx, siteID)
@@ -151,16 +150,15 @@ func (s *QueueService) List(ctx context.Context, siteID, serverID, teamID string
 
 // Update updates a queue worker. Signature matches UpdateDoubleNestedFunc.
 func (s *QueueService) Update(ctx context.Context, queueID, siteID, serverID, teamID, userID string, req *dto.UpdateQueueRequest) (dto.QueueResponse, error) {
-	_ = teamID
-	queue, err := s.updateQueue(ctx, queueID, siteID, serverID, userID, req)
+	queue, err := s.updateQueue(ctx, queueID, siteID, serverID, teamID, userID, req)
 	if err != nil {
 		return dto.QueueResponse{}, err
 	}
 	return dto.ToQueueResponse(queue), nil
 }
 
-func (s *QueueService) updateQueue(ctx context.Context, queueID, siteID, serverID, userID string, req *dto.UpdateQueueRequest) (*models.Queue, error) {
-	site, err := s.Repos().Site().FindByIDAndServer(ctx, siteID, serverID)
+func (s *QueueService) updateQueue(ctx context.Context, queueID, siteID, serverID, teamID, userID string, req *dto.UpdateQueueRequest) (*models.Queue, error) {
+	site, err := s.findSite(ctx, siteID, serverID, teamID)
 	if err != nil {
 		return nil, err
 	}
@@ -253,8 +251,10 @@ func (s *QueueService) updateQueue(ctx context.Context, queueID, siteID, serverI
 
 // Delete deletes a queue. Signature matches DeleteDoubleNestedFunc.
 func (s *QueueService) Delete(ctx context.Context, queueID, siteID, serverID, teamID, userID string) error {
-	_ = teamID
 	_ = userID
+	if _, err := s.findSite(ctx, siteID, serverID, teamID); err != nil {
+		return err
+	}
 	queueModel, err := s.Repos().Queue().FindByIDAndSite(ctx, queueID, siteID)
 	if err != nil {
 		return err
@@ -286,7 +286,9 @@ func (s *QueueService) Delete(ctx context.Context, queueID, siteID, serverID, te
 
 // Restart restarts a single queue worker. Signature matches ActionItemDoubleNestedFunc.
 func (s *QueueService) Restart(ctx context.Context, queueID, siteID, serverID, teamID, userID string) error {
-	_ = teamID
+	if _, err := s.findSite(ctx, siteID, serverID, teamID); err != nil {
+		return err
+	}
 	queue, err := s.Repos().Queue().FindByIDAndSite(ctx, queueID, siteID)
 	if err != nil {
 		return err
@@ -309,9 +311,8 @@ func (s *QueueService) Restart(ctx context.Context, queueID, siteID, serverID, t
 }
 
 // UpdateAutoRestart updates the auto-restart queue setting
-func (s *QueueService) UpdateAutoRestart(ctx context.Context, siteID, serverID string, enabled bool) error {
-	// Verify site exists and belongs to server
-	if _, err := s.Repos().Site().FindByIDAndServer(ctx, siteID, serverID); err != nil {
+func (s *QueueService) UpdateAutoRestart(ctx context.Context, siteID, serverID, teamID string, enabled bool) error {
+	if _, err := s.findSite(ctx, siteID, serverID, teamID); err != nil {
 		return err
 	}
 
@@ -323,8 +324,7 @@ func (s *QueueService) UpdateAutoRestart(ctx context.Context, siteID, serverID s
 // SyncStatus triggers a status synchronization for all queue workers of
 // a site. Signature matches ActionDoubleNestedFunc.
 func (s *QueueService) SyncStatus(ctx context.Context, siteID, serverID, teamID, userID string) error {
-	_ = teamID
-	site, err := s.Repos().Site().FindByIDAndServer(ctx, siteID, serverID)
+	site, err := s.findSite(ctx, siteID, serverID, teamID)
 	if err != nil {
 		return err
 	}
@@ -354,4 +354,15 @@ func (s *QueueService) SyncStatus(ctx context.Context, siteID, serverID, teamID,
 	s.LogInfo("Queue sync initiated", "site_id", siteID, "queue_count", len(queues))
 
 	return nil
+}
+
+func (s *QueueService) findSite(ctx context.Context, siteID, serverID, teamID string) (*models.Site, error) {
+	site, err := s.Repos().Site().FindByIDAndServer(ctx, siteID, serverID)
+	if err != nil {
+		return nil, err
+	}
+	if site.TeamID != teamID {
+		return nil, fiberutil.NotFound()
+	}
+	return site, nil
 }

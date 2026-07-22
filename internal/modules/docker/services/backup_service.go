@@ -231,10 +231,12 @@ func (s *BackupService) RunNow(
 	}
 	if err := s.EnqueueTask(task); err != nil {
 		// Couldn't queue — don't leave the run stuck in "triggered".
-		_ = s.Repos().BackupRun().UpdateFields(ctx, run.ID, map[string]any{
+		if updateErr := s.Repos().BackupRun().UpdateFields(ctx, run.ID, map[string]any{
 			"status": "failed",
 			"error":  "failed to enqueue backup job: " + err.Error(),
-		})
+		}); updateErr != nil {
+			s.LogError(updateErr, "failed to mark backup run enqueue failure", "run_id", run.ID)
+		}
 		return dto.BackupRunResponse{}, err
 	}
 

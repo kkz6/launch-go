@@ -125,7 +125,14 @@ func (j *FetchTaskOutputJob) Handle(ctx context.Context) error {
 	// Self-reschedule if interval > 0 and task is still running
 	if j.Payload.RescheduleIntervalSec > 0 {
 		// Reload task to check current status
-		j.task, _ = j.Deps.Repos.Task().FindByID(ctx, j.Payload.TaskID)
+		refreshedTask, findErr := j.Deps.Repos.Task().FindByID(ctx, j.Payload.TaskID)
+		if findErr != nil {
+			j.Deps.Logger.Warn().Err(findErr).
+				Str("task_id", j.Payload.TaskID).
+				Msg("Failed to reload task before rescheduling output fetch")
+			return nil
+		}
+		j.task = refreshedTask
 		if j.task != nil && (j.task.Status == "pending" || j.task.Status == "running") {
 			j.reschedule()
 		}

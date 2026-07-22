@@ -99,6 +99,24 @@ func TestWithBackoff_ContextCancellation(t *testing.T) {
 	}
 }
 
+func TestWithBackoff_DoesNotCallFunctionWhenContextIsAlreadyCanceled(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	var attempts int32
+
+	_, err := WithBackoff(ctx, Config{}, func() (struct{}, error) {
+		atomic.AddInt32(&attempts, 1)
+		return struct{}{}, nil
+	})
+
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected context.Canceled, got %v", err)
+	}
+	if attempts != 0 {
+		t.Fatalf("expected no attempts, got %d", attempts)
+	}
+}
+
 func TestWithBackoff_ExponentialBackoff(t *testing.T) {
 	ctx := context.Background()
 	cfg := Config{
@@ -274,6 +292,24 @@ func TestDoWithAttempts(t *testing.T) {
 	}
 }
 
+func TestDoWithAttempts_DoesNotCallFunctionWhenContextIsAlreadyCanceled(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	var calls int32
+
+	attempts, err := DoWithAttempts(ctx, Config{}, func() error {
+		atomic.AddInt32(&calls, 1)
+		return nil
+	})
+
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected context.Canceled, got %v", err)
+	}
+	if attempts != 0 || calls != 0 {
+		t.Fatalf("expected no attempts or calls, got attempts=%d calls=%d", attempts, calls)
+	}
+}
+
 func TestUntil(t *testing.T) {
 	ctx := context.Background()
 	cfg := Config{
@@ -334,6 +370,21 @@ func TestUntil_ContextCancellation(t *testing.T) {
 
 	if success {
 		t.Error("expected failure due to cancellation")
+	}
+}
+
+func TestUntil_DoesNotCallFunctionWhenContextIsAlreadyCanceled(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	var calls int32
+
+	success := Until(ctx, Config{}, func() bool {
+		atomic.AddInt32(&calls, 1)
+		return true
+	})
+
+	if success || calls != 0 {
+		t.Fatalf("expected no successful calls, got success=%t calls=%d", success, calls)
 	}
 }
 

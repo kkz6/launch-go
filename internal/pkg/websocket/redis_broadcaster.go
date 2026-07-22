@@ -3,6 +3,7 @@ package websocket
 import (
 	"context"
 	"encoding/json"
+	"time"
 
 	"github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog"
@@ -11,6 +12,8 @@ import (
 )
 
 const wsChannel = "websocket:broadcast"
+
+const publishTimeout = 5 * time.Second
 
 // RedisBroadcaster publishes WebSocket messages to Redis for cross-process broadcasting
 type RedisBroadcaster struct {
@@ -93,7 +96,9 @@ func (r *RedisBroadcaster) publish(channel, event string, data any) {
 			Msg("RedisBroadcaster: publishing WebSocket message to Redis")
 	}
 
-	if err := r.client.Publish(context.Background(), wsChannel, payload).Err(); err != nil {
+	ctx, cancel := context.WithTimeout(context.Background(), publishTimeout)
+	defer cancel()
+	if err := r.client.Publish(ctx, wsChannel, payload).Err(); err != nil {
 		if r.logger != nil {
 			r.logger.Error().Err(err).Msg("Failed to publish WebSocket message to Redis")
 		}
