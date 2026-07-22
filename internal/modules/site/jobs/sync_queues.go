@@ -3,6 +3,7 @@ package jobs
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -10,12 +11,17 @@ import (
 	"github.com/hibiken/asynq"
 
 	servermodels "github.com/kkz6/launch-go/internal/modules/server/models"
+	servertasks "github.com/kkz6/launch-go/internal/modules/server/tasks"
 	"github.com/kkz6/launch-go/internal/modules/site/models"
 	"github.com/kkz6/launch-go/internal/modules/site/tasks"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 )
 
 const TypeSyncQueues = "site:sync_queues"
+
+const syncQueuesJobTimeout = 2 * time.Minute
+
+var errDaemonStatusTimeout = errors.New("daemon status check timed out")
 
 // SyncQueuesPayload holds data for queue status synchronization
 type SyncQueuesPayload struct {
@@ -77,7 +83,19 @@ func (j *SyncQueuesJob) Handle(ctx context.Context) error {
 	task := tasks.CheckDaemonStatus()
 	result, err := j.Deps.RunTask(j.server, task).AsRoot().Dispatch(ctx)
 	if err != nil {
+		if isScheduledSyncTimeout(j.Payload.UserID, err) {
+			j.Deps.Logger.Warn().Err(err).Str("site_id", j.site.ID).Msg("Scheduled queue sync timed out; keeping the previous status")
+			return nil
+		}
 		j.Deps.Logger.Error().Err(err).Str("site_id", j.site.ID).Msg("Failed to check daemon status")
+		return fmt.Errorf("check daemon status: %w", err)
+	}
+	if err := validateDaemonStatusResult(result, task.Timeout()); err != nil {
+		if isScheduledSyncTimeout(j.Payload.UserID, err) {
+			j.Deps.Logger.Warn().Err(err).Str("site_id", j.site.ID).Msg("Scheduled queue sync timed out; keeping the previous status")
+			return nil
+		}
+		j.Deps.Logger.Warn().Err(err).Str("site_id", j.site.ID).Msg("Daemon status check did not complete")
 		return err
 	}
 
@@ -161,5 +179,25 @@ func NewSyncQueuesTask(siteID, serverID string, userID *string) (*asynq.Task, er
 		SiteID:   siteID,
 		ServerID: serverID,
 		UserID:   userID,
-	})
+	}, asynq.Timeout(syncQueuesJobTimeout))
+}
+
+func validateDaemonStatusResult(result *servertasks.TaskRunnerResult, timeout time.Duration) error {
+	if result == nil {
+		return errors.New("daemon status check returned no result")
+	}
+	if result.Error != nil {
+		return fmt.Errorf("daemon status check failed: %w", result.Error)
+	}
+	if result.TaskResult != nil && result.TaskResult.IsTimedOut() {
+		return fmt.Errorf("%w after %s", errDaemonStatusTimeout, timeout)
+	}
+	if !result.IsSuccessful() {
+		return fmt.Errorf("daemon status check failed with exit code %d", result.GetExitCode())
+	}
+	return nil
+}
+
+func isScheduledSyncTimeout(userID *string, err error) bool {
+	return userID == nil && (errors.Is(err, context.DeadlineExceeded) || errors.Is(err, errDaemonStatusTimeout))
 }
