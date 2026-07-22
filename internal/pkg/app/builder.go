@@ -54,6 +54,15 @@ func NewBuilder(deps Deps) *Builder {
 	return &Builder{deps: deps}
 }
 
+// WithNotifier returns a builder with the same dependencies and the supplied notifier.
+// Builders are copied so a module created before the notifier is available keeps its
+// original dependency set.
+func (b *Builder) WithNotifier(notifier taskrunner.NotifierService) *Builder {
+	deps := b.deps
+	deps.Notifier = notifier
+	return NewBuilder(deps)
+}
+
 // NewBuilderFromContext creates a builder from app context
 func NewBuilderFromContext(ctx *Context) *Builder {
 	return &Builder{deps: ctx.Deps}

@@ -154,8 +154,8 @@ func (h *ServiceStatusHandler) monitorServices(c *websocket.Conn, server *server
 			h.LogInfo("Service status monitoring ended - client disconnected")
 			return
 		case <-ticker.C:
-			// Check if SSH connection is still alive
-			if _, err := conn.SendRequest("keepalive@openssh.com", true, nil); err != nil {
+			// Check if SSH connection is still alive before probing services.
+			if !isSSHConnectionHealthy(conn) {
 				// Try to reconnect
 				_ = conn.Close()
 				conn, err = sshConfig.Dial(10 * time.Second)
@@ -168,6 +168,14 @@ func (h *ServiceStatusHandler) monitorServices(c *websocket.Conn, server *server
 			h.checkAndSendStatus(c, conn, services)
 		}
 	}
+}
+
+func isSSHConnectionHealthy(conn *taskrunner.SSHClient) bool {
+	session, err := conn.NewSession()
+	if err != nil {
+		return false
+	}
+	return session.Close() == nil
 }
 
 func (h *ServiceStatusHandler) checkAndSendStatus(c *websocket.Conn, conn *taskrunner.SSHClient, services []serverModels.InstalledService) {
