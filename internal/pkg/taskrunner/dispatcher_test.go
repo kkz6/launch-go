@@ -23,6 +23,20 @@ func TestDispatcherRunRequiresTask(t *testing.T) {
 	}
 }
 
+func TestDispatcherConstructorsWireStreamMonitor(t *testing.T) {
+	withLogger := NewDispatcherWithTaskLogger(nil, nil, nil)
+	if withLogger.GetStreamMonitor() == nil {
+		t.Fatal("expected task-logger dispatcher to create a stream monitor")
+	}
+	configured := NewDispatcherWithConfig(nil, nil, &DispatcherConfig{BroadcastInterval: time.Millisecond})
+	if configured.GetStreamMonitor() == nil {
+		t.Fatal("expected configured dispatcher to create a stream monitor")
+	}
+	if configured.GetStreamMonitor().broadcastInterval != time.Millisecond {
+		t.Fatalf("broadcast interval = %s, want 1ms", configured.GetStreamMonitor().broadcastInterval)
+	}
+}
+
 func TestDispatcherRunLocalSuccess(t *testing.T) {
 	var finished *TaskResult
 	task := NewBaseTask(
