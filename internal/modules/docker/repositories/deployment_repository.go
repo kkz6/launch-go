@@ -17,9 +17,32 @@ type DeploymentRepository struct {
 	repository.Base[models.Deployment]
 }
 
+// DeploymentHistoryLimit is the maximum number of history rows retained for
+// one workload. Keeping the rule here ensures every insertion path, including
+// GitHub Actions webhooks, applies the same cap.
+const DeploymentHistoryLimit = 10
+
 // NewDeploymentRepository wires the base repository for deployments.
 func NewDeploymentRepository(db *gorm.DB) *DeploymentRepository {
 	return &DeploymentRepository{Base: repository.NewBase[models.Deployment](db)}
+}
+
+// Create inserts a deployment and prunes older history for the same target in
+// one transaction. This intentionally shadows Base.Create so callers cannot
+// create an unbounded deployment history by bypassing a service helper.
+func (r *DeploymentRepository) Create(ctx context.Context, deployment *models.Deployment) error {
+	return r.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(deployment).Error; err != nil {
+			return err
+		}
+
+		return NewDeploymentRepository(tx).PruneForTarget(
+			ctx,
+			deployment.TargetType,
+			deployment.TargetID,
+			DeploymentHistoryLimit,
+		)
+	})
 }
 
 // FindByID looks up a deployment by ID; wraps NotFound for handler use.
@@ -89,6 +112,7 @@ func (r *DeploymentRepository) PruneForTarget(
 	if err := r.DB.WithContext(ctx).Model(&models.Deployment{}).
 		Where("target_type = ? AND target_id = ?", targetType, targetID).
 		Order("created_at DESC").
+		Order("id DESC").
 		Limit(keep).
 		Pluck("id", &keepIDs).Error; err != nil {
 		return err
