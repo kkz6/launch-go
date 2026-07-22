@@ -288,22 +288,7 @@ func (h *DockerLogsHandler) streamCommand(
 		return
 	}
 
-	signer, err := ssh.ParsePrivateKey([]byte(sshConfig.PrivateKey))
-	if err != nil {
-		h.LogError(err, "Failed to parse private key")
-		h.SendError(c, "Invalid SSH key")
-		return
-	}
-
-	conn, err := ssh.Dial("tcp", fmt.Sprintf("%s:%d", sshConfig.Host, sshConfig.Port), &ssh.ClientConfig{
-		User: sshConfig.User,
-		Auth: []ssh.AuthMethod{ssh.PublicKeys(signer)},
-		// InsecureIgnoreHostKey matches the rest of the SSH connection
-		// sites in this codebase (metrics, terminal). Re-evaluating this
-		// is a cross-cutting hardening task, not a per-handler decision.
-		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
-		Timeout:         10 * time.Second,
-	})
+	conn, err := sshConfig.Dial(10 * time.Second)
 	if err != nil {
 		h.LogError(err, "Failed to connect to SSH")
 		h.SendError(c, fmt.Sprintf("SSH connection failed: %s", err.Error()))

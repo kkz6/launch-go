@@ -33,11 +33,7 @@ func (s *ComposeBuildSecretService) ListBuildSecrets(
 	if err != nil {
 		return nil, err
 	}
-	out := make([]dto.BuildSecretResponse, 0, len(rows))
-	for i := range rows {
-		out = append(out, *dto.ToComposeBuildSecretResponse(&rows[i]))
-	}
-	return out, nil
+	return mapResponseValues(rows, dto.ToComposeBuildSecretResponse), nil
 }
 
 func (s *ComposeBuildSecretService) CreateBuildSecret(

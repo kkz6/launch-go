@@ -4,10 +4,10 @@ import (
 	"os"
 	"testing"
 
-	"github.com/kkz6/launch-go/internal/pkg/taskrunner/templates"
+	"github.com/kkz6/launch-go/internal/bootstrap/tasktemplates"
 )
 
 func TestMain(m *testing.M) {
-	templates.MustRegisterAll()
+	tasktemplates.MustRegisterAll()
 	os.Exit(m.Run())
 }

@@ -92,29 +92,9 @@ func (h *MetricsHandler) streamMetrics(c *websocket.Conn, server *serverModels.S
 		return
 	}
 
-	// Parse private key
-	signer, err := ssh.ParsePrivateKey([]byte(sshConfig.PrivateKey))
+	conn, err := sshConfig.Dial(10 * time.Second)
 	if err != nil {
-		h.LogError(err, "Failed to parse private key")
-		h.sendError(c, "Invalid SSH key")
-		return
-	}
-
-	// SSH client config
-	config := &ssh.ClientConfig{
-		User: sshConfig.User,
-		Auth: []ssh.AuthMethod{
-			ssh.PublicKeys(signer),
-		},
-		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
-		Timeout:         10 * time.Second,
-	}
-
-	// Connect to SSH server
-	addr := fmt.Sprintf("%s:%d", sshConfig.Host, sshConfig.Port)
-	conn, err := ssh.Dial("tcp", addr, config)
-	if err != nil {
-		h.LogError(err, "Failed to connect to SSH", "addr", addr)
+		h.LogError(err, "Failed to connect to SSH", "server_id", server.ID)
 		h.sendError(c, fmt.Sprintf("SSH connection failed: %s", err.Error()))
 		return
 	}

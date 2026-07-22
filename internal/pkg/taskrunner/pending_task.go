@@ -1,6 +1,10 @@
 package taskrunner
 
-import "context"
+import (
+	"context"
+
+	"github.com/oklog/ulid/v2"
+)
 
 // PendingTask wraps a task with execution options
 type PendingTask struct {
@@ -25,8 +29,14 @@ type PendingTask struct {
 
 // NewPendingTask creates a new PendingTask wrapper
 func NewPendingTask(task Task) *PendingTask {
-	return &PendingTask{
-		Task: task,
+	pending := &PendingTask{Task: task}
+	pending.ensureTaskID()
+	return pending
+}
+
+func (p *PendingTask) ensureTaskID() {
+	if p.TaskID == "" {
+		p.TaskID = ulid.Make().String()
 	}
 }
 

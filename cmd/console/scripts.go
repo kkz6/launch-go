@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/kkz6/launch-go/internal/bootstrap/tasktemplates"
 	"github.com/kkz6/launch-go/internal/pkg/console"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner/templates"
 )
@@ -33,7 +34,7 @@ func (scriptsRenderCommand) Handle(ctx console.Context) error {
 	dryRun := ctx.OptionBool("dry-run")
 
 	// Register all module templates.
-	templates.MustRegisterAll()
+	tasktemplates.MustRegisterAll()
 
 	if !dryRun {
 		if err := os.MkdirAll(outputDir, 0o755); err != nil {

@@ -16,21 +16,22 @@ import (
 // service methods are written once with team-aware signatures (no manual
 // teamID extraction in each closure).
 func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Handler) {
-	projectSvc := m.newProjectService()
-	applicationSvc := m.newApplicationService()
-	composeSvc := m.newComposeService()
-	databaseSvc := m.newDatabaseService()
-	domainSvc := m.newDomainService()
-	envVarSvc := m.newEnvVarService()
-	projectEnvVarSvc := m.newProjectEnvVarService()
-	databaseEnvVarSvc := m.newDatabaseEnvVarService()
-	buildSecretSvc := m.newBuildSecretService()
-	composeBuildSecretSvc := m.newComposeBuildSecretService()
-	volumeSvc := m.newVolumeService()
-	hostSvc := m.newHostInspectService()
-	scheduleSvc := m.newScheduleService()
-	backupSvc := m.newBackupService()
-	registryCredSvc := m.newRegistryCredentialService()
+	deps := m.serviceDeps()
+	projectSvc := services.NewProjectService(deps)
+	applicationSvc := services.NewApplicationService(deps)
+	composeSvc := services.NewComposeService(deps)
+	databaseSvc := services.NewDatabaseService(deps)
+	domainSvc := services.NewDomainService(deps)
+	envVarSvc := services.NewEnvVarService(deps)
+	projectEnvVarSvc := services.NewProjectEnvVarService(deps)
+	databaseEnvVarSvc := services.NewDatabaseEnvVarService(deps)
+	buildSecretSvc := services.NewBuildSecretService(deps)
+	composeBuildSecretSvc := services.NewComposeBuildSecretService(deps)
+	volumeSvc := services.NewVolumeService(deps)
+	hostSvc := services.NewHostInspectService(deps)
+	scheduleSvc := services.NewScheduleService(deps)
+	backupSvc := services.NewBackupService(deps)
+	registryCredSvc := services.NewRegistryCredentialService(deps)
 
 	auth := middleware.Append(
 		middleware.AuthenticatedChain(authMiddleware),
@@ -2106,7 +2107,7 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 			if err != nil {
 				return err
 			}
-			rows, err := m.newDatabaseService().ListDatabasesForServer(
+			rows, err := databaseSvc.ListDatabasesForServer(
 				c.Context(), c.Params("serverId"), teamID,
 			)
 			if err != nil {

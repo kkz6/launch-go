@@ -31,11 +31,7 @@ func (s *RegistryCredentialService) ListCredentials(
 	if err != nil {
 		return nil, err
 	}
-	out := make([]dto.RegistryCredentialResponse, 0, len(rows))
-	for i := range rows {
-		out = append(out, *dto.ToRegistryCredentialResponse(&rows[i]))
-	}
-	return out, nil
+	return mapResponseValues(rows, dto.ToRegistryCredentialResponse), nil
 }
 
 // CreateCredential persists a new saved login. Username + password

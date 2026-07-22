@@ -89,6 +89,12 @@ func (d *Dispatcher) GetStreamMonitor() *StreamMonitor {
 
 // Run executes a pending task
 func (d *Dispatcher) Run(ctx context.Context, pt *PendingTask) (*TaskResult, error) {
+	if pt == nil || pt.Task == nil {
+		return nil, fmt.Errorf("task is required")
+	}
+
+	pt.ensureTaskID()
+
 	if pt.Connection != nil {
 		return d.runRemote(ctx, pt)
 	}
@@ -177,12 +183,7 @@ func (d *Dispatcher) runRemote(ctx context.Context, pt *PendingTask) (*TaskResul
 		Msg("runRemote: SSH connected, creating script directory")
 
 	taskDir := conn.GetScriptPath()
-	taskID := pt.TaskID
-	if taskID == "" {
-		taskID = fmt.Sprintf("%d", time.Now().UnixNano())
-	}
-
-	taskPaths := paths.GetTaskPaths(taskDir, taskID)
+	taskPaths := paths.GetTaskPaths(taskDir, pt.TaskID)
 
 	// Ensure script directory exists
 	if _, err := sshClient.Run(ctx, fmt.Sprintf("mkdir -p %s", taskDir)); err != nil {
@@ -363,41 +364,21 @@ func (d *Dispatcher) runRemoteBackground(
 			func(result *StreamResult) {
 				taskResult := result.ToTaskResult()
 				taskResult.Duration = time.Since(startTime)
-
-				if ch := pt.GetCompletionChannel(); ch != nil {
-					ch <- taskResult
-				}
-
-				switch result.Status {
-				case "finished":
-					pt.Task.OnFinished(streamCtx, taskResult)
-				case "timeout":
-					pt.Task.OnTimeout(streamCtx, taskResult)
-				default:
-					pt.Task.OnFailed(streamCtx, taskResult)
-				}
+				d.completeBackgroundTask(streamCtx, pt, taskResult)
 			},
 		)
 
 		if err != nil {
 			d.logger.Error().Err(err).Str("task_id", pt.TaskID).Msg("SSH streaming error")
 
-			// If MonitorBackgroundTask failed before calling onComplete (e.g., SSH connection failure),
-			// send a failure result to the completion channel to prevent the caller from blocking forever.
-			if ch := pt.GetCompletionChannel(); ch != nil {
-				select {
-				case ch <- &TaskResult{
-					TaskID:     pt.TaskID,
-					ExitCode:   1,
-					Output:     fmt.Sprintf("SSH monitoring failed: %s", err),
-					Duration:   time.Since(startTime),
-					FinishedAt: time.Now(),
-					Error:      err,
-				}:
-				default:
-					// onComplete already sent a result — no action needed
-				}
-			}
+			d.completeBackgroundTask(streamCtx, pt, &TaskResult{
+				TaskID:     pt.TaskID,
+				ExitCode:   1,
+				Output:     fmt.Sprintf("SSH monitoring failed: %s", err),
+				Duration:   time.Since(startTime),
+				FinishedAt: time.Now(),
+				Error:      err,
+			})
 		}
 	}()
 
@@ -405,6 +386,26 @@ func (d *Dispatcher) runRemoteBackground(
 	// Return nil result to indicate the task is still running.
 	// The actual result will be provided by MonitorBackgroundTask when the task completes.
 	return nil, nil
+}
+
+func (d *Dispatcher) completeBackgroundTask(ctx context.Context, pt *PendingTask, result *TaskResult) {
+	if ch := pt.GetCompletionChannel(); ch != nil {
+		select {
+		case ch <- result:
+		default:
+			// A completed monitor has already delivered the result.
+		}
+	}
+
+	if result.TimedOut {
+		pt.Task.OnTimeout(ctx, result)
+		return
+	}
+	if result.IsSuccessful() {
+		pt.Task.OnFinished(ctx, result)
+		return
+	}
+	pt.Task.OnFailed(ctx, result)
 }
 
 // GetTaskOutput fetches output from a remote task

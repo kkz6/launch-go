@@ -3,6 +3,8 @@ package websocket
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"time"
 
 	"github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog"
@@ -11,6 +13,11 @@ import (
 )
 
 const wsChannel = "websocket:broadcast"
+
+const (
+	redisReconnectMinDelay = time.Second
+	redisReconnectMaxDelay = 30 * time.Second
+)
 
 // RedisBroadcaster publishes WebSocket messages to Redis for cross-process broadcasting
 type RedisBroadcaster struct {
@@ -160,46 +167,86 @@ func NewRedisSubscriber(addr, password string, db int, hub *Hub, logger *zerolog
 	}
 }
 
-// Start begins listening for Redis messages and forwarding to the hub
+// Start begins listening for Redis messages and forwarding to the hub.
+//
+// Redis Pub/Sub subscriptions are transient. A network interruption closes the
+// message channel, so the subscriber must explicitly reconnect rather than
+// continuing to receive nil messages from the closed channel.
 func (s *RedisSubscriber) Start() {
-	pubsub := s.client.Subscribe(s.ctx, wsChannel)
-
-	go func() {
-		defer pubsub.Close()
-
-		ch := pubsub.Channel()
-		for {
-			select {
-			case <-s.ctx.Done():
-				return
-			case msg := <-ch:
-				if msg == nil {
-					continue
-				}
-
-				var wsMsg Message
-				if err := json.Unmarshal([]byte(msg.Payload), &wsMsg); err != nil {
-					if s.logger != nil {
-						s.logger.Error().Err(err).Msg("Failed to unmarshal WebSocket message from Redis")
-					}
-					continue
-				}
-
-				if s.logger != nil {
-					s.logger.Debug().
-						Str("channel", wsMsg.Channel).
-						Str("event", wsMsg.Event).
-						Msg("RedisSubscriber: received message from Redis, forwarding to hub")
-				}
-
-				// Forward to the local WebSocket hub
-				s.hub.Broadcast(wsMsg.Channel, wsMsg.Event, wsMsg.Data)
-			}
-		}
-	}()
+	go s.run()
 
 	if s.logger != nil {
 		s.logger.Info().Str("redis_channel", wsChannel).Msg("Redis WebSocket subscriber started")
+	}
+}
+
+func (s *RedisSubscriber) run() {
+	delay := redisReconnectMinDelay
+	for s.ctx.Err() == nil {
+		if err := s.consume(); err != nil && s.ctx.Err() == nil && s.logger != nil {
+			s.logger.Warn().Err(err).Dur("retry_in", delay).Msg("Redis WebSocket subscriber disconnected; reconnecting")
+		}
+
+		if !s.waitForRetry(delay) {
+			return
+		}
+		delay = min(delay*2, redisReconnectMaxDelay)
+	}
+}
+
+func (s *RedisSubscriber) consume() error {
+	pubsub := s.client.Subscribe(s.ctx, wsChannel)
+	defer pubsub.Close()
+
+	if _, err := pubsub.Receive(s.ctx); err != nil {
+		return fmt.Errorf("subscribe to %s: %w", wsChannel, err)
+	}
+
+	messages := pubsub.Channel()
+	for {
+		select {
+		case <-s.ctx.Done():
+			return nil
+		case msg, ok := <-messages:
+			if !ok {
+				return fmt.Errorf("subscription channel closed")
+			}
+			s.forward(msg.Payload)
+		}
+	}
+}
+
+func (s *RedisSubscriber) forward(payload string) {
+	var envelope struct {
+		Channel string `json:"channel"`
+	}
+	if err := json.Unmarshal([]byte(payload), &envelope); err != nil {
+		if s.logger != nil {
+			s.logger.Error().Err(err).Msg("Failed to decode Redis WebSocket message")
+		}
+		return
+	}
+	if envelope.Channel == "" {
+		if s.logger != nil {
+			s.logger.Warn().Msg("Ignoring Redis WebSocket message without a channel")
+		}
+		return
+	}
+
+	if s.logger != nil {
+		s.logger.Debug().Str("channel", envelope.Channel).Msg("RedisSubscriber: forwarding Redis WebSocket message to hub")
+	}
+	s.hub.BroadcastSerialized(envelope.Channel, []byte(payload))
+}
+
+func (s *RedisSubscriber) waitForRetry(delay time.Duration) bool {
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-s.ctx.Done():
+		return false
+	case <-timer.C:
+		return true
 	}
 }
 

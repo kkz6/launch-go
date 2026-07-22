@@ -1,8 +1,11 @@
 package handlers
 
 import (
+	"bytes"
 	"fmt"
+	"io"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/gofiber/contrib/websocket"
@@ -139,29 +142,13 @@ func (h *ScriptExecutionHandler) executeScript(c *websocket.Conn, execution *scr
 		return
 	}
 
-	// Parse private key
-	signer, err := ssh.ParsePrivateKey([]byte(sshConfig.PrivateKey))
-	if err != nil {
-		h.finishWithError(c, execution, "Invalid SSH key")
-		return
-	}
-
 	// Resolve the run-as type to actual username from server
 	runAsUser := resolveRunAsUser(execution.RunAs, script.RunAs, server)
 
-	// SSH client config
-	config := &ssh.ClientConfig{
-		User: runAsUser,
-		Auth: []ssh.AuthMethod{
-			ssh.PublicKeys(signer),
-		},
-		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
-		Timeout:         10 * time.Second,
-	}
-
-	// Connect to SSH server
-	addr := fmt.Sprintf("%s:%d", sshConfig.Host, sshConfig.Port)
-	conn, err := ssh.Dial("tcp", addr, config)
+	// Use the shared SSH client so script execution gets the same TOFU
+	// host-key verification as deployments and interactive terminals.
+	sshConfig.User = runAsUser
+	conn, err := sshConfig.Dial(10 * time.Second)
 	if err != nil {
 		h.finishWithError(c, execution, fmt.Sprintf("SSH connection failed: %s", err.Error()))
 		return
@@ -207,53 +194,42 @@ func (h *ScriptExecutionHandler) executeScript(c *websocket.Conn, execution *scr
 		return
 	}
 
-	// Collect output for storage
-	var outputBuffer []byte
-	done := make(chan struct{})
-
-	// Stream stdout
-	go func() {
-		buf := make([]byte, 4096)
-		for {
-			select {
-			case <-done:
-				return
-			default:
-				n, err := stdout.Read(buf)
-				if err != nil {
+	// SSH exposes stdout and stderr independently, but a WebSocket permits
+	// only one concurrent writer. Funnel both streams through one consumer so
+	// each chunk is sent and persisted exactly once without data races.
+	chunks := make(chan []byte, 32)
+	var readers sync.WaitGroup
+	for _, reader := range []io.Reader{stdout, stderr} {
+		readers.Add(1)
+		go func(reader io.Reader) {
+			defer readers.Done()
+			buf := make([]byte, 4096)
+			for {
+				n, readErr := reader.Read(buf)
+				if n > 0 {
+					chunks <- append([]byte(nil), buf[:n]...)
+				}
+				if readErr != nil {
 					return
 				}
-				if n > 0 {
-					outputBuffer = append(outputBuffer, buf[:n]...)
-					c.WriteMessage(websocket.TextMessage, buf[:n])
-				}
 			}
-		}
-	}()
+		}(reader)
+	}
 
-	// Stream stderr
+	waitResult := make(chan error, 1)
 	go func() {
-		buf := make([]byte, 4096)
-		for {
-			select {
-			case <-done:
-				return
-			default:
-				n, err := stderr.Read(buf)
-				if err != nil {
-					return
-				}
-				if n > 0 {
-					outputBuffer = append(outputBuffer, buf[:n]...)
-					c.WriteMessage(websocket.TextMessage, buf[:n])
-				}
-			}
-		}
+		err := session.Wait()
+		readers.Wait()
+		close(chunks)
+		waitResult <- err
 	}()
 
-	// Wait for command to complete
-	err = session.Wait()
-	close(done)
+	var outputBuffer bytes.Buffer
+	for chunk := range chunks {
+		_, _ = outputBuffer.Write(chunk)
+		_ = c.WriteMessage(websocket.TextMessage, chunk)
+	}
+	err = <-waitResult
 
 	// Get exit code
 	exitCode := 0
@@ -273,7 +249,7 @@ func (h *ScriptExecutionHandler) executeScript(c *websocket.Conn, execution *scr
 
 	// Update execution record
 	finishedAt := time.Now()
-	output := string(outputBuffer)
+	output := outputBuffer.String()
 	h.DB.Model(execution).Updates(map[string]any{
 		"status":      finalStatus,
 		"exit_code":   exitCode,

@@ -19,11 +19,16 @@ type Message struct {
 	Data    interface{} `json:"data"`
 }
 
+type outboundMessage struct {
+	channel string
+	payload []byte
+}
+
 // Hub manages WebSocket clients and message broadcasting
 type Hub struct {
 	clients    map[*Client]bool
 	channels   map[string]map[*Client]bool
-	broadcast  chan *Message
+	broadcast  chan outboundMessage
 	register   chan *Client
 	unregister chan *Client
 	mu         sync.RWMutex
@@ -35,7 +40,7 @@ func NewHub() *Hub {
 	return &Hub{
 		clients:    make(map[*Client]bool),
 		channels:   make(map[string]map[*Client]bool),
-		broadcast:  make(chan *Message, 256),
+		broadcast:  make(chan outboundMessage, 256),
 		register:   make(chan *Client),
 		unregister: make(chan *Client),
 		done:       make(chan struct{}),
@@ -89,15 +94,9 @@ func (h *Hub) removeClient(client *Client) {
 }
 
 // broadcastToChannel sends a message to all clients subscribed to the channel
-func (h *Hub) broadcastToChannel(message *Message) {
-	data, err := json.Marshal(message)
-	if err != nil {
-		log.Warn().Err(err).Str("event", message.Event).Msg("Hub: failed to marshal broadcast message")
-		return
-	}
-
+func (h *Hub) broadcastToChannel(message outboundMessage) {
 	h.mu.RLock()
-	clients, ok := h.channels[message.Channel]
+	clients, ok := h.channels[message.channel]
 	if !ok {
 		h.mu.RUnlock()
 		// No clients subscribed — normal when nobody is viewing the
@@ -116,7 +115,7 @@ func (h *Hub) broadcastToChannel(message *Message) {
 
 	// Send to all clients
 	for _, client := range clientsCopy {
-		if !client.SafeSend(data) {
+		if !client.SafeSend(message.payload) {
 			// Client buffer full or closing, schedule for removal
 			go func(c *Client) {
 				h.unregister <- c
@@ -155,11 +154,26 @@ func (h *Hub) Unsubscribe(client *Client, channel string) {
 
 // Broadcast sends a message to all clients subscribed to a channel
 func (h *Hub) Broadcast(channel string, event string, data interface{}) {
-	h.broadcast <- &Message{
+	payload, err := json.Marshal(Message{
 		Event:   event,
 		Channel: channel,
 		Data:    data,
+	})
+	if err != nil {
+		log.Warn().Err(err).Str("event", event).Msg("Hub: failed to marshal broadcast message")
+		return
 	}
+	h.enqueueSerialized(channel, payload)
+}
+
+// BroadcastSerialized forwards an already-encoded websocket message without
+// decoding and encoding its data again. Redis subscribers use this fast path.
+func (h *Hub) BroadcastSerialized(channel string, payload []byte) {
+	h.enqueueSerialized(channel, payload)
+}
+
+func (h *Hub) enqueueSerialized(channel string, payload []byte) {
+	h.broadcast <- outboundMessage{channel: channel, payload: payload}
 }
 
 // BroadcastToServer sends a message to the server's channel

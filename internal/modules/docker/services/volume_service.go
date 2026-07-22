@@ -30,11 +30,7 @@ func (s *VolumeService) ListVolumes(
 	if err != nil {
 		return nil, err
 	}
-	out := make([]dto.VolumeResponse, 0, len(rows))
-	for i := range rows {
-		out = append(out, *dto.ToVolumeResponse(&rows[i]))
-	}
-	return out, nil
+	return mapResponseValues(rows, dto.ToVolumeResponse), nil
 }
 
 func (s *VolumeService) CreateVolume(
@@ -282,11 +278,7 @@ func (s *VolumeService) ListComposeVolumes(
 	if err != nil {
 		return nil, err
 	}
-	out := make([]dto.VolumeResponse, 0, len(rows))
-	for i := range rows {
-		out = append(out, *dto.ToVolumeResponse(&rows[i]))
-	}
-	return out, nil
+	return mapResponseValues(rows, dto.ToVolumeResponse), nil
 }
 
 func (s *VolumeService) CreateComposeVolume(
