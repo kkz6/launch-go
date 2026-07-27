@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"fmt"
+	"sync"
 
 	"github.com/gofiber/contrib/websocket"
 	"github.com/gofiber/fiber/v2"
@@ -273,8 +274,10 @@ func (h *LogsHandler) streamLogs(c *websocket.Conn, server *serverModels.Server,
 	}
 	defer session.Close()
 
-	// Build the tail command
-	command := fmt.Sprintf("tail -n %d -f %s 2>&1", tail, shellQuote(logFilePath))
+	// Fail explicitly when the file is missing instead of leaving the client
+	// attached to a finished tail process with no terminal event.
+	quotedPath := shellQuote(logFilePath)
+	command := fmt.Sprintf("if [ ! -r %s ]; then exit 42; fi; tail -n %d -f %s 2>/dev/null", quotedPath, tail, quotedPath)
 
 	// Add grep filter if search is provided
 	if search != "" {
@@ -306,10 +309,23 @@ func (h *LogsHandler) streamLogs(c *websocket.Conn, server *serverModels.Server,
 		return
 	}
 
-	// Stream output to WebSocket
+	// Stream output to WebSocket. The command completion channel is important:
+	// tail exits immediately for a missing/unreadable file, and waiting only for
+	// a client read would leave the UI in a permanent loading state.
 	done := make(chan struct{})
+	streamDone := make(chan struct{})
+	var stopOnce sync.Once
+	stop := func(terminate bool) {
+		stopOnce.Do(func() {
+			close(done)
+			if terminate {
+				_ = session.Signal(ssh.SIGTERM)
+			}
+		})
+	}
 
 	go func() {
+		defer close(streamDone)
 		buf := make([]byte, 8192)
 		for {
 			select {
@@ -329,15 +345,36 @@ func (h *LogsHandler) streamLogs(c *websocket.Conn, server *serverModels.Server,
 		}
 	}()
 
-	// Wait for WebSocket to close
-	for {
-		if _, _, err := c.ReadMessage(); err != nil {
-			break
+	commandDone := make(chan error, 1)
+	go func() {
+		commandDone <- session.Wait()
+	}()
+	clientDone := make(chan struct{})
+	go func() {
+		for {
+			if _, _, err := c.ReadMessage(); err != nil {
+				close(clientDone)
+				return
+			}
 		}
+	}()
+
+	select {
+	case err := <-commandDone:
+		stop(false)
+		<-streamDone
+		if err != nil {
+			message := "Log stream ended unexpectedly"
+			if exitErr, ok := err.(*ssh.ExitError); ok && exitErr.ExitStatus() == 42 {
+				message = "Task log file is not available on the server"
+			}
+			_ = SendErrorEvent(c, message)
+		}
+		_ = c.Close()
+	case <-clientDone:
+		stop(true)
 	}
 
-	close(done)
-	session.Signal(ssh.SIGTERM)
 	session.Close()
 	h.LogInfo("Log streaming ended")
 }
