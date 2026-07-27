@@ -70,13 +70,14 @@ func (s *DashboardService) GetDashboard(ctx context.Context, teamID string) (*dt
 	}, nil
 }
 
-// ActiveActions combines active site deployments, Docker deployments, and SSH
-// commands. They intentionally remain separate queries because their status
-// vocabularies and target relationships differ.
+// ActiveActions combines active deployments, SSH commands, and tracked server
+// tasks. They remain separate queries because their status vocabularies and
+// target relationships differ.
 func (s *DashboardService) ActiveActions(ctx context.Context, teamID string) ([]dto.ActiveAction, error) {
 	siteStatuses := []string{"pending", "installing"}
 	dockerStatuses := []string{"pending", "building", "deploying", "running"}
 	commandStatuses := []string{"pending", "running"}
+	taskStatuses := []string{"pending", "running"}
 
 	var actions []dto.ActiveAction
 	if err := s.db.WithContext(ctx).Raw(`
@@ -124,6 +125,26 @@ func (s *DashboardService) ActiveActions(ctx context.Context, teamID string) ([]
 		return nil, err
 	}
 	actions = append(actions, commandActions...)
+
+	var taskActions []dto.ActiveAction
+	if err := s.db.WithContext(ctx).Raw(`
+		SELECT tasks.id, 'task' AS kind, tasks.status, tasks.name AS label,
+		       servers.name AS description, tasks.server_id, '' AS project_id,
+		       'server' AS target_type, tasks.server_id AS target_id,
+		       tasks.id AS task_id, tasks.created_at AS started_at, tasks.created_at
+		FROM tasks
+		JOIN servers ON servers.id = tasks.server_id
+		WHERE servers.team_id = ? AND tasks.status IN ?
+		  AND NOT EXISTS (
+		      SELECT 1 FROM deployments WHERE deployments.task_id = tasks.id
+		  )
+		  AND NOT EXISTS (
+		      SELECT 1 FROM docker_deployments WHERE docker_deployments.task_id = tasks.id
+		  )
+	`, teamID, taskStatuses).Scan(&taskActions).Error; err != nil {
+		return nil, err
+	}
+	actions = append(actions, taskActions...)
 
 	sort.Slice(actions, func(i, j int) bool { return actions[i].CreatedAt.After(actions[j].CreatedAt) })
 	return actions, nil

@@ -91,6 +91,7 @@ func (j *ExecuteScriptJob) Handle(ctx context.Context) error {
 
 	// Create the task
 	task := tasks.RunScript(tasks.RunScriptConfig{
+		Name:    "Run " + j.script.Name,
 		Content: interpolatedContent,
 	})
 

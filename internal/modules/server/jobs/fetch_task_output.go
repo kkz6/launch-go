@@ -69,6 +69,7 @@ func (j *FetchTaskOutputJob) Handle(ctx context.Context) error {
 
 	// Run as root to ensure we can read the file
 	result, err := j.Deps.RunTask(j.server, getFileTask).
+		WithoutTracking().
 		AsRoot().
 		Run(ctx)
 

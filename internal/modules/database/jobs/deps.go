@@ -79,7 +79,7 @@ func NewJobDepsWithParams(
 
 // RunTask creates a task runner for a server with a task.
 func (d *JobDeps) RunTask(server *servermodels.Server, task pkgtaskrunner.Task) *servertasks.TaskRunner {
-	return d.TaskRunnerDeps.NewRunner(server, task)
+	return d.TaskRunnerDeps.NewRunner(server, task).TrackInDB()
 }
 
 // BroadcastServerEvent broadcasts an event for a server to its team channel.

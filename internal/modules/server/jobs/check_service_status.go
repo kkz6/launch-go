@@ -60,6 +60,7 @@ func (j *CheckServiceStatusJob) Handle(ctx context.Context) error {
 	task := tasks.GetServiceStatusTask(j.service.Software, j.service.Version)
 
 	result, err := j.Deps.RunTask(j.server, task).
+		WithoutTracking().
 		AsRoot().
 		Dispatch(ctx)
 

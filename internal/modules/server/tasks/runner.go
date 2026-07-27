@@ -159,6 +159,13 @@ func (r *TaskRunner) TrackInDB() *TaskRunner {
 	return r
 }
 
+// WithoutTracking disables database tracking for internal probes that should
+// not appear as user-facing actions.
+func (r *TaskRunner) WithoutTracking() *TaskRunner {
+	r.trackInDB = false
+	return r
+}
+
 // ThrowOnError enables throwing errors on task failure.
 func (r *TaskRunner) ThrowOnError() *TaskRunner {
 	r.throwOnError = true

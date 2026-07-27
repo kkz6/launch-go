@@ -42,6 +42,7 @@ func (j *UpdateConnectivityJob) Handle(ctx context.Context) error {
 	task := tasks.Whoami()
 
 	result, err := j.Deps.RunTask(j.server, task).
+		WithoutTracking().
 		AsRoot().
 		Dispatch(ctx)
 

@@ -39,7 +39,7 @@ type JobDeps struct {
 // affordance as the docker module's JobDeps.RunTask — kept on backup's
 // JobDeps so backup jobs don't cross-import server.jobs.JobDeps.
 func (d *JobDeps) RunTask(server *servermodels.Server, task taskrunner.Task) *servertasks.TaskRunner {
-	return d.TaskRunnerDeps.NewRunner(server, task)
+	return d.TaskRunnerDeps.NewRunner(server, task).TrackInDB()
 }
 
 // NewJobDeps creates a new JobDeps from app dependencies. databaseRepos

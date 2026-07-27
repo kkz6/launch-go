@@ -81,5 +81,5 @@ func NewJobDeps(
 // affordance as the server module's RunTask, just plumbed through this
 // module's JobDeps so we don't need a cross-module dep on server.JobDeps.
 func (d *JobDeps) RunTask(server *servermodels.Server, task taskrunner.Task) *servertasks.TaskRunner {
-	return d.TaskRunnerDeps.NewRunner(server, task)
+	return d.TaskRunnerDeps.NewRunner(server, task).TrackInDB()
 }
