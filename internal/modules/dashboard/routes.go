@@ -14,6 +14,7 @@ func (m *Module) RegisterRoutes(router fiber.Router, authMiddleware fiber.Handle
 
 	// Dashboard route (authenticated + team scoped + subscription required)
 	router.Get("/dashboard", authMiddleware, middleware.TeamScope(), middleware.VerifySubscription(), fiberutil.Handler(handler.Index))
+	router.Get("/actions/active", authMiddleware, middleware.TeamScope(), middleware.VerifySubscription(), fiberutil.Handler(handler.ActiveActions))
 
 	// Onboarding routes (authenticated only, no team scope needed)
 	router.Get("/onboarding/status", authMiddleware, handler.OnboardingStatus)

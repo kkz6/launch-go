@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"sort"
 
 	"github.com/rs/zerolog"
 	"golang.org/x/sync/errgroup"
@@ -67,6 +68,42 @@ func (s *DashboardService) GetDashboard(ctx context.Context, teamID string) (*dt
 		Servers:        servers,
 		RecentActivity: recentActivity,
 	}, nil
+}
+
+// ActiveActions combines the active site and Docker deployment tables. They
+// intentionally remain separate queries: their status vocabularies and target
+// relationships differ, while the result is a small, bounded top-bar list.
+func (s *DashboardService) ActiveActions(ctx context.Context, teamID string) ([]dto.ActiveAction, error) {
+	const siteStatuses = "('pending', 'installing', 'running')"
+	const dockerStatuses = "('pending', 'building', 'deploying', 'running')"
+
+	var actions []dto.ActiveAction
+	if err := s.db.WithContext(ctx).Raw(`
+		SELECT d.id, 'deployment' AS kind, d.status, sites.address AS label,
+		       sites.server_id, '' AS project_id, 'site' AS target_type, d.site_id AS target_id,
+		       d.task_id, NULL AS started_at, d.created_at
+		FROM deployments d JOIN sites ON sites.id = d.site_id
+		WHERE d.team_id = ? AND d.status IN `+siteStatuses+`
+	`, teamID).Scan(&actions).Error; err != nil {
+		return nil, err
+	}
+
+	var dockerActions []dto.ActiveAction
+	if err := s.db.WithContext(ctx).Raw(`
+		SELECT d.id, 'deployment' AS kind, d.status,
+		       COALESCE(app.name, compose.name, d.target_type) AS label,
+		       d.server_id, COALESCE(app.project_id, compose.project_id, '') AS project_id,
+		       d.target_type, d.target_id, d.task_id, d.started_at, d.created_at
+		FROM docker_deployments d
+		LEFT JOIN docker_applications app ON d.target_type = 'application' AND app.id = d.target_id
+		LEFT JOIN docker_composes compose ON d.target_type = 'compose' AND compose.id = d.target_id
+		WHERE d.team_id = ? AND d.status IN `+dockerStatuses+`
+	`, teamID).Scan(&dockerActions).Error; err != nil {
+		return nil, err
+	}
+	actions = append(actions, dockerActions...)
+	sort.Slice(actions, func(i, j int) bool { return actions[i].CreatedAt.After(actions[j].CreatedAt) })
+	return actions, nil
 }
 
 // sitesCountSubquery returns a GORM subquery for counting sites per server (database-agnostic)

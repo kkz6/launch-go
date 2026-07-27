@@ -27,6 +27,16 @@ func (h *DashboardHandler) Index(r *fiberctx.Request) error {
 	return fiberctx.OK(r.Ctx, "Dashboard data retrieved", dashboard)
 }
 
+// ActiveActions returns the team's in-flight work so users can keep track of
+// deployments after navigating away from the resource that started them.
+func (h *DashboardHandler) ActiveActions(r *fiberctx.Request) error {
+	actions, err := h.service.ActiveActions(r.Context(), r.TeamID)
+	if err != nil {
+		return fiberctx.HandleError(r.Ctx, err)
+	}
+	return fiberctx.OK(r.Ctx, "Active actions retrieved", actions)
+}
+
 // OnboardingStatus returns the onboarding status for the current user
 func (h *DashboardHandler) OnboardingStatus(c *fiber.Ctx) error {
 	userID, err := fiberctx.MustGetUserID(c)
