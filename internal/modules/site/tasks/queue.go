@@ -157,12 +157,20 @@ supervisorctl update
 
 # Start all queue processes
 `
+	script += "restart_failed=0\n"
 	for _, id := range queueIDs {
-		script += fmt.Sprintf(`supervisorctl start "%s":* 2>/dev/null || echo "Queue %s failed to start"
+		script += fmt.Sprintf(`if ! supervisorctl start "%s":*; then
+  echo "Queue %s failed to start" >&2
+  restart_failed=1
+fi
 `, id, id)
 	}
 
 	script += `
+if [ "$restart_failed" -ne 0 ]; then
+  exit 1
+fi
+
 echo "All queues restarted"
 `
 	return taskrunner.NewBaseTask(

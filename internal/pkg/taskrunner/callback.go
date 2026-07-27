@@ -87,6 +87,16 @@ func (c *CallbackContext) NotifyChannel(ctx context.Context, channelID string, n
 
 // DispatchJob is a helper to dispatch an asynq job from a callback handler
 func (c *CallbackContext) DispatchJob(jobType string, payload interface{}) error {
+	return c.DispatchJobWithOptions(jobType, payload)
+}
+
+// DispatchJobWithOptions dispatches a job with explicit delivery options such
+// as retries and an idempotency task ID.
+func (c *CallbackContext) DispatchJobWithOptions(
+	jobType string,
+	payload interface{},
+	opts ...asynq.Option,
+) error {
 	if c.Queue == nil {
 		if c.Logger != nil {
 			c.Logger.Warn().Str("job_type", jobType).Msg("Queue not available, cannot dispatch job")
@@ -99,7 +109,7 @@ func (c *CallbackContext) DispatchJob(jobType string, payload interface{}) error
 		return fmt.Errorf("failed to marshal job payload: %w", err)
 	}
 
-	task := asynq.NewTask(jobType, data)
+	task := asynq.NewTask(jobType, data, opts...)
 	if _, err := c.Queue.Enqueue(task); err != nil {
 		if c.Logger != nil {
 			c.Logger.Error().Err(err).Str("job_type", jobType).Msg("Failed to dispatch job")
