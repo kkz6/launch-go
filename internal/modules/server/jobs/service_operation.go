@@ -79,15 +79,28 @@ func (j *ServiceOperationJob) Handle(ctx context.Context) error {
 		return fmt.Errorf("unknown operation: %s", j.Payload.Operation)
 	}
 
+	var taskID string
 	result, err := j.Deps.RunTask(j.server, task).
 		AsRoot().
+		TrackInDB().
+		OnTaskCreated(func(id string) {
+			taskID = id
+			j.Deps.BroadcastServerEvent(j.server, "service.operation", map[string]any{
+				"service_id": j.service.ID,
+				"operation":  j.Payload.Operation,
+				"task_id":    id,
+				"status":     "running",
+			})
+		}).
 		Dispatch(ctx)
 
 	if err != nil {
+		j.broadcastFailure(taskID, err.Error())
 		return fmt.Errorf("failed to %s service: %w", j.Payload.Operation, err)
 	}
 
 	if !result.IsSuccessful() {
+		j.broadcastFailure(taskID, result.GetOutput())
 		return fmt.Errorf("failed to %s service: %s", j.Payload.Operation, result.GetOutput())
 	}
 
@@ -102,9 +115,26 @@ func (j *ServiceOperationJob) Handle(ctx context.Context) error {
 		"service_id": j.service.ID,
 		"server_id":  j.server.ID,
 		"operation":  j.Payload.Operation,
+		"task_id":    taskID,
+		"status":     "finished",
 	})
 
 	return nil
+}
+
+// broadcastFailure makes the terminal state and the persisted script log
+// discoverable to the server UI even when the queue retries the job.
+func (j *ServiceOperationJob) broadcastFailure(taskID, output string) {
+	if j.server == nil || j.service == nil {
+		return
+	}
+	j.Deps.BroadcastServerEvent(j.server, "service.operation", map[string]any{
+		"service_id": j.service.ID,
+		"operation":  j.Payload.Operation,
+		"task_id":    taskID,
+		"status":     "failed",
+		"output":     output,
+	})
 }
 
 // Failed is called when the job fails after all retries

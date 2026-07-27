@@ -273,8 +273,18 @@ func (r *TaskRunner) Run(ctx context.Context) (*TaskRunnerResult, error) {
 		Error:      execErr,
 	}
 
-	if taskModel != nil && taskResult != nil {
-		r.updateTaskModel(taskModel, taskResult)
+	if taskModel != nil {
+		if taskResult != nil {
+			r.updateTaskModel(taskModel, taskResult)
+		} else if execErr != nil {
+			// A transport/dispatcher error has no TaskResult, but it still
+			// must terminate the persisted task. Leaving it as "running"
+			// otherwise makes the UI appear stuck and hides its error output.
+			taskModel.Status = string(servertypes.TaskStatusFailed)
+			taskModel.Output = dbtype.EncryptedString(execErr.Error())
+			r.db.Save(taskModel)
+			r.broadcastTaskEvent("task.updated", taskModel, execErr.Error())
+		}
 	}
 
 	// Always invoke task callbacks regardless of execution mode

@@ -42,13 +42,14 @@ func (r *Registry) FailedProvisions(ctx context.Context, limit int) ([]servermod
 	return servers, nil
 }
 
-// serviceInstallNamePrefix matches the Name every software-installation task
-// sets via WithName ("Install MySQL 8.0", "Install PHP 8.3", "Install Redis",
-// …). Filtering on it isolates service installs from the rest of the task feed:
-// these tasks are built from the generic taskrunner.BaseTask, so their reflect
-// `type` column is shared with unrelated tasks and can't distinguish them —
-// only the human Name can. The trailing space avoids matching "Uninstall …".
-const serviceInstallNamePrefix = "Install %"
+// serviceOperationNamePatterns matches the software installation and update
+// tasks surfaced by the admin failure monitor. Filtering on these names keeps
+// unrelated task-runner activity (uploads, restarts and status checks) out of
+// the operational failure feed while including Launch Agent upgrades. These
+// tasks are built from the generic taskrunner.BaseTask, so their reflect `type`
+// column is shared with unrelated tasks and can't distinguish them — only the
+// human Name can. The trailing space avoids matching "Uninstall …".
+var serviceOperationNamePatterns = []string{"Install %", "Update Launch Agent"}
 
 // FailedServiceInstalls returns failed/timed-out software-installation tasks
 // (PHP, MySQL, Caddy, Redis, …), newest first. The admin failures monitor only
@@ -63,7 +64,7 @@ func (r *Registry) FailedServiceInstalls(ctx context.Context, limit int) ([]serv
 			string(servertypes.TaskStatusFailed),
 			string(servertypes.TaskStatusTimeout),
 		}).
-		Where("name LIKE ?", serviceInstallNamePrefix).
+		Where("name LIKE ? OR name = ?", serviceOperationNamePatterns[0], serviceOperationNamePatterns[1]).
 		Order("updated_at DESC").
 		Limit(limit).
 		Find(&tasks).Error

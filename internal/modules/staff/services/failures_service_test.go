@@ -248,6 +248,31 @@ func TestService_Failures_DetailTruncation(t *testing.T) {
 	require.Greater(t, len(detail), detailMaxBytes-4)
 }
 
+func TestService_Failures_IncludesLaunchAgentUpdates(t *testing.T) {
+	db := setupFailuresDB(t)
+	svc := newFailuresService(db)
+	ctx := context.Background()
+
+	now := time.Now()
+	task := servermodels.Task{
+		BaseModel: basemodels.BaseModel{ID: "tsk00000000000000000000031", CreatedAt: &now, UpdatedAt: &now},
+		Name:      "Update Launch Agent",
+		User:      "root",
+		Type:      "github.com/kkz6/launch-go/internal/pkg/taskrunner.BaseTask",
+		Status:    string(servertypes.TaskStatusFailed),
+		Output:    dbtype.EncryptedString("installer download failed"),
+		ExitCode:  intPtr(1),
+	}
+	task.ServerID = "srv00000000000000000000031"
+	require.NoError(t, db.Create(&task).Error)
+
+	resp, _, err := svc.Failures(ctx, KindServiceInstallation, 25, 0)
+	require.NoError(t, err)
+	require.Len(t, resp.Failures, 1)
+	require.Equal(t, "Update Launch Agent", resp.Failures[0].Title)
+	require.Equal(t, "installer download failed", resp.Failures[0].Detail)
+}
+
 func TestTruncate(t *testing.T) {
 	require.Equal(t, "short", truncate("short", 2048))
 	require.Equal(t, "", truncate("", 2048))
