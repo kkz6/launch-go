@@ -27,6 +27,16 @@ type closeBuffer struct{ bytes.Buffer }
 
 func (b *closeBuffer) Close() error { return nil }
 
+type trackedCloseBuffer struct {
+	bytes.Buffer
+	closed *bool
+}
+
+func (b *trackedCloseBuffer) Close() error {
+	*b.closed = true
+	return nil
+}
+
 func TestShellQuote(t *testing.T) {
 	cases := []struct {
 		name  string
@@ -89,7 +99,8 @@ func TestReadSCPAck(t *testing.T) {
 
 func TestWriteSCPFile(t *testing.T) {
 	t.Run("writes a complete acknowledged transfer", func(t *testing.T) {
-		stdin := &closeBuffer{}
+		closed := false
+		stdin := &trackedCloseBuffer{closed: &closed}
 		waited := false
 		err := writeSCPFile(
 			stdin,
@@ -97,7 +108,13 @@ func TestWriteSCPFile(t *testing.T) {
 			[]byte("payload"),
 			"script.sh",
 			0o700,
-			func() error { waited = true; return nil },
+			func() error {
+				if !closed {
+					t.Fatal("expected SCP stdin to close before waiting")
+				}
+				waited = true
+				return nil
+			},
 		)
 		if err != nil {
 			t.Fatalf("writeSCPFile returned error: %v", err)
