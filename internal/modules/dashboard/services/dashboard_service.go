@@ -74,8 +74,8 @@ func (s *DashboardService) GetDashboard(ctx context.Context, teamID string) (*dt
 // intentionally remain separate queries: their status vocabularies and target
 // relationships differ, while the result is a small, bounded top-bar list.
 func (s *DashboardService) ActiveActions(ctx context.Context, teamID string) ([]dto.ActiveAction, error) {
-	const siteStatuses = "('pending', 'installing', 'running')"
-	const dockerStatuses = "('pending', 'building', 'deploying', 'running')"
+	siteStatuses := []string{"pending", "installing"}
+	dockerStatuses := []string{"pending", "building", "deploying", "running"}
 
 	var actions []dto.ActiveAction
 	if err := s.db.WithContext(ctx).Raw(`
@@ -83,22 +83,28 @@ func (s *DashboardService) ActiveActions(ctx context.Context, teamID string) ([]
 		       sites.server_id, '' AS project_id, 'site' AS target_type, d.site_id AS target_id,
 		       d.task_id, NULL AS started_at, d.created_at
 		FROM deployments d JOIN sites ON sites.id = d.site_id
-		WHERE d.team_id = ? AND d.status IN `+siteStatuses+`
-	`, teamID).Scan(&actions).Error; err != nil {
+		WHERE d.team_id = ? AND d.status IN ?
+	`, teamID, siteStatuses).Scan(&actions).Error; err != nil {
 		return nil, err
+	}
+	for i := range actions {
+		if actions[i].Status == "installing" {
+			actions[i].Status = "deploying"
+		}
 	}
 
 	var dockerActions []dto.ActiveAction
 	if err := s.db.WithContext(ctx).Raw(`
 		SELECT d.id, 'deployment' AS kind, d.status,
-		       COALESCE(app.name, compose.name, d.target_type) AS label,
-		       d.server_id, COALESCE(app.project_id, compose.project_id, '') AS project_id,
+		       COALESCE(app.name, compose.name, db_target.name, d.target_type) AS label,
+		       d.server_id, COALESCE(app.project_id, compose.project_id, db_target.project_id, '') AS project_id,
 		       d.target_type, d.target_id, d.task_id, d.started_at, d.created_at
 		FROM docker_deployments d
 		LEFT JOIN docker_applications app ON d.target_type = 'application' AND app.id = d.target_id
 		LEFT JOIN docker_composes compose ON d.target_type = 'compose' AND compose.id = d.target_id
-		WHERE d.team_id = ? AND d.status IN `+dockerStatuses+`
-	`, teamID).Scan(&dockerActions).Error; err != nil {
+		LEFT JOIN docker_databases db_target ON d.target_type = 'database' AND db_target.id = d.target_id
+		WHERE d.team_id = ? AND d.status IN ?
+	`, teamID, dockerStatuses).Scan(&dockerActions).Error; err != nil {
 		return nil, err
 	}
 	actions = append(actions, dockerActions...)
