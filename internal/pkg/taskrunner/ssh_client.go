@@ -401,6 +401,12 @@ func writeSCPFile(stdin io.WriteCloser, stdout io.Reader, content []byte, name s
 	if err := readSCPAck(reader); err != nil {
 		return err
 	}
+	// The SCP sink waits for EOF before it exits. Close stdin before waiting
+	// for the remote process; deferring this close until the function returns
+	// deadlocks on session.Wait until the caller's context expires.
+	if err := stdin.Close(); err != nil {
+		return fmt.Errorf("close SCP stdin: %w", err)
+	}
 	if err := wait(); err != nil {
 		return fmt.Errorf("complete SCP upload: %w", err)
 	}
