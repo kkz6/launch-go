@@ -117,7 +117,9 @@ func (j *PollGHAStepsJob) Handle(ctx context.Context) error {
 			// here — that stays the webhook's single source of truth so a
 			// mis-discovered run can never strand the webhook's row (#92).
 			if dep.GHARunURL == nil || *dep.GHARunURL == "" {
-				_ = j.Deps.DB.WithContext(ctx).Model(&dep).Update("gha_run_url", run.HTMLURL).Error
+				if err := j.Deps.DB.WithContext(ctx).Model(&dep).Update("gha_run_url", run.HTMLURL).Error; err != nil {
+					j.Deps.Logger.Warn().Err(err).Str("deployment_id", dep.ID).Msg("failed to persist GitHub Actions run URL")
+				}
 			}
 		}
 	}

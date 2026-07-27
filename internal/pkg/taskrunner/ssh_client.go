@@ -219,6 +219,19 @@ func (c *SSHClient) NewSession() (*ssh.Session, error) {
 	return c.conn.NewSession()
 }
 
+// SendRequest sends a global SSH request on the established connection.
+// It is used by long-lived streams for keepalive probes while preserving
+// taskrunner's managed host-key verification and connection setup.
+func (c *SSHClient) SendRequest(name string, wantReply bool, payload []byte) (bool, error) {
+	if c.conn == nil {
+		if err := c.Connect(); err != nil {
+			return false, err
+		}
+	}
+	ok, _, err := c.conn.SendRequest(name, wantReply, payload)
+	return ok, err
+}
+
 // Run executes a command on the remote server
 func (c *SSHClient) Run(ctx context.Context, command string) (*SSHCommandResult, error) {
 	if c.conn == nil {
@@ -286,7 +299,7 @@ func (c *SSHClient) RunScript(ctx context.Context, script string) (*SSHCommandRe
 	}
 
 	// Run the file, then remove it while preserving the script's exit code.
-	quotedPath := shellQuote(remotePath)
+	quotedPath := quoteShellArg(remotePath)
 	cmd := fmt.Sprintf("bash %s; ec=$?; rm -f %s; exit $ec", quotedPath, quotedPath)
 	return c.Run(ctx, cmd)
 }
@@ -345,7 +358,7 @@ func (c *SSHClient) Upload(ctx context.Context, content []byte, remotePath strin
 		return fmt.Errorf("open SCP stdout: %w", err)
 	}
 	dir := filepath.Dir(remotePath)
-	if err := session.Start("scp -tr " + shellQuote(dir)); err != nil {
+	if err := session.Start("scp -tr " + quoteShellArg(dir)); err != nil {
 		return fmt.Errorf("start SCP upload: %w", err)
 	}
 
@@ -408,7 +421,7 @@ func readSCPAck(reader *bufio.Reader) error {
 
 // Download downloads content from a remote file
 func (c *SSHClient) Download(ctx context.Context, remotePath string) ([]byte, error) {
-	result, err := c.Run(ctx, "cat -- "+shellQuote(remotePath))
+	result, err := c.Run(ctx, "cat -- "+quoteShellArg(remotePath))
 	if err != nil {
 		return nil, err
 	}
@@ -417,7 +430,7 @@ func (c *SSHClient) Download(ctx context.Context, remotePath string) ([]byte, er
 
 // FileExists checks if a file exists on the remote server
 func (c *SSHClient) FileExists(ctx context.Context, path string) (bool, error) {
-	result, err := c.Run(ctx, "test -f "+shellQuote(path))
+	result, err := c.Run(ctx, "test -f "+quoteShellArg(path))
 	if err != nil {
 		return false, fmt.Errorf("check remote file: %w", err)
 	}
@@ -426,7 +439,7 @@ func (c *SSHClient) FileExists(ctx context.Context, path string) (bool, error) {
 
 // DirExists checks if a directory exists on the remote server
 func (c *SSHClient) DirExists(ctx context.Context, path string) (bool, error) {
-	result, err := c.Run(ctx, "test -d "+shellQuote(path))
+	result, err := c.Run(ctx, "test -d "+quoteShellArg(path))
 	if err != nil {
 		return false, fmt.Errorf("check remote directory: %w", err)
 	}
@@ -435,13 +448,16 @@ func (c *SSHClient) DirExists(ctx context.Context, path string) (bool, error) {
 
 // MkdirAll creates a directory and all parent directories on the remote server
 func (c *SSHClient) MkdirAll(ctx context.Context, path string) error {
-	_, err := c.Run(ctx, "mkdir -p "+shellQuote(path))
+	_, err := c.Run(ctx, "mkdir -p "+quoteShellArg(path))
 	return err
 }
 
 // StreamOutput streams output from a command, calling the callback for each line
 // This keeps the SSH connection open and reads output as it arrives
 func (c *SSHClient) StreamOutput(ctx context.Context, command string, callback func(line string) error) error {
+	if callback == nil {
+		return fmt.Errorf("stream callback is required")
+	}
 	if c.conn == nil {
 		if err := c.Connect(); err != nil {
 			return err
@@ -486,7 +502,11 @@ func (c *SSHClient) StreamOutput(ctx context.Context, command string, callback f
 				close(lineChan)
 				return
 			}
-			lineChan <- line
+			select {
+			case lineChan <- line:
+			case <-ctx.Done():
+				return
+			}
 		}
 	}()
 
@@ -529,9 +549,19 @@ func (c *SSHClient) WaitForConnection(ctx context.Context, maxRetries int) error
 		}
 
 		lastErr = err
-		time.Sleep(config.RetryDelay)
+		timer := time.NewTimer(config.RetryDelay)
+		select {
+		case <-ctx.Done():
+			if !timer.Stop() {
+				<-timer.C
+			}
+			return ctx.Err()
+		case <-timer.C:
+		}
 	}
-
+	if lastErr == nil {
+		return fmt.Errorf("failed to connect after %d retries", maxRetries)
+	}
 	return fmt.Errorf("failed to connect after %d retries: %w", maxRetries, lastErr)
 }
 
@@ -562,8 +592,15 @@ func expandPath(path string) string {
 	return path
 }
 
-func shellQuote(value string) string {
+func quoteShellArg(value string) string {
 	return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'"
+}
+
+// ShellQuote returns a POSIX-shell-safe single argument. Task templates use
+// this when embedding paths or identifiers in remote commands; keeping the
+// implementation here avoids each package inventing subtly unsafe escaping.
+func ShellQuote(value string) string {
+	return quoteShellArg(value)
 }
 
 // SSHClientOption is a functional option for configuring SSHClient
@@ -595,6 +632,8 @@ func NewSSHClientFromConnection(conn *Connection, opts ...SSHClientOption) (*SSH
 		Port:       conn.Port,
 		User:       conn.User,
 		PrivateKey: conn.PrivateKey,
+		ServerID:   conn.ServerID,
+		HostKey:    conn.HostKey,
 		Timeout:    config.SSH,
 	}
 

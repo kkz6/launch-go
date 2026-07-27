@@ -75,8 +75,12 @@ func (j *SyncInstallationReposJob) Handle(ctx context.Context) error {
 		Int("repository_count", len(repositories)).
 		Msg("Synced installation repositories")
 
-	// Broadcast event
-	// TODO: Broadcast RepositoriesSynced event via websocket
+	j.Deps.BroadcastToTeam(j.Payload.TeamID, "git.repositories.synced", map[string]any{
+		"team_id":           j.Payload.TeamID,
+		"source_control_id": sc.ID,
+		"installation_id":   j.Payload.InstallationID,
+		"repository_count":  repositoryCount,
+	})
 
 	return nil
 }

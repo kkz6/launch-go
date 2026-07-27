@@ -31,7 +31,11 @@ func (h *SSLHandler) UpdateSSL(c *fiber.Ctx, req *dto.UpdateSSLRequest) error {
 	if err != nil {
 		return err
 	}
-	if err := h.sslService.UpdateSSL(c.Context(), siteID, serverID, userID, req); err != nil {
+	teamID, err := fiberctx.MustGetTeamID(c)
+	if err != nil {
+		return err
+	}
+	if err := h.sslService.UpdateSSL(c.Context(), siteID, serverID, teamID, userID, req); err != nil {
 		return err
 	}
 	return fiberctx.OK(c, "SSL settings updated", nil)

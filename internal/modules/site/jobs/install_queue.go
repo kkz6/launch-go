@@ -144,7 +144,9 @@ func (j *InstallQueueJob) Failed(ctx context.Context, err error) {
 	now := time.Now()
 	queue.InstalledAt = nil
 	queue.InstallationFailedAt = &now
-	_ = j.Deps.Repos.Queue().Update(ctx, queue)
+	if updateErr := j.Deps.Repos.Queue().Update(ctx, queue); updateErr != nil {
+		j.Deps.Logger.Error().Err(updateErr).Str("queue_id", queue.ID).Msg("Failed to persist queue installation failure")
+	}
 }
 
 // NewInstallQueueTask creates an install queue job

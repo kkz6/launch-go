@@ -81,9 +81,11 @@ func (j *RunPlatformUpdateJob) Handle(ctx context.Context) error {
 		RunAsync(ctx)
 	if err != nil {
 		// Update status to failed
-		_ = j.Deps.Repos.ServerPlatformUpdate().UpdateStatus(
+		if updateErr := j.Deps.Repos.ServerPlatformUpdate().UpdateStatus(
 			ctx, j.Payload.ServerPlatformUpdateID, types.UpdateStatusFailed,
-		)
+		); updateErr != nil {
+			j.Deps.Logger.Error().Err(updateErr).Str("update_id", j.Payload.ServerPlatformUpdateID).Msg("failed to persist platform update failure")
+		}
 
 		j.Deps.BroadcastToTeam(j.Payload.TeamID, "platform_update.status_changed", map[string]interface{}{
 			"update_id": j.Payload.ServerPlatformUpdateID,

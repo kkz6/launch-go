@@ -1,6 +1,8 @@
 package queue
 
 import (
+	"errors"
+
 	"github.com/hibiken/asynq"
 
 	"github.com/kkz6/launch-go/internal/config"
@@ -26,6 +28,24 @@ func NewClient(cfg config.RedisConfig) *Client {
 
 func (c *Client) Inspector() *asynq.Inspector {
 	return c.inspector
+}
+
+// Close releases both Redis connections owned by the queue client. The
+// embedded asynq.Client only closes its own connection; the inspector has a
+// separate pool and must be closed explicitly during application shutdown.
+func (c *Client) Close() error {
+	if c == nil {
+		return nil
+	}
+
+	var errs []error
+	if c.Client != nil {
+		errs = append(errs, c.Client.Close())
+	}
+	if c.inspector != nil {
+		errs = append(errs, c.inspector.Close())
+	}
+	return errors.Join(errs...)
 }
 
 // Queue names

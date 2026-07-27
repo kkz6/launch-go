@@ -148,10 +148,14 @@ func (j *RunApplicationScheduleJob) Failed(ctx context.Context, err error) {
 // UI still shows a Last Status. Returns nil so asynq doesn't retry.
 func (j *RunApplicationScheduleJob) persistFailure(ctx context.Context, scheduleID, msg string) error {
 	failed := "failed"
-	_ = j.Deps.Repos.Schedule().UpdateFields(ctx, scheduleID, map[string]any{
+	if err := j.Deps.Repos.Schedule().UpdateFields(ctx, scheduleID, map[string]any{
 		"last_run_at": time.Now().UTC(),
 		"last_status": failed,
-	})
+	}); err != nil {
+		j.Deps.Logger.Error().Err(err).
+			Str("schedule_id", scheduleID).
+			Msg("failed to persist schedule failure state")
+	}
 	j.Deps.Logger.Warn().
 		Str("schedule_id", scheduleID).
 		Str("error", msg).

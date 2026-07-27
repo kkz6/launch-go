@@ -37,6 +37,7 @@ type Service struct {
 // nil (e.g. in unit tests) CurrentTeamRole returns an empty string.
 func (s *Service) SetMembershipCache(c *launchcache.TeamMembershipCache) {
 	s.membershipCache = c
+	s.TeamMember.SetMembershipCache(c)
 }
 
 // CurrentTeamRole returns the user's role in the given team (owner / admin
@@ -69,7 +70,7 @@ func NewService(repos contracts.RepositoryRegistry, cfg *config.Config, logger *
 		logger:            logger,
 		Auth:              authService,
 		User:              NewUserService(repos),
-		EmailVerification: NewEmailVerificationService(repos, cfg),
+		EmailVerification: NewEmailVerificationService(repos, cfg, emailSender),
 		PasswordReset:     NewPasswordResetService(repos, cfg, emailSender),
 		TwoFactor:         NewTwoFactorService(repos, cfg, authService),
 		Team:              NewTeamService(repos),

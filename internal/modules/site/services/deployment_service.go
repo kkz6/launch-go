@@ -15,6 +15,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/site/jobs"
 	"github.com/kkz6/launch-go/internal/modules/site/models"
 	sitetypes "github.com/kkz6/launch-go/internal/modules/site/types"
+	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/security"
 )
 
@@ -43,8 +44,8 @@ func (s *DeploymentService) SetProviderFactory(factory *gitproviders.ProviderFac
 }
 
 // Deploy triggers a new deployment for a site
-func (s *DeploymentService) Deploy(ctx context.Context, siteID, serverID, userID string) (*models.Deployment, error) {
-	site, err := s.Repos().Site().FindByIDAndServer(ctx, siteID, serverID)
+func (s *DeploymentService) Deploy(ctx context.Context, siteID, serverID, teamID, userID string) (*models.Deployment, error) {
+	site, err := s.scopedSite(ctx, siteID, serverID, teamID)
 	if err != nil {
 		return nil, err
 	}
@@ -132,8 +133,8 @@ func (s *DeploymentService) buildSourceControlData(sc *gitmodels.SourceControl) 
 }
 
 // Rollback rolls back to a previous deployment
-func (s *DeploymentService) Rollback(ctx context.Context, siteID, serverID, targetDeploymentID, userID string) (*models.Deployment, error) {
-	site, err := s.Repos().Site().FindByIDAndServer(ctx, siteID, serverID)
+func (s *DeploymentService) Rollback(ctx context.Context, siteID, serverID, teamID, targetDeploymentID, userID string) (*models.Deployment, error) {
+	site, err := s.scopedSite(ctx, siteID, serverID, teamID)
 	if err != nil {
 		return nil, err
 	}
@@ -309,7 +310,9 @@ func (s *DeploymentService) List(ctx context.Context, siteID, serverID string) (
 // Signature matches IndexDoubleNestedFunc:
 // (ctx, parentID=siteID, grandparentID=serverID, teamID).
 func (s *DeploymentService) ListResponses(ctx context.Context, siteID, serverID, teamID string) ([]dto.DeploymentResponse, error) {
-	_ = teamID
+	if _, err := s.scopedSite(ctx, siteID, serverID, teamID); err != nil {
+		return nil, err
+	}
 	deployments, err := s.List(ctx, siteID, serverID)
 	if err != nil {
 		return nil, err
@@ -324,7 +327,9 @@ func (s *DeploymentService) ListResponses(ctx context.Context, siteID, serverID,
 // ShowResponse returns a single deployment as a response DTO. Signature
 // matches ShowDoubleNestedFunc.
 func (s *DeploymentService) ShowResponse(ctx context.Context, deploymentID, siteID, serverID, teamID string) (dto.DeploymentResponse, error) {
-	_ = teamID
+	if _, err := s.scopedSite(ctx, siteID, serverID, teamID); err != nil {
+		return dto.DeploymentResponse{}, err
+	}
 	deployment, err := s.FindByID(ctx, deploymentID, siteID, serverID)
 	if err != nil {
 		return dto.DeploymentResponse{}, err
@@ -335,17 +340,15 @@ func (s *DeploymentService) ShowResponse(ctx context.Context, deploymentID, site
 // EnableAutoDeploymentAction wraps EnableAutoDeployment for the
 // ActionDoubleNested helper.
 func (s *DeploymentService) EnableAutoDeploymentAction(ctx context.Context, siteID, serverID, teamID, userID string) error {
-	_ = teamID
 	_ = userID
-	return s.EnableAutoDeployment(ctx, siteID, serverID)
+	return s.EnableAutoDeployment(ctx, siteID, serverID, teamID)
 }
 
 // DisableAutoDeploymentAction wraps DisableAutoDeployment for the
 // ActionDoubleNested helper.
 func (s *DeploymentService) DisableAutoDeploymentAction(ctx context.Context, siteID, serverID, teamID, userID string) error {
-	_ = teamID
 	_ = userID
-	return s.DisableAutoDeployment(ctx, siteID, serverID)
+	return s.DisableAutoDeployment(ctx, siteID, serverID, teamID)
 }
 
 // FindByID finds a deployment by ID
@@ -418,9 +421,8 @@ func (s *DeploymentService) GetQueuedCount(ctx context.Context, siteID string) (
 }
 
 // CancelQueued cancels all queued deployments
-func (s *DeploymentService) CancelQueued(ctx context.Context, siteID, serverID string) (int64, error) {
-	// Verify site exists and belongs to server
-	if _, err := s.Repos().Site().FindByIDAndServer(ctx, siteID, serverID); err != nil {
+func (s *DeploymentService) CancelQueued(ctx context.Context, siteID, serverID, teamID string) (int64, error) {
+	if _, err := s.scopedSite(ctx, siteID, serverID, teamID); err != nil {
 		return 0, err
 	}
 
@@ -428,8 +430,8 @@ func (s *DeploymentService) CancelQueued(ctx context.Context, siteID, serverID s
 }
 
 // EnableAutoDeployment enables auto-deployment for a site
-func (s *DeploymentService) EnableAutoDeployment(ctx context.Context, siteID, serverID string) error {
-	site, err := s.Repos().Site().FindByIDAndServer(ctx, siteID, serverID)
+func (s *DeploymentService) EnableAutoDeployment(ctx context.Context, siteID, serverID, teamID string) error {
+	site, err := s.scopedSite(ctx, siteID, serverID, teamID)
 	if err != nil {
 		return err
 	}
@@ -444,14 +446,25 @@ func (s *DeploymentService) EnableAutoDeployment(ctx context.Context, siteID, se
 }
 
 // DisableAutoDeployment disables auto-deployment for a site
-func (s *DeploymentService) DisableAutoDeployment(ctx context.Context, siteID, serverID string) error {
-	if _, err := s.Repos().Site().FindByIDAndServer(ctx, siteID, serverID); err != nil {
+func (s *DeploymentService) DisableAutoDeployment(ctx context.Context, siteID, serverID, teamID string) error {
+	if _, err := s.scopedSite(ctx, siteID, serverID, teamID); err != nil {
 		return err
 	}
 
 	return s.Repos().Site().UpdateFields(ctx, siteID, map[string]any{
 		"auto_deployment": false,
 	})
+}
+
+func (s *DeploymentService) scopedSite(ctx context.Context, siteID, serverID, teamID string) (*models.Site, error) {
+	site, err := s.Repos().Site().FindByIDAndServer(ctx, siteID, serverID)
+	if err != nil {
+		return nil, err
+	}
+	if site.TeamID != teamID {
+		return nil, fiberutil.NotFound()
+	}
+	return site, nil
 }
 
 // BroadcastProgress broadcasts deployment progress to the team channel

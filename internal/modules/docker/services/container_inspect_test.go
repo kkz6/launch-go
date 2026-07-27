@@ -60,23 +60,9 @@ func TestProjectContainerInspect_HealthLogCapped(t *testing.T) {
 	// Health check log can grow to hundreds of entries; we only keep
 	// the last 5 so the dialog stays a sensible size.
 	raw := rawContainerInspect{}
-	raw.State.Health = &struct {
-		Status        string `json:"Status"`
-		FailingStreak int    `json:"FailingStreak"`
-		Log           []struct {
-			Start    string `json:"Start"`
-			End      string `json:"End"`
-			ExitCode int    `json:"ExitCode"`
-			Output   string `json:"Output"`
-		} `json:"Log"`
-	}{Status: "healthy"}
+	raw.State.Health = &rawContainerHealth{Status: "healthy"}
 	for i := 0; i < 12; i++ {
-		raw.State.Health.Log = append(raw.State.Health.Log, struct {
-			Start    string `json:"Start"`
-			End      string `json:"End"`
-			ExitCode int    `json:"ExitCode"`
-			Output   string `json:"Output"`
-		}{})
+		raw.State.Health.Log = append(raw.State.Health.Log, rawContainerHealthLog{})
 	}
 	got := projectContainerInspect(raw)
 	if got.Health == nil {
@@ -124,14 +110,7 @@ func TestProjectContainerInspect_VolumeMountFavorsName(t *testing.T) {
 	// like /var/lib/docker/volumes/<sha>/_data which is useless to
 	// the user. Show the volume Name instead.
 	raw := rawContainerInspect{
-		Mounts: []struct {
-			Type        string `json:"Type"`
-			Name        string `json:"Name"`
-			Source      string `json:"Source"`
-			Destination string `json:"Destination"`
-			Mode        string `json:"Mode"`
-			RW          bool   `json:"RW"`
-		}{
+		Mounts: []rawContainerMount{
 			{Type: "volume", Name: "acme-data", Source: "/var/lib/docker/volumes/acme-data/_data", Destination: "/data", RW: true},
 			{Type: "bind", Source: "/etc/launch/traefik", Destination: "/etc/traefik", RW: false},
 		},

@@ -92,13 +92,7 @@ func (v *SignatureVerifier) VerifyStandardWebhooks(payload []byte, webhookID, si
 	}
 
 	if v.maxAge > 0 {
-		ts, err := strconv.ParseInt(timestamp, 10, 64)
-		if err != nil {
-			return false
-		}
-
-		signedAt := time.Unix(ts, 0)
-		if time.Since(signedAt) > v.maxAge {
+		if !timestampWithinMaxAge(timestamp, v.maxAge) {
 			return false
 		}
 	}
@@ -162,6 +156,9 @@ func (v *SignatureVerifier) verifyPrefixed(payload []byte, header, secret string
 	if len(parts) != 2 {
 		return false
 	}
+	if parts[0] != string(v.algorithm) {
+		return false
+	}
 
 	providedSig := parts[1]
 	expected := v.compute(payload, secret)
@@ -202,13 +199,7 @@ func (v *SignatureVerifier) verifyStripe(payload []byte, header, secret string) 
 	}
 
 	if v.maxAge > 0 {
-		ts, err := strconv.ParseInt(timestamp, 10, 64)
-		if err != nil {
-			return false
-		}
-
-		signedAt := time.Unix(ts, 0)
-		if time.Since(signedAt) > v.maxAge {
+		if !timestampWithinMaxAge(timestamp, v.maxAge) {
 			return false
 		}
 	}
@@ -223,6 +214,14 @@ func (v *SignatureVerifier) verifyStripe(payload []byte, header, secret string) 
 	}
 
 	return false
+}
+
+func timestampWithinMaxAge(timestamp string, maxAge time.Duration) bool {
+	ts, err := strconv.ParseInt(timestamp, 10, 64)
+	if err != nil {
+		return false
+	}
+	return time.Since(time.Unix(ts, 0)).Abs() <= maxAge
 }
 
 // compute generates the HMAC signature for the payload

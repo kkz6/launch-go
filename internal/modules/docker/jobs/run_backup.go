@@ -135,10 +135,12 @@ func (j *RunBackupJob) Handle(ctx context.Context) error {
 		if err != nil {
 			return fmt.Errorf("find pre-created run row: %w", err)
 		}
-		_ = j.Deps.Repos.BackupRun().UpdateFields(ctx, run.ID, map[string]any{
+		if err := j.Deps.Repos.BackupRun().UpdateFields(ctx, run.ID, map[string]any{
 			"status":     "running",
 			"started_at": now,
-		})
+		}); err != nil {
+			return fmt.Errorf("mark backup run running: %w", err)
+		}
 	} else {
 		run = &models.DatabaseBackupRun{
 			BackupID:  backup.ID,
@@ -220,7 +222,9 @@ func (j *RunBackupJob) Handle(ctx context.Context) error {
 			// Link the run to its server-task + broadcast so the UI can
 			// stream the live dump/upload output (ServerLogViewer
 			// entity="task") while the backup runs, not only after.
-			_ = j.Deps.Repos.BackupRun().UpdateFields(ctx, run.ID, map[string]any{"task_id": taskID})
+			if err := j.Deps.Repos.BackupRun().UpdateFields(ctx, run.ID, map[string]any{"task_id": taskID}); err != nil {
+				j.Deps.Logger.Error().Err(err).Str("run_id", run.ID).Msg("failed to attach task to backup run")
+			}
 			j.Deps.BroadcastToTeam(j.Payload.TeamID, "docker.database.backup.run.started", map[string]any{
 				"database_id": db.ID,
 				"backup_id":   backup.ID,
@@ -249,11 +253,13 @@ func (j *RunBackupJob) Handle(ctx context.Context) error {
 			}
 			errMsg += truncateForRun(output, 4000)
 		}
-		_ = j.Deps.Repos.BackupRun().UpdateFields(ctx, run.ID, map[string]any{
+		if err := j.Deps.Repos.BackupRun().UpdateFields(ctx, run.ID, map[string]any{
 			"status":      "failed",
 			"finished_at": finishedAt,
 			"error":       truncateForRun(errMsg, 4000),
-		})
+		}); err != nil {
+			j.Deps.Logger.Error().Err(err).Str("run_id", run.ID).Msg("failed to persist backup failure state")
+		}
 		j.Deps.BroadcastToTeam(j.Payload.TeamID, "docker.database.backup.run.failed", map[string]any{
 			"database_id": db.ID,
 			"project_id":  j.Payload.ProjectID,
@@ -284,7 +290,9 @@ func (j *RunBackupJob) Handle(ctx context.Context) error {
 	if sizeBytes > 0 {
 		updates["size_bytes"] = sizeBytes
 	}
-	_ = j.Deps.Repos.BackupRun().UpdateFields(ctx, run.ID, updates)
+	if err := j.Deps.Repos.BackupRun().UpdateFields(ctx, run.ID, updates); err != nil {
+		j.Deps.Logger.Error().Err(err).Str("run_id", run.ID).Msg("failed to persist backup success state")
+	}
 
 	j.Deps.BroadcastToTeam(j.Payload.TeamID, "docker.database.backup.run.succeeded", map[string]any{
 		"database_id": db.ID,
@@ -341,14 +349,18 @@ func (j *RunBackupJob) recordFailure(ctx context.Context, backupID, runID, msg s
 			FinishedAt: &now,
 			Error:      strPtr(msg),
 		}
-		_ = j.Deps.Repos.BackupRun().Create(ctx, run)
+		if err := j.Deps.Repos.BackupRun().Create(ctx, run); err != nil {
+			j.Deps.Logger.Error().Err(err).Str("backup_id", backupID).Msg("failed to persist pre-dispatch backup failure")
+		}
 		runID = run.ID
 	} else {
-		_ = j.Deps.Repos.BackupRun().UpdateFields(ctx, runID, map[string]any{
+		if err := j.Deps.Repos.BackupRun().UpdateFields(ctx, runID, map[string]any{
 			"status":      "failed",
 			"finished_at": now,
 			"error":       msg,
-		})
+		}); err != nil {
+			j.Deps.Logger.Error().Err(err).Str("run_id", runID).Msg("failed to persist pre-dispatch backup failure")
+		}
 	}
 	j.Deps.BroadcastToTeam(j.Payload.TeamID, "docker.database.backup.run.failed", map[string]any{
 		"database_id": j.Payload.DatabaseID,
@@ -491,7 +503,9 @@ func (j *RunBackupJob) pruneRunsAndObjects(
 	}
 
 	for i := range stale {
-		_ = j.Deps.Repos.BackupRun().Delete(ctx, stale[i].ID)
+		if err := j.Deps.Repos.BackupRun().Delete(ctx, stale[i].ID); err != nil {
+			j.Deps.Logger.Warn().Err(err).Str("run_id", stale[i].ID).Msg("failed to prune stale backup run")
+		}
 	}
 	return nil
 }

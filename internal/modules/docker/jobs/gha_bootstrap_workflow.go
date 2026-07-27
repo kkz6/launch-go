@@ -668,11 +668,13 @@ type ghaSourceConfig struct {
 // safe choice for the amd64 GitHub runners and the most common server arch.
 func (j *GHABootstrapWorkflowJob) resolveBuildPlatform(ctx context.Context, serverID string) string {
 	var row struct{ DetectedArch *string }
-	_ = j.Deps.DB.WithContext(ctx).
+	if err := j.Deps.DB.WithContext(ctx).
 		Table("servers").
 		Select("detected_arch").
 		Where("id = ?", serverID).
-		Scan(&row).Error
+		Scan(&row).Error; err != nil {
+		j.Deps.Logger.Warn().Err(err).Str("server_id", serverID).Msg("failed to load server architecture; using default build platform")
+	}
 	arch := ""
 	if row.DetectedArch != nil {
 		arch = *row.DetectedArch

@@ -367,7 +367,9 @@ func (s *PasskeyService) loadSession(ctx context.Context, key string) (*webauthn
 		return nil, err
 	}
 
-	_ = s.cache.Delete(ctx, key)
+	if err := s.cache.Delete(ctx, key); err != nil && s.logger != nil {
+		s.logger.Warn().Err(err).Str("key", key).Msg("Failed to consume passkey session")
+	}
 
 	var session webauthn.SessionData
 	if err := json.Unmarshal([]byte(sessionJSON), &session); err != nil {

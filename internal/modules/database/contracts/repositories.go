@@ -14,6 +14,7 @@ type DatabaseRepository interface {
 	FindByID(ctx context.Context, id string) (*models.Database, error)
 	FindByIDAndServer(ctx context.Context, id, serverID string) (*models.Database, error)
 	FindByIDsAndServer(ctx context.Context, ids []string, serverID string) ([]models.Database, error)
+	FindByIDsAndServerAndTeam(ctx context.Context, ids []string, serverID, teamID string) ([]models.Database, error)
 	FindByIDAndTeam(ctx context.Context, id, teamID string, preloads ...string) (*models.Database, error)
 	FindByIDAndServerAndTeam(ctx context.Context, id, serverID, teamID string) (*models.Database, error)
 	FindByServer(ctx context.Context, serverID string) ([]models.Database, error)
@@ -40,7 +41,9 @@ type DatabaseUserRepository interface {
 	Create(ctx context.Context, user *models.DatabaseUser) error
 	FindByID(ctx context.Context, id string) (*models.DatabaseUser, error)
 	FindByIDAndServer(ctx context.Context, id, serverID string) (*models.DatabaseUser, error)
+	FindByIDAndServerAndTeam(ctx context.Context, id, serverID, teamID string) (*models.DatabaseUser, error)
 	FindByServer(ctx context.Context, serverID string) ([]models.DatabaseUser, error)
+	FindByServerAndTeam(ctx context.Context, serverID, teamID string) ([]models.DatabaseUser, error)
 	FindByNameAndServer(ctx context.Context, name, serverID string) (*models.DatabaseUser, error)
 	FindByDatabase(ctx context.Context, databaseID string) ([]models.DatabaseUser, error)
 	FindRootUser(ctx context.Context, serverID string) (*models.DatabaseUser, error)

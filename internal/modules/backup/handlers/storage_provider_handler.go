@@ -69,7 +69,11 @@ func (h *StorageProviderHandler) UpdateStorageProvider(c *fiber.Ctx) error {
 	}
 	req.Provider = providerType
 
-	resp, err := h.providerService.UpdateStorageProvider(c.Context(), req.ID, req)
+	teamID, err := fiberutil.MustGetTeamID(c)
+	if err != nil {
+		return err
+	}
+	resp, err := h.providerService.UpdateStorageProvider(c.Context(), req.ID, teamID, req)
 	if err != nil {
 		return err
 	}
@@ -82,7 +86,11 @@ func (h *StorageProviderHandler) DeleteStorageProvider(c *fiber.Ctx) error {
 	if err != nil {
 		return fiberutil.BadRequest("Invalid provider ID")
 	}
-	if err := h.providerService.DeleteStorageProvider(c.Context(), providerID); err != nil {
+	teamID, err := fiberutil.MustGetTeamID(c)
+	if err != nil {
+		return err
+	}
+	if err := h.providerService.DeleteStorageProvider(c.Context(), providerID, teamID); err != nil {
 		return err
 	}
 	return fiberutil.NoContent(c)

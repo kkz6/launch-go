@@ -668,11 +668,13 @@ func (s *ComposeService) Deploy(
 		// failed so we don't leak a pending row that will never run.
 		errMsg := err.Error()
 		finishedAt := time.Now().UTC()
-		_ = s.Repos().Deployment().UpdateFields(ctx, deployment.ID, map[string]any{
+		if updateErr := s.Repos().Deployment().UpdateFields(ctx, deployment.ID, map[string]any{
 			"status":      dockertypes.DeploymentStatusFailed,
 			"finished_at": finishedAt,
 			"error":       "failed to enqueue deploy job: " + errMsg,
-		})
+		}); updateErr != nil {
+			s.LogError(updateErr, "failed to mark compose deployment enqueue failure", "deployment_id", deployment.ID)
+		}
 		return nil, err
 	}
 

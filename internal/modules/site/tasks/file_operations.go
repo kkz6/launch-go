@@ -18,17 +18,18 @@ type DeleteSiteFilesConfig struct {
 
 // DeleteSiteFiles creates a task to delete all files for a site
 func DeleteSiteFiles(config DeleteSiteFilesConfig) *taskrunner.BaseTask {
+	quotedPath := taskrunner.ShellQuote(config.SitePath)
 	script := fmt.Sprintf(`#!/bin/bash
 set -euo pipefail
 
 # Remove the site directory
-if [ -d "%s" ]; then
-    rm -rf "%s"
+if [ -d %s ]; then
+    rm -rf -- %s
     echo "Site directory deleted"
 else
     echo "Site directory not found, skipping"
 fi
-`, config.SitePath, config.SitePath)
+`, quotedPath, quotedPath)
 
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName("Delete Site Files"),

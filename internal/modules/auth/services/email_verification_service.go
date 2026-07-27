@@ -11,21 +11,30 @@ import (
 
 	"github.com/kkz6/launch-go/internal/config"
 	"github.com/kkz6/launch-go/internal/modules/auth/contracts"
+	"github.com/kkz6/launch-go/internal/modules/notification/channels"
 	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
+	"github.com/kkz6/launch-go/internal/pkg/mail/templates"
 	"github.com/kkz6/launch-go/internal/pkg/signedurl"
 )
 
 // EmailVerificationService handles email verification operations
 type EmailVerificationService struct {
-	repos  contracts.RepositoryRegistry
-	config *config.Config
+	repos       contracts.RepositoryRegistry
+	config      *config.Config
+	emailSender channels.EmailSender
 }
 
 // NewEmailVerificationService creates a new EmailVerificationService instance
-func NewEmailVerificationService(repos contracts.RepositoryRegistry, cfg *config.Config) *EmailVerificationService {
+
+func NewEmailVerificationService(repos contracts.RepositoryRegistry, cfg *config.Config, senders ...channels.EmailSender) *EmailVerificationService {
+	var sender channels.EmailSender
+	if len(senders) > 0 {
+		sender = senders[0]
+	}
 	return &EmailVerificationService{
-		repos:  repos,
-		config: cfg,
+		repos:       repos,
+		config:      cfg,
+		emailSender: sender,
 	}
 }
 
@@ -68,7 +77,19 @@ func (s *EmailVerificationService) ResendVerificationEmail(ctx context.Context, 
 		return errors.New("email already verified")
 	}
 
-	// TODO: Send verification email using emailSender when available
+	// Some self-hosted installations intentionally run without email
+	// configured; preserve the existing successful no-op for those setups.
+	if s.emailSender == nil {
+		return nil
+	}
+	verifyURL := s.GenerateVerificationURL(user.ID, user.Email)
+	html, plain, err := templates.EmailVerificationEmail(verifyURL)
+	if err != nil {
+		return s.emailSender.Send(ctx, user.Email, "Verify your email address", plain, false)
+	}
+	if err := s.emailSender.Send(ctx, user.Email, "Verify your email address", html, true); err != nil {
+		return fmt.Errorf("send verification email: %w", err)
+	}
 	return nil
 }
 

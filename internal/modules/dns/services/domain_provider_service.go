@@ -2,6 +2,8 @@ package services
 
 import (
 	"context"
+	"fmt"
+	"time"
 
 	"gorm.io/gorm"
 
@@ -10,7 +12,6 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/dns/providers"
 	dnstypes "github.com/kkz6/launch-go/internal/modules/dns/types"
 	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
-	"github.com/kkz6/launch-go/internal/pkg/util"
 )
 
 // DomainProviderService handles business logic for domain providers.
@@ -124,11 +125,15 @@ func (s *DomainProviderService) CheckProviderConnectivity(ctx context.Context, i
 	}
 
 	if err := provider.ValidateCredentials(ctx); err != nil {
-		_ = s.Repos().Provider().UpdateFields(ctx, id, map[string]interface{}{"connected": false})
+		if updateErr := s.Repos().Provider().UpdateFields(ctx, id, map[string]interface{}{"connected": false}); updateErr != nil {
+			s.Logger.Error().Err(updateErr).Str("provider_id", id).Msg("Failed to persist DNS provider disconnected state")
+		}
 		return fiberutil.BadRequest("Provider connectivity check failed")
 	}
 
-	_ = s.Repos().Provider().UpdateFields(ctx, id, map[string]interface{}{"connected": true})
+	if err := s.Repos().Provider().UpdateFields(ctx, id, map[string]interface{}{"connected": true}); err != nil {
+		return fmt.Errorf("persist DNS provider connectivity state: %w", err)
+	}
 	return nil
 }
 
@@ -141,10 +146,12 @@ func (s *DomainProviderService) SyncDomains(ctx context.Context, id, teamID, use
 		return notFoundAs(err, "Provider not found")
 	}
 
-	_ = s.Repos().Provider().UpdateFields(ctx, id, map[string]interface{}{
+	if err := s.Repos().Provider().UpdateFields(ctx, id, map[string]interface{}{
 		"sync_status":        dnstypes.SyncStatusSyncing,
 		"sync_error_message": nil,
-	})
+	}); err != nil {
+		return fmt.Errorf("mark DNS provider sync as running: %w", err)
+	}
 
 	provider, err := providers.NewProvider(providers.DNSProviderType(dp.Provider), dp.Credentials, dp.AdditionalData)
 	if err != nil {
@@ -177,8 +184,7 @@ func (s *DomainProviderService) SyncDomains(ctx context.Context, id, teamID, use
 			provider.SetDomain(domainName)
 			records, err := provider.ListRecords(ctx)
 			if err != nil {
-				s.Logger.Warn().Err(err).Str("domain", domainName).Msg("Failed to list records for domain")
-				continue
+				return fmt.Errorf("list records for domain %q: %w", domainName, err)
 			}
 
 			for _, r := range records {
@@ -199,7 +205,7 @@ func (s *DomainProviderService) SyncDomains(ctx context.Context, id, teamID, use
 					"proxied":  pr.Proxied,
 				})
 				if err != nil {
-					s.Logger.Warn().Err(err).Str("domain", domainName).Str("record", r.Name).Msg("Failed to sync record")
+					return fmt.Errorf("sync record %q for domain %q: %w", r.Name, domainName, err)
 				}
 			}
 		}
@@ -211,12 +217,18 @@ func (s *DomainProviderService) SyncDomains(ctx context.Context, id, teamID, use
 		return fiberutil.BadRequest("Failed to sync domains")
 	}
 
-	_ = s.Repos().Provider().UpdateFields(ctx, id, map[string]interface{}{
-		"sync_status":        dnstypes.SyncStatusCompleted,
-		"last_synced_at":     util.NewULID(),
-		"sync_error_message": nil,
-	})
+	if err := s.Repos().Provider().UpdateFields(ctx, id, completedSyncFields(time.Now().UTC())); err != nil {
+		return fmt.Errorf("mark DNS provider sync as completed: %w", err)
+	}
 	return nil
+}
+
+func completedSyncFields(now time.Time) map[string]interface{} {
+	return map[string]interface{}{
+		"sync_status":        dnstypes.SyncStatusCompleted,
+		"last_synced_at":     now,
+		"sync_error_message": nil,
+	}
 }
 
 // CountDomainsByProvider counts domains for a provider.
@@ -225,10 +237,12 @@ func (s *DomainProviderService) CountDomainsByProvider(ctx context.Context, prov
 }
 
 func (s *DomainProviderService) markSyncFailed(ctx context.Context, id, errMsg string) {
-	_ = s.Repos().Provider().UpdateFields(ctx, id, map[string]interface{}{
+	if err := s.Repos().Provider().UpdateFields(ctx, id, map[string]interface{}{
 		"sync_status":        dnstypes.SyncStatusFailed,
 		"sync_error_message": errMsg,
-	})
+	}); err != nil {
+		s.Logger.Error().Err(err).Str("provider_id", id).Msg("Failed to persist DNS provider sync failure")
+	}
 }
 
 // fromProviderRecord converts a providers.ProviderRecord to models.ProviderRecord.

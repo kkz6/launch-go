@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net/url"
 	"strconv"
+	"sync/atomic"
 	"time"
 )
 
@@ -207,60 +208,63 @@ func (p *SignedURLParams) Build() map[string]string {
 }
 
 // Global signer instance (set during app initialization)
-var defaultSigner *Signer
+var defaultSigner atomic.Pointer[Signer]
 
 // SetDefaultSigner sets the global signer instance
 func SetDefaultSigner(signer *Signer) {
-	defaultSigner = signer
+	defaultSigner.Store(signer)
 }
 
 // GetDefaultSigner returns the global signer instance
 func GetDefaultSigner() *Signer {
-	return defaultSigner
+	return defaultSigner.Load()
 }
 
 // Sign generates a signed URL using the default signer
 func Sign(path string, params map[string]string, expiresIn time.Duration) string {
-	if defaultSigner == nil {
+	signer := GetDefaultSigner()
+	if signer == nil {
 		panic("signedurl: default signer not configured")
 	}
-	return defaultSigner.SignedURL(path, params, expiresIn)
+	return signer.SignedURL(path, params, expiresIn)
 }
 
 // TemporarySign generates a temporary signed URL using the default signer
 func TemporarySign(path string, params map[string]string, expiresIn time.Duration) string {
-	if defaultSigner == nil {
+	signer := GetDefaultSigner()
+	if signer == nil {
 		panic("signedurl: default signer not configured")
 	}
-	return defaultSigner.TemporarySignedURL(path, params, expiresIn)
+	return signer.TemporarySignedURL(path, params, expiresIn)
 }
 
 // PermanentSign generates a permanent signed URL using the default signer
 func PermanentSign(path string, params map[string]string) string {
-	if defaultSigner == nil {
+	signer := GetDefaultSigner()
+	if signer == nil {
 		panic("signedurl: default signer not configured")
 	}
-	return defaultSigner.PermanentSignedURL(path, params)
+	return signer.PermanentSignedURL(path, params)
 }
 
 // publicSigner is the signer for user-facing URLs (rendered on the frontend
 // domain, then proxied to the API). Verification still happens on the API
 // with the default signer — both share the same secret key, so the
 // signature matches regardless of which host the user hits.
-var publicSigner *Signer
+var publicSigner atomic.Pointer[Signer]
 
 // SetPublicSigner sets the global public-facing signer instance.
 func SetPublicSigner(signer *Signer) {
-	publicSigner = signer
+	publicSigner.Store(signer)
 }
 
 // PublicPermanentSign generates a permanent signed URL on the public-facing
 // (frontend) host. Falls back to the default signer when the public signer
 // isn't configured.
 func PublicPermanentSign(path string, params map[string]string) string {
-	s := publicSigner
+	s := publicSigner.Load()
 	if s == nil {
-		s = defaultSigner
+		s = GetDefaultSigner()
 	}
 	if s == nil {
 		panic("signedurl: no signer configured")

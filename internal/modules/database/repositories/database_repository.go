@@ -18,6 +18,15 @@ func (r *DatabaseRepository) FindByIDsAndServer(ctx context.Context, ids []strin
 	return databases, err
 }
 
+// FindByIDsAndServerAndTeam finds databases belonging to both the server and team.
+func (r *DatabaseRepository) FindByIDsAndServerAndTeam(ctx context.Context, ids []string, serverID, teamID string) ([]models.Database, error) {
+	var databases []models.Database
+	err := r.DB.WithContext(ctx).
+		Where("id IN ? AND server_id = ? AND team_id = ?", ids, serverID, teamID).
+		Find(&databases).Error
+	return databases, err
+}
+
 // FindByIDAndServerAndTeam finds a database by ID, server ID, and team ID
 func (r *DatabaseRepository) FindByIDAndServerAndTeam(ctx context.Context, id, serverID, teamID string) (*models.Database, error) {
 	return repository.FindOne[models.Database](ctx, r.DB,

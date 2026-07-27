@@ -126,14 +126,18 @@ func (j *DeployComposeJob) Handle(ctx context.Context) error {
 
 	now := time.Now().UTC()
 	if j.deployment != nil {
-		_ = j.Deps.Repos.Deployment().UpdateFields(ctx, j.deployment.ID, map[string]any{
+		if err := j.Deps.Repos.Deployment().UpdateFields(ctx, j.deployment.ID, map[string]any{
 			"status":     dockertypes.DeploymentStatusDeploying,
 			"started_at": now,
-		})
+		}); err != nil {
+			j.Deps.Logger.Error().Err(err).Str("deployment_id", j.deployment.ID).Msg("failed to persist compose deployment start")
+		}
 	}
-	_ = j.Deps.Repos.Compose().UpdateFields(ctx, j.compose.ID, map[string]any{
+	if err := j.Deps.Repos.Compose().UpdateFields(ctx, j.compose.ID, map[string]any{
 		"status": dockertypes.ApplicationStatusBuilding,
-	})
+	}); err != nil {
+		j.Deps.Logger.Error().Err(err).Str("compose_id", j.compose.ID).Msg("failed to persist compose build state")
+	}
 	inflightStatus := "building"
 	if j.Payload.Recreate {
 		inflightStatus = "restarting"
@@ -249,7 +253,9 @@ func (j *DeployComposeJob) Handle(ctx context.Context) error {
 			// Surface the task ID early so the Compose Deployments tab's
 			// "View Logs" appears and streams live output during the
 			// deploy, not only after it finishes.
-			_ = j.Deps.Repos.Deployment().UpdateFields(ctx, j.deployment.ID, map[string]any{"task_id": taskID})
+			if err := j.Deps.Repos.Deployment().UpdateFields(ctx, j.deployment.ID, map[string]any{"task_id": taskID}); err != nil {
+				j.Deps.Logger.Error().Err(err).Str("deployment_id", j.deployment.ID).Msg("failed to attach task to compose deployment")
+			}
 			j.deployment.TaskID = &taskID
 			j.broadcast("docker.compose.deploying", map[string]any{
 				"compose_id":    j.compose.ID,
@@ -271,9 +277,11 @@ func (j *DeployComposeJob) Handle(ctx context.Context) error {
 		}
 	}
 	if taskID != "" && j.deployment != nil {
-		_ = j.Deps.Repos.Deployment().UpdateFields(ctx, j.deployment.ID, map[string]any{
+		if err := j.Deps.Repos.Deployment().UpdateFields(ctx, j.deployment.ID, map[string]any{
 			"task_id": taskID,
-		})
+		}); err != nil {
+			j.Deps.Logger.Error().Err(err).Str("deployment_id", j.deployment.ID).Msg("failed to persist compose task ID")
+		}
 		j.deployment.TaskID = &taskID
 	}
 
@@ -297,11 +305,13 @@ func (j *DeployComposeJob) Failed(ctx context.Context, err error) {
 	}
 	finishedAt := time.Now().UTC()
 	errMsg := err.Error()
-	_ = j.Deps.Repos.Deployment().UpdateFields(ctx, j.Payload.DeploymentID, map[string]any{
+	if updateErr := j.Deps.Repos.Deployment().UpdateFields(ctx, j.Payload.DeploymentID, map[string]any{
 		"status":      dockertypes.DeploymentStatusFailed,
 		"finished_at": finishedAt,
 		"error":       errMsg,
-	})
+	}); updateErr != nil {
+		j.Deps.Logger.Error().Err(updateErr).Str("deployment_id", j.Payload.DeploymentID).Msg("failed to persist framework compose failure")
+	}
 }
 
 func (j *DeployComposeJob) loadModels(ctx context.Context) error {
@@ -340,15 +350,19 @@ func (j *DeployComposeJob) loadModels(ctx context.Context) error {
 func (j *DeployComposeJob) handleSuccess(ctx context.Context) {
 	finishedAt := time.Now().UTC()
 	if j.deployment != nil {
-		_ = j.Deps.Repos.Deployment().UpdateFields(ctx, j.deployment.ID, map[string]any{
+		if err := j.Deps.Repos.Deployment().UpdateFields(ctx, j.deployment.ID, map[string]any{
 			"status":      dockertypes.DeploymentStatusSuccess,
 			"finished_at": finishedAt,
-		})
+		}); err != nil {
+			j.Deps.Logger.Error().Err(err).Str("deployment_id", j.deployment.ID).Msg("failed to persist successful compose deployment")
+		}
 	}
-	_ = j.Deps.Repos.Compose().UpdateFields(ctx, j.compose.ID, map[string]any{
+	if err := j.Deps.Repos.Compose().UpdateFields(ctx, j.compose.ID, map[string]any{
 		"status":           dockertypes.ApplicationStatusRunning,
 		"last_deployed_at": finishedAt,
-	})
+	}); err != nil {
+		j.Deps.Logger.Error().Err(err).Str("compose_id", j.compose.ID).Msg("failed to persist successful compose state")
+	}
 
 	// Re-render the per-compose Traefik file after a successful
 	// deploy. Container names depend on the compose project name
@@ -396,15 +410,19 @@ func (j *DeployComposeJob) handleFailure(ctx context.Context, output string, run
 		}
 	}
 	if j.deployment != nil {
-		_ = j.Deps.Repos.Deployment().UpdateFields(ctx, j.deployment.ID, map[string]any{
+		if err := j.Deps.Repos.Deployment().UpdateFields(ctx, j.deployment.ID, map[string]any{
 			"status":      dockertypes.DeploymentStatusFailed,
 			"finished_at": finishedAt,
 			"error":       errMsg,
-		})
+		}); err != nil {
+			j.Deps.Logger.Error().Err(err).Str("deployment_id", j.deployment.ID).Msg("failed to persist compose deployment failure")
+		}
 	}
-	_ = j.Deps.Repos.Compose().UpdateFields(ctx, j.compose.ID, map[string]any{
+	if err := j.Deps.Repos.Compose().UpdateFields(ctx, j.compose.ID, map[string]any{
 		"status": dockertypes.ApplicationStatusFailed,
-	})
+	}); err != nil {
+		j.Deps.Logger.Error().Err(err).Str("compose_id", j.compose.ID).Msg("failed to persist compose failure state")
+	}
 	failedPayload := map[string]any{
 		"compose_id": j.compose.ID,
 		"status":     "failed",
@@ -425,15 +443,19 @@ func (j *DeployComposeJob) handleFailure(ctx context.Context, output string, run
 func (j *DeployComposeJob) markComposeDeploymentFailed(ctx context.Context, errMsg string) {
 	finishedAt := time.Now().UTC()
 	if j.deployment != nil {
-		_ = j.Deps.Repos.Deployment().UpdateFields(ctx, j.deployment.ID, map[string]any{
+		if err := j.Deps.Repos.Deployment().UpdateFields(ctx, j.deployment.ID, map[string]any{
 			"status":      dockertypes.DeploymentStatusFailed,
 			"finished_at": finishedAt,
 			"error":       errMsg,
-		})
+		}); err != nil {
+			j.Deps.Logger.Error().Err(err).Str("deployment_id", j.deployment.ID).Msg("failed to persist bearer compose failure")
+		}
 	}
-	_ = j.Deps.Repos.Compose().UpdateFields(ctx, j.compose.ID, map[string]any{
+	if err := j.Deps.Repos.Compose().UpdateFields(ctx, j.compose.ID, map[string]any{
 		"status": dockertypes.ApplicationStatusFailed,
-	})
+	}); err != nil {
+		j.Deps.Logger.Error().Err(err).Str("compose_id", j.compose.ID).Msg("failed to persist bearer compose state")
+	}
 	failedPayload := map[string]any{
 		"compose_id": j.compose.ID,
 		"status":     "failed",

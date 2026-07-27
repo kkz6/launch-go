@@ -274,7 +274,7 @@ func (h *LogsHandler) streamLogs(c *websocket.Conn, server *serverModels.Server,
 	defer session.Close()
 
 	// Build the tail command
-	command := fmt.Sprintf("tail -n %d -f %s 2>&1", tail, logFilePath)
+	command := fmt.Sprintf("tail -n %d -f %s 2>&1", tail, shellQuote(logFilePath))
 
 	// Add grep filter if search is provided
 	if search != "" {

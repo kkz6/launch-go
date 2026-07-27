@@ -288,9 +288,11 @@ func (h *DockerLogsHandler) streamCommand(
 		return
 	}
 
+	// Use taskrunner's managed connection so host-key verification is applied
+	// consistently to log streams as well as deployments.
 	conn, err := sshConfig.Dial(10 * time.Second)
 	if err != nil {
-		h.LogError(err, "Failed to connect to SSH")
+		h.LogError(err, "Failed to connect to SSH", "host", sshConfig.Host)
 		h.SendError(c, fmt.Sprintf("SSH connection failed: %s", err.Error()))
 		return
 	}

@@ -116,9 +116,11 @@ func (j *DisableLaravelSchedulerJob) Failed(ctx context.Context, err error) {
 	site, findErr := j.Deps.Repos.Site().FindByID(ctx, j.Payload.SiteID)
 	if findErr == nil {
 		site.RemovePendingFeature("scheduler")
-		_ = j.Deps.Repos.Site().UpdateFields(ctx, site.ID, map[string]interface{}{
+		if updateErr := j.Deps.Repos.Site().UpdateFields(ctx, site.ID, map[string]interface{}{
 			"pending_features": site.PendingFeatures,
-		})
+		}); updateErr != nil {
+			j.Deps.Logger.Error().Err(updateErr).Str("site_id", site.ID).Msg("Failed to clear pending scheduler feature")
+		}
 	}
 }
 

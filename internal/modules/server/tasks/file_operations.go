@@ -1,6 +1,7 @@
 package tasks
 
 import (
+	"encoding/base64"
 	"fmt"
 
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
@@ -23,28 +24,40 @@ type UploadFileConfig struct {
 // UploadFile creates a task to upload a file to the server
 func UploadFile(config UploadFileConfig) *taskrunner.BaseTask {
 	mode := config.Mode
-	if mode == "" {
+	if !validFileMode(mode) {
 		mode = "644"
 	}
 
+	quotedPath := taskrunner.ShellQuote(config.Path)
+	encodedContents := taskrunner.ShellQuote(base64.StdEncoding.EncodeToString([]byte(config.Contents)))
 	script := fmt.Sprintf(`#!/bin/bash
 set -euo pipefail
 
-mkdir -p "$(dirname '%s')"
+mkdir -p "$(dirname -- %s)"
 
-cat > '%s' << 'FILEEOF'
-%s
-FILEEOF
+printf '%%s' %s | base64 --decode > %s
 
-chmod %s '%s'
+chmod %s %s
 echo "File uploaded successfully"
-`, config.Path, config.Path, config.Contents, mode, config.Path)
+`, quotedPath, encodedContents, quotedPath, mode, quotedPath)
 
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName("Upload File"),
 		taskrunner.WithScript(script),
 		taskrunner.WithTimeoutSeconds(30),
 	)
+}
+
+func validFileMode(mode string) bool {
+	if len(mode) != 3 && len(mode) != 4 {
+		return false
+	}
+	for _, digit := range mode {
+		if digit < '0' || digit > '7' {
+			return false
+		}
+	}
+	return true
 }
 
 // DeleteFileConfig holds configuration for deleting a file
@@ -54,16 +67,17 @@ type DeleteFileConfig struct {
 
 // DeleteFile creates a task to delete a file from the server
 func DeleteFile(config DeleteFileConfig) *taskrunner.BaseTask {
+	quotedPath := taskrunner.ShellQuote(config.Path)
 	script := fmt.Sprintf(`#!/bin/bash
 set -euo pipefail
 
-if [ -f '%s' ]; then
-    rm -f '%s'
+if [ -f %s ]; then
+    rm -f -- %s
     echo "File deleted successfully"
 else
     echo "File does not exist, skipping"
 fi
-`, config.Path, config.Path)
+`, quotedPath, quotedPath)
 
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName("Delete File"),
@@ -86,7 +100,7 @@ func GetFile(config GetFileConfig) *taskrunner.BaseTask {
 		maxBytes = 1024 * 1024 // 1MB default
 	}
 
-	script := fmt.Sprintf("tail -c %d '%s' 2>/dev/null || echo ''", maxBytes, config.Path)
+	script := fmt.Sprintf("tail -c %d -- %s 2>/dev/null || echo ''", maxBytes, taskrunner.ShellQuote(config.Path))
 
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName("Get File"),

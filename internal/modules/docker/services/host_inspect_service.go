@@ -224,64 +224,82 @@ type ContainerInspectNetwork struct {
 // decode. We pull only what ContainerInspect exposes — the inspect
 // output is enormous and most of it is irrelevant to the UI.
 type rawContainerInspect struct {
-	ID      string   `json:"Id"`
-	Name    string   `json:"Name"`
-	Image   string   `json:"Image"`
-	Created string   `json:"Created"`
-	Path    string   `json:"Path"`
-	Args    []string `json:"Args"`
-	State   struct {
-		Status     string `json:"Status"`
-		Running    bool   `json:"Running"`
-		Paused     bool   `json:"Paused"`
-		Restarting bool   `json:"Restarting"`
-		OOMKilled  bool   `json:"OOMKilled"`
-		ExitCode   int    `json:"ExitCode"`
-		Error      string `json:"Error"`
-		StartedAt  string `json:"StartedAt"`
-		FinishedAt string `json:"FinishedAt"`
-		Pid        int    `json:"Pid"`
-		Health     *struct {
-			Status        string `json:"Status"`
-			FailingStreak int    `json:"FailingStreak"`
-			Log           []struct {
-				Start    string `json:"Start"`
-				End      string `json:"End"`
-				ExitCode int    `json:"ExitCode"`
-				Output   string `json:"Output"`
-			} `json:"Log"`
-		} `json:"Health"`
-	} `json:"State"`
-	RestartCount int    `json:"RestartCount"`
-	Platform     string `json:"Platform"`
-	Config       struct {
-		Image      string            `json:"Image"`
-		Cmd        []string          `json:"Cmd"`
-		Entrypoint []string          `json:"Entrypoint"`
-		Labels     map[string]string `json:"Labels"`
-	} `json:"Config"`
-	HostConfig struct {
-		Memory        int64 `json:"Memory"`
-		CPUShares     int64 `json:"CpuShares"`
-		NanoCPUs      int64 `json:"NanoCpus"`
-		RestartPolicy struct {
-			Name string `json:"Name"`
-		} `json:"RestartPolicy"`
-	} `json:"HostConfig"`
-	Mounts []struct {
-		Type        string `json:"Type"`
-		Name        string `json:"Name"`
-		Source      string `json:"Source"`
-		Destination string `json:"Destination"`
-		Mode        string `json:"Mode"`
-		RW          bool   `json:"RW"`
-	} `json:"Mounts"`
-	NetworkSettings struct {
-		Networks map[string]struct {
-			IPAddress  string `json:"IPAddress"`
-			MacAddress string `json:"MacAddress"`
-		} `json:"Networks"`
-	} `json:"NetworkSettings"`
+	ID              string                 `json:"Id"`
+	Name            string                 `json:"Name"`
+	Image           string                 `json:"Image"`
+	Created         string                 `json:"Created"`
+	Path            string                 `json:"Path"`
+	Args            []string               `json:"Args"`
+	State           rawContainerState      `json:"State"`
+	RestartCount    int                    `json:"RestartCount"`
+	Platform        string                 `json:"Platform"`
+	Config          rawContainerConfig     `json:"Config"`
+	HostConfig      rawContainerHostConfig `json:"HostConfig"`
+	Mounts          []rawContainerMount    `json:"Mounts"`
+	NetworkSettings rawNetworkSettings     `json:"NetworkSettings"`
+}
+
+type rawContainerState struct {
+	Status     string              `json:"Status"`
+	Running    bool                `json:"Running"`
+	Paused     bool                `json:"Paused"`
+	Restarting bool                `json:"Restarting"`
+	OOMKilled  bool                `json:"OOMKilled"`
+	ExitCode   int                 `json:"ExitCode"`
+	Error      string              `json:"Error"`
+	StartedAt  string              `json:"StartedAt"`
+	FinishedAt string              `json:"FinishedAt"`
+	Pid        int                 `json:"Pid"`
+	Health     *rawContainerHealth `json:"Health"`
+}
+
+type rawContainerHealth struct {
+	Status        string                  `json:"Status"`
+	FailingStreak int                     `json:"FailingStreak"`
+	Log           []rawContainerHealthLog `json:"Log"`
+}
+
+type rawContainerHealthLog struct {
+	Start    string `json:"Start"`
+	End      string `json:"End"`
+	ExitCode int    `json:"ExitCode"`
+	Output   string `json:"Output"`
+}
+
+type rawContainerConfig struct {
+	Image      string            `json:"Image"`
+	Cmd        []string          `json:"Cmd"`
+	Entrypoint []string          `json:"Entrypoint"`
+	Labels     map[string]string `json:"Labels"`
+}
+
+type rawContainerHostConfig struct {
+	Memory        int64            `json:"Memory"`
+	CPUShares     int64            `json:"CpuShares"`
+	NanoCPUs      int64            `json:"NanoCpus"`
+	RestartPolicy rawRestartPolicy `json:"RestartPolicy"`
+}
+
+type rawRestartPolicy struct {
+	Name string `json:"Name"`
+}
+
+type rawContainerMount struct {
+	Type        string `json:"Type"`
+	Name        string `json:"Name"`
+	Source      string `json:"Source"`
+	Destination string `json:"Destination"`
+	Mode        string `json:"Mode"`
+	RW          bool   `json:"RW"`
+}
+
+type rawNetworkSettings struct {
+	Networks map[string]rawNetwork `json:"Networks"`
+}
+
+type rawNetwork struct {
+	IPAddress  string `json:"IPAddress"`
+	MacAddress string `json:"MacAddress"`
 }
 
 // InspectContainer runs `docker inspect <id>` on the host and projects
@@ -378,12 +396,7 @@ func projectContainerInspect(raw rawContainerInspect) ContainerInspect {
 			logs = logs[len(logs)-maxLog:]
 		}
 		for _, l := range logs {
-			h.Log = append(h.Log, ContainerInspectHealthLog{
-				Start:    l.Start,
-				End:      l.End,
-				ExitCode: l.ExitCode,
-				Output:   l.Output,
-			})
+			h.Log = append(h.Log, ContainerInspectHealthLog(l))
 		}
 		out.Health = &h
 	}
@@ -886,7 +899,6 @@ func (s *HostInspectService) runDockerJSON(
 func (s *HostInspectService) dialServer(
 	ctx context.Context, serverID, teamID string,
 ) (*taskrunner.SSHClient, func(), error) {
-	_ = ctx
 	server, err := s.ServerRepos().Server().FindByIDAndTeam(ctx, serverID, teamID)
 	if err != nil {
 		return nil, nil, err

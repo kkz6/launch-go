@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"time"
 
 	"github.com/hibiken/asynq"
 	"github.com/oklog/ulid/v2"
@@ -245,7 +246,9 @@ func (r *TaskRunner) Run(ctx context.Context) (*TaskRunnerResult, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to create task model: %w", err)
 		}
-		r.db.Model(taskModel).Update("status", string(servertypes.TaskStatusRunning))
+		if err := r.db.Model(taskModel).Update("status", string(servertypes.TaskStatusRunning)).Error; err != nil {
+			return nil, fmt.Errorf("failed to mark task running: %w", err)
+		}
 		r.broadcastTaskRunning(taskModel)
 		// Surface the task ID to the caller now — the live log file
 		// (task-<id>.log) is being tee'd as the command runs, so a
@@ -275,15 +278,22 @@ func (r *TaskRunner) Run(ctx context.Context) (*TaskRunnerResult, error) {
 
 	if taskModel != nil {
 		if taskResult != nil {
-			r.updateTaskModel(taskModel, taskResult)
+			if err := r.updateTaskModel(taskModel, taskResult); err != nil && r.logger != nil {
+				r.logger.Error().Err(err).Str("task_id", taskModel.ID).Msg("Failed to persist task result")
+			}
 		} else if execErr != nil {
 			// A transport/dispatcher error has no TaskResult, but it still
 			// must terminate the persisted task. Leaving it as "running"
 			// otherwise makes the UI appear stuck and hides its error output.
 			taskModel.Status = string(servertypes.TaskStatusFailed)
 			taskModel.Output = dbtype.EncryptedString(execErr.Error())
-			r.db.Save(taskModel)
-			r.broadcastTaskEvent("task.updated", taskModel, execErr.Error())
+			if err := r.db.Save(taskModel).Error; err != nil {
+				if r.logger != nil {
+					r.logger.Error().Err(err).Str("task_id", taskModel.ID).Msg("Failed to persist task error")
+				}
+			} else {
+				r.broadcastTaskEvent("task.updated", taskModel, execErr.Error())
+			}
 		}
 	}
 
@@ -332,14 +342,20 @@ func (r *TaskRunner) RunAsync(ctx context.Context) (*models.Task, error) {
 	}
 
 	go func() {
-		r.db.Model(taskModel).Update("status", string(servertypes.TaskStatusRunning))
+		if err := r.db.Model(taskModel).Update("status", string(servertypes.TaskStatusRunning)).Error; err != nil {
+			if r.logger != nil {
+				r.logger.Error().Err(err).Str("task_id", taskModel.ID).Msg("Failed to mark async task running")
+			}
+			return
+		}
 		r.broadcastTaskRunning(taskModel)
 
 		pendingTask := taskrunner.NewPendingTask(r.task)
 		pendingTask.OnConnection(conn)
 		pendingTask.As(taskModel.ID)
 
-		bgCtx := context.Background()
+		bgCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), r.task.Timeout()+time.Minute)
+		defer cancel()
 		taskResult, execErr := r.dispatcher.Run(bgCtx, pendingTask)
 
 		if execErr != nil && r.logger != nil {
@@ -350,7 +366,9 @@ func (r *TaskRunner) RunAsync(ctx context.Context) (*models.Task, error) {
 		}
 
 		if taskResult != nil {
-			r.updateTaskModel(taskModel, taskResult)
+			if err := r.updateTaskModel(taskModel, taskResult); err != nil && r.logger != nil {
+				r.logger.Error().Err(err).Str("task_id", taskModel.ID).Msg("Failed to persist async task result")
+			}
 		} else if execErr != nil {
 			taskModel.Status = string(servertypes.TaskStatusFailed)
 			taskModel.Output = dbtype.EncryptedString(execErr.Error())
@@ -379,10 +397,10 @@ func (r *TaskRunner) RunInBackground(ctx context.Context) (*models.Task, error) 
 		return nil, fmt.Errorf("database required for background tasks")
 	}
 
-	return r.runLongRunning()
+	return r.runLongRunning(ctx)
 }
 
-func (r *TaskRunner) runLongRunning() (*models.Task, error) {
+func (r *TaskRunner) runLongRunning(ctx context.Context) (*models.Task, error) {
 	conn, err := r.getConnection()
 	if err != nil {
 		return nil, err
@@ -402,7 +420,12 @@ func (r *TaskRunner) runLongRunning() (*models.Task, error) {
 	}
 
 	go func() {
-		r.db.Model(taskModel).Update("status", string(servertypes.TaskStatusRunning))
+		if err := r.db.Model(taskModel).Update("status", string(servertypes.TaskStatusRunning)).Error; err != nil {
+			if r.logger != nil {
+				r.logger.Error().Err(err).Str("task_id", taskModel.ID).Msg("Failed to mark background task running")
+			}
+			return
+		}
 		r.broadcastTaskRunning(taskModel)
 
 		pendingTask := taskrunner.NewPendingTask(r.task)
@@ -424,7 +447,8 @@ func (r *TaskRunner) runLongRunning() (*models.Task, error) {
 		completionChan := make(chan *taskrunner.TaskResult, 1)
 		pendingTask.WithCompletionChannel(completionChan)
 
-		bgCtx := context.Background()
+		bgCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), r.task.Timeout()+time.Minute)
+		defer cancel()
 
 		if r.logger != nil {
 			r.logger.Info().
@@ -478,7 +502,9 @@ func (r *TaskRunner) runLongRunning() (*models.Task, error) {
 		}
 
 		if taskResult != nil {
-			r.updateTaskModel(taskModel, taskResult)
+			if err := r.updateTaskModel(taskModel, taskResult); err != nil && r.logger != nil {
+				r.logger.Error().Err(err).Str("task_id", taskModel.ID).Msg("Failed to persist background task result")
+			}
 		}
 
 		// Handle task completion - invokes callbacks and dispatches completion jobs
@@ -662,7 +688,7 @@ func (r *TaskRunner) createTaskModel() (*models.Task, error) {
 	return taskModel, nil
 }
 
-func (r *TaskRunner) updateTaskModel(taskModel *models.Task, result *taskrunner.TaskResult) {
+func (r *TaskRunner) updateTaskModel(taskModel *models.Task, result *taskrunner.TaskResult) error {
 	// Update model fields directly to ensure EncryptedString Valuer is used
 	taskModel.Output = dbtype.EncryptedString(result.Output)
 	taskModel.ExitCode = &result.ExitCode
@@ -675,10 +701,13 @@ func (r *TaskRunner) updateTaskModel(taskModel *models.Task, result *taskrunner.
 		taskModel.Status = string(servertypes.TaskStatusFailed)
 	}
 
-	r.db.Save(taskModel)
+	if err := r.db.Save(taskModel).Error; err != nil {
+		return err
+	}
 
 	// Broadcast task updated event with output
 	r.broadcastTaskEvent("task.updated", taskModel, result.Output)
+	return nil
 }
 
 // broadcastTaskEvent broadcasts a task event to the server's team channel.

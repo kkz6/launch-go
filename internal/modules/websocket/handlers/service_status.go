@@ -119,13 +119,15 @@ func (h *ServiceStatusHandler) monitorServices(c *websocket.Conn, server *server
 		return
 	}
 
+	// Establish the connection through taskrunner so host-key verification is
+	// consistent with deployments and other server operations.
 	conn, err := sshConfig.Dial(10 * time.Second)
 	if err != nil {
-		h.LogError(err, "Failed to connect to SSH", "server_id", server.ID)
+		h.LogError(err, "Failed to connect to SSH", "host", sshConfig.Host)
 		h.sendError(c, fmt.Sprintf("SSH connection failed: %s", err.Error()))
 		return
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	// Send initial status
 	h.checkAndSendStatus(c, conn, services)
@@ -152,7 +154,9 @@ func (h *ServiceStatusHandler) monitorServices(c *websocket.Conn, server *server
 			h.LogInfo("Service status monitoring ended - client disconnected")
 			return
 		case <-ticker.C:
+			// Check if SSH connection is still alive before probing services.
 			if !isSSHConnectionHealthy(conn) {
+				// Try to reconnect
 				_ = conn.Close()
 				conn, err = sshConfig.Dial(10 * time.Second)
 				if err != nil {
@@ -164,6 +168,14 @@ func (h *ServiceStatusHandler) monitorServices(c *websocket.Conn, server *server
 			h.checkAndSendStatus(c, conn, services)
 		}
 	}
+}
+
+func isSSHConnectionHealthy(conn *taskrunner.SSHClient) bool {
+	session, err := conn.NewSession()
+	if err != nil {
+		return false
+	}
+	return session.Close() == nil
 }
 
 func (h *ServiceStatusHandler) checkAndSendStatus(c *websocket.Conn, conn *taskrunner.SSHClient, services []serverModels.InstalledService) {
@@ -323,14 +335,6 @@ func (h *ServiceStatusHandler) getContainerServiceStatus(
 		}
 	}
 	return svcStatus
-}
-
-func isSSHConnectionHealthy(conn *taskrunner.SSHClient) bool {
-	session, err := conn.NewSession()
-	if err != nil {
-		return false
-	}
-	return session.Close() == nil
 }
 
 func (h *ServiceStatusHandler) parseServiceOutput(output string, svcStatus *status.ServiceStatus) {

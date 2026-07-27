@@ -80,17 +80,7 @@ func (s *QueryService) Execute(ctx context.Context, t Table, req Request) (*Tabl
 		return nil, fmt.Errorf("count: %w", err)
 	}
 
-	perPage := req.PerPage
-	if perPage <= 0 {
-		perPage = cfg.DefaultPerPage
-	}
-	if perPage <= 0 {
-		perPage = 15
-	}
-	page := req.Page
-	if page <= 0 {
-		page = 1
-	}
+	page, perPage := normalizePagination(req, cfg)
 	offset := (page - 1) * perPage
 
 	fetchQuery := q.Offset(offset).Limit(perPage)
@@ -142,6 +132,41 @@ func (s *QueryService) Execute(ctx context.Context, t Table, req Request) (*Tabl
 			To:          to,
 		},
 	}, nil
+}
+
+func normalizePagination(req Request, cfg Config) (page, perPage int) {
+	perPage = req.PerPage
+	if perPage <= 0 {
+		perPage = cfg.DefaultPerPage
+	}
+	if perPage <= 0 {
+		perPage = 15
+	}
+
+	maxPerPage := cfg.MaxPerPage
+	if maxPerPage <= 0 {
+		maxPerPage = 100
+		for _, option := range cfg.PerPageOptions {
+			if option > maxPerPage {
+				maxPerPage = option
+			}
+		}
+	}
+	if perPage > maxPerPage {
+		perPage = maxPerPage
+	}
+
+	page = req.Page
+	if page <= 0 {
+		page = 1
+	}
+	// Keep offset arithmetic in range even for a crafted page value.
+	maxInt := int(^uint(0) >> 1)
+	maxPage := maxInt/perPage + 1
+	if page > maxPage {
+		page = maxPage
+	}
+	return page, perPage
 }
 
 // projectionColumns builds the SELECT list for a pure model-driven table:
@@ -411,9 +436,16 @@ func SerializeRowActions(t Table, row map[string]any) []map[string]any {
 		if url := a.ResolveURL(row); url != nil {
 			s.URL = url
 		}
-		b, _ := json.Marshal(s)
+		b, err := json.Marshal(s)
+		if err != nil {
+			// Action metadata is user/configuration supplied. A malformed value
+			// must not turn into a nil action entry in the response.
+			continue
+		}
 		var m map[string]any
-		_ = json.Unmarshal(b, &m)
+		if err := json.Unmarshal(b, &m); err != nil {
+			continue
+		}
 		serialized = append(serialized, m)
 	}
 	return serialized

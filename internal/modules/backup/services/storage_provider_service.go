@@ -66,10 +66,13 @@ func (s *StorageProviderService) ConnectStorageProvider(ctx context.Context, tea
 
 // UpdateStorageProvider updates an existing storage provider and returns
 // the response DTO.
-func (s *StorageProviderService) UpdateStorageProvider(ctx context.Context, id uint64, req *dto.UpdateStorageProviderRequest) (dto.StorageProviderResponse, error) {
+func (s *StorageProviderService) UpdateStorageProvider(ctx context.Context, id uint64, teamID string, req *dto.UpdateStorageProviderRequest) (dto.StorageProviderResponse, error) {
 	provider, err := s.Repos().StorageProvider().FindStorageProviderByID(ctx, id)
 	if err != nil {
 		return dto.StorageProviderResponse{}, err
+	}
+	if provider.TeamID != teamID {
+		return dto.StorageProviderResponse{}, fiberutil.NotFound()
 	}
 
 	driver := backuptypes.StorageDriver(req.Provider)
@@ -105,9 +108,13 @@ func (s *StorageProviderService) UpdateStorageProvider(ctx context.Context, id u
 
 // DeleteStorageProvider deletes a storage provider after verifying it
 // has no associated backups.
-func (s *StorageProviderService) DeleteStorageProvider(ctx context.Context, id uint64) error {
-	if _, err := s.Repos().StorageProvider().FindStorageProviderByID(ctx, id); err != nil {
+func (s *StorageProviderService) DeleteStorageProvider(ctx context.Context, id uint64, teamID string) error {
+	provider, err := s.Repos().StorageProvider().FindStorageProviderByID(ctx, id)
+	if err != nil {
 		return err
+	}
+	if provider.TeamID != teamID {
+		return fiberutil.NotFound()
 	}
 
 	hasBackups, err := s.Repos().StorageProvider().HasBackupsForStorageProvider(ctx, id)
@@ -127,10 +134,9 @@ func (s *StorageProviderService) DeleteStorageProvider(ctx context.Context, id u
 }
 
 // GetStorageProvider retrieves a storage provider by string id and
-// returns the response DTO. Signature matches ShowFunc; teamID is
-// currently not enforced (preserved from prior behavior).
+// returns the response DTO. The team is checked after lookup so a provider
+// ID cannot be used to read another team's credentials.
 func (s *StorageProviderService) GetStorageProvider(ctx context.Context, id, teamID string) (dto.StorageProviderResponse, error) {
-	_ = teamID
 	uid, err := strconv.ParseUint(id, 10, 64)
 	if err != nil {
 		return dto.StorageProviderResponse{}, fiberutil.BadRequest("Invalid provider ID")
@@ -138,6 +144,9 @@ func (s *StorageProviderService) GetStorageProvider(ctx context.Context, id, tea
 	provider, err := s.Repos().StorageProvider().FindStorageProviderByID(ctx, uid)
 	if err != nil {
 		return dto.StorageProviderResponse{}, err
+	}
+	if provider.TeamID != teamID {
+		return dto.StorageProviderResponse{}, fiberutil.NotFound()
 	}
 	return dto.ToStorageProviderResponse(provider), nil
 }

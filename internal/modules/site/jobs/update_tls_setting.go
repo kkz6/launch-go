@@ -101,7 +101,9 @@ func (j *UpdateSiteTLSSettingJob) Failed(ctx context.Context, err error) {
 	site, findErr := j.Deps.Repos.Site().FindByID(ctx, j.Payload.SiteID)
 	if findErr == nil && site != nil {
 		site.PendingTLSUpdateSince = nil
-		_ = j.Deps.Repos.Site().Update(ctx, site)
+		if updateErr := j.Deps.Repos.Site().Update(ctx, site); updateErr != nil {
+			j.Deps.Logger.Error().Err(updateErr).Str("site_id", site.ID).Msg("Failed to clear pending TLS update flag")
+		}
 	}
 }
 

@@ -66,7 +66,9 @@ func (j *InstallTaskCleanupCronJob) Handle(ctx context.Context) error {
 	// Dispatch InstallCron job to install it on the server
 	if err := j.dispatchInstallCron(cron.ID, j.server.ID); err != nil {
 		// Cleanup the cron record if dispatch fails
-		_ = j.Deps.Repos.Cron().Delete(ctx, cron.ID)
+		if cleanupErr := j.Deps.Repos.Cron().Delete(ctx, cron.ID); cleanupErr != nil {
+			j.Deps.Logger.Error().Err(cleanupErr).Str("cron_id", cron.ID).Msg("Failed to clean up task cleanup cron after dispatch failure")
+		}
 		return fmt.Errorf("failed to dispatch install cron job: %w", err)
 	}
 

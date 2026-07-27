@@ -267,7 +267,9 @@ func (s *AuthService) LookupTwoFactorChallenge(ctx context.Context, challengeTok
 	}
 
 	// Delete the challenge token to prevent reuse
-	_ = s.cache.Delete(ctx, key)
+	if err := s.cache.Delete(ctx, key); err != nil && s.logger != nil {
+		s.logger.Warn().Err(err).Str("key", key).Msg("Failed to consume 2FA challenge token")
+	}
 
 	return &data, nil
 }
@@ -344,7 +346,9 @@ func (s *AuthService) RefreshToken(ctx context.Context, refreshToken string) (*d
 			return nil, fiberutil.Unauthorized()
 		}
 
-		_ = s.repos.Session().UpdateLastActivity(ctx, sessionID)
+		if err := s.repos.Session().UpdateLastActivity(ctx, sessionID); err != nil && s.logger != nil {
+			s.logger.Warn().Err(err).Str("session_id", sessionID).Msg("Failed to update refresh session activity")
+		}
 	}
 
 	accessToken, err := s.generateAccessToken(user, sessionID)
@@ -396,7 +400,9 @@ func (s *AuthService) TokenExchange(ctx context.Context, token string) (*dto.Aut
 		return nil, fiberutil.Unauthorized()
 	}
 
-	_ = s.repos.PersonalAccessToken().UpdateLastUsed(ctx, pat.ID)
+	if err := s.repos.PersonalAccessToken().UpdateLastUsed(ctx, pat.ID); err != nil && s.logger != nil {
+		s.logger.Warn().Err(err).Str("token_id", pat.ID).Msg("Failed to update personal access token usage")
+	}
 
 	user, err := s.repos.User().FindByID(ctx, pat.TokenableID)
 	if err != nil || user == nil {

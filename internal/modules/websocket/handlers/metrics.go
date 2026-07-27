@@ -92,9 +92,11 @@ func (h *MetricsHandler) streamMetrics(c *websocket.Conn, server *serverModels.S
 		return
 	}
 
+	// Establish the connection through taskrunner so this stream uses the
+	// same managed host-key verification as every other server operation.
 	conn, err := sshConfig.Dial(10 * time.Second)
 	if err != nil {
-		h.LogError(err, "Failed to connect to SSH", "server_id", server.ID)
+		h.LogError(err, "Failed to connect to SSH", "host", sshConfig.Host)
 		h.sendError(c, fmt.Sprintf("SSH connection failed: %s", err.Error()))
 		return
 	}

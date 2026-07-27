@@ -4,7 +4,26 @@ import (
 	"context"
 
 	"github.com/kkz6/launch-go/internal/modules/database/models"
+	"github.com/kkz6/launch-go/internal/pkg/repository"
 )
+
+// FindByIDAndServerAndTeam finds a database user within the requested tenant.
+func (r *DatabaseUserRepository) FindByIDAndServerAndTeam(ctx context.Context, id, serverID, teamID string) (*models.DatabaseUser, error) {
+	return repository.FindOne[models.DatabaseUser](ctx, r.DB,
+		repository.WithID(id),
+		repository.WithServerID(serverID),
+		repository.WithTeamID(teamID),
+	)
+}
+
+// FindByServerAndTeam lists database users within the requested tenant.
+func (r *DatabaseUserRepository) FindByServerAndTeam(ctx context.Context, serverID, teamID string) ([]models.DatabaseUser, error) {
+	return repository.FindAll[models.DatabaseUser](ctx, r.DB,
+		repository.WithServerID(serverID),
+		repository.WithTeamID(teamID),
+		repository.OrderByCreatedDesc(),
+	)
+}
 
 // FindByDatabase finds all database users for a database
 func (r *DatabaseUserRepository) FindByDatabase(ctx context.Context, databaseID string) ([]models.DatabaseUser, error) {

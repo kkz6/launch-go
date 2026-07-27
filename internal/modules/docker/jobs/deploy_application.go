@@ -359,7 +359,9 @@ func (j *DeployApplicationJob) Handle(ctx context.Context) error {
 			// created (before SSH finishes) so the Deployments tab's
 			// "View Logs" button appears and streams the live build/deploy
 			// output WHILE it runs — not only after the deploy completes.
-			_ = j.Deps.Repos.Deployment().UpdateFields(ctx, j.deployment.ID, map[string]any{"task_id": taskID})
+			if err := j.Deps.Repos.Deployment().UpdateFields(ctx, j.deployment.ID, map[string]any{"task_id": taskID}); err != nil {
+				j.Deps.Logger.Error().Err(err).Str("deployment_id", j.deployment.ID).Msg("failed to attach task to deployment")
+			}
 			j.deployment.TaskID = &taskID
 			j.broadcast("docker.application.deploying", map[string]any{
 				"application_id": j.app.ID,
@@ -385,9 +387,11 @@ func (j *DeployApplicationJob) Handle(ctx context.Context) error {
 	// before the success/failure branch so the task_id is visible
 	// whether the deploy passed or failed.
 	if taskID != "" && j.deployment != nil {
-		_ = j.Deps.Repos.Deployment().UpdateFields(ctx, j.deployment.ID, map[string]any{
+		if err := j.Deps.Repos.Deployment().UpdateFields(ctx, j.deployment.ID, map[string]any{
 			"task_id": taskID,
-		})
+		}); err != nil {
+			j.Deps.Logger.Error().Err(err).Str("deployment_id", j.deployment.ID).Msg("failed to persist deployment task ID")
+		}
 		j.deployment.TaskID = &taskID
 	}
 
@@ -420,11 +424,13 @@ func (j *DeployApplicationJob) Failed(ctx context.Context, err error) {
 	}
 	finishedAt := time.Now().UTC()
 	errMsg := err.Error()
-	_ = j.Deps.Repos.Deployment().UpdateFields(ctx, j.Payload.DeploymentID, map[string]any{
+	if updateErr := j.Deps.Repos.Deployment().UpdateFields(ctx, j.Payload.DeploymentID, map[string]any{
 		"status":      dockertypes.DeploymentStatusFailed,
 		"finished_at": finishedAt,
 		"error":       errMsg,
-	})
+	}); updateErr != nil {
+		j.Deps.Logger.Error().Err(updateErr).Str("deployment_id", j.Payload.DeploymentID).Msg("failed to persist framework deployment failure")
+	}
 }
 
 // loadModels hydrates j.{app, deployment, project, server} or returns
@@ -473,7 +479,9 @@ func (j *DeployApplicationJob) handleSuccess(ctx context.Context, containerID, i
 		if imageRef != "" {
 			deploymentUpdates["image_ref"] = imageRef
 		}
-		_ = j.Deps.Repos.Deployment().UpdateFields(ctx, j.deployment.ID, deploymentUpdates)
+		if err := j.Deps.Repos.Deployment().UpdateFields(ctx, j.deployment.ID, deploymentUpdates); err != nil {
+			j.Deps.Logger.Error().Err(err).Str("deployment_id", j.deployment.ID).Msg("failed to persist successful deployment state")
+		}
 	}
 
 	appUpdates := map[string]any{
@@ -483,7 +491,9 @@ func (j *DeployApplicationJob) handleSuccess(ctx context.Context, containerID, i
 	if containerID != "" {
 		appUpdates["container_id"] = containerID
 	}
-	_ = j.Deps.Repos.Application().UpdateFields(ctx, j.app.ID, appUpdates)
+	if err := j.Deps.Repos.Application().UpdateFields(ctx, j.app.ID, appUpdates); err != nil {
+		j.Deps.Logger.Error().Err(err).Str("application_id", j.app.ID).Msg("failed to persist successful application state")
+	}
 
 	// Re-sync Traefik so routing rules reflect the just-deployed
 	// container name. Same path that domain mutations take — keeps the
@@ -530,15 +540,19 @@ func (j *DeployApplicationJob) handleFailure(ctx context.Context, output string,
 	}
 
 	if j.deployment != nil {
-		_ = j.Deps.Repos.Deployment().UpdateFields(ctx, j.deployment.ID, map[string]any{
+		if err := j.Deps.Repos.Deployment().UpdateFields(ctx, j.deployment.ID, map[string]any{
 			"status":      dockertypes.DeploymentStatusFailed,
 			"finished_at": finishedAt,
 			"error":       errMsg,
-		})
+		}); err != nil {
+			j.Deps.Logger.Error().Err(err).Str("deployment_id", j.deployment.ID).Msg("failed to persist deployment failure state")
+		}
 	}
-	_ = j.Deps.Repos.Application().UpdateFields(ctx, j.app.ID, map[string]any{
+	if err := j.Deps.Repos.Application().UpdateFields(ctx, j.app.ID, map[string]any{
 		"status": dockertypes.ApplicationStatusFailed,
-	})
+	}); err != nil {
+		j.Deps.Logger.Error().Err(err).Str("application_id", j.app.ID).Msg("failed to persist application failure state")
+	}
 
 	failedPayload := map[string]any{
 		"application_id": j.app.ID,
@@ -623,7 +637,7 @@ func parseDeployMarkers(output string) (containerID, imageRef string) {
 			imageRef = strings.TrimSpace(m[1])
 		}
 	}
-	return
+	return containerID, imageRef
 }
 
 var (
@@ -697,15 +711,19 @@ func ghcrBearerExpiredSoon(mintedAtUnix string, now time.Time) (string, bool) {
 func (j *DeployApplicationJob) markDeploymentFailed(ctx context.Context, errMsg string) {
 	finishedAt := time.Now().UTC()
 	if j.deployment != nil {
-		_ = j.Deps.Repos.Deployment().UpdateFields(ctx, j.deployment.ID, map[string]any{
+		if err := j.Deps.Repos.Deployment().UpdateFields(ctx, j.deployment.ID, map[string]any{
 			"status":      dockertypes.DeploymentStatusFailed,
 			"finished_at": finishedAt,
 			"error":       errMsg,
-		})
+		}); err != nil {
+			j.Deps.Logger.Error().Err(err).Str("deployment_id", j.deployment.ID).Msg("failed to persist bearer failure state")
+		}
 	}
-	_ = j.Deps.Repos.Application().UpdateFields(ctx, j.app.ID, map[string]any{
+	if err := j.Deps.Repos.Application().UpdateFields(ctx, j.app.ID, map[string]any{
 		"status": dockertypes.ApplicationStatusFailed,
-	})
+	}); err != nil {
+		j.Deps.Logger.Error().Err(err).Str("application_id", j.app.ID).Msg("failed to persist bearer application failure state")
+	}
 	failedPayload := map[string]any{
 		"application_id": j.app.ID,
 		"status":         "failed",

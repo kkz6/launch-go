@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
@@ -13,6 +14,8 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/auth/contracts"
 	"github.com/kkz6/launch-go/internal/modules/auth/dto"
 	"github.com/kkz6/launch-go/internal/modules/auth/models"
+	basecache "github.com/kkz6/launch-go/internal/pkg/cache"
+	launchcache "github.com/kkz6/launch-go/internal/pkg/launch/cache"
 )
 
 // =============================================================================
@@ -26,6 +29,20 @@ type mockRepoRegistry struct {
 	teamMember     *mockTeamMemberRepo
 	teamInvitation *mockTeamInvitationRepo
 }
+
+type recordingCache struct{ deleted []string }
+
+func (c *recordingCache) Get(context.Context, string) (string, error) {
+	return "", basecache.ErrCacheMiss
+}
+func (c *recordingCache) Set(context.Context, string, string, time.Duration) error {
+	return nil
+}
+func (c *recordingCache) Delete(_ context.Context, key string) error {
+	c.deleted = append(c.deleted, key)
+	return nil
+}
+func (c *recordingCache) Exists(context.Context, string) (bool, error) { return false, nil }
 
 func (m *mockRepoRegistry) User() contracts.UserRepository             { return m.user }
 func (m *mockRepoRegistry) Team() contracts.TeamRepository             { return m.team }
@@ -246,6 +263,12 @@ func newTestRegistry() (*mockRepoRegistry, *TeamMemberService) {
 	return reg, svc
 }
 
+func attachMembershipCache(svc *TeamMemberService) *recordingCache {
+	cache := &recordingCache{}
+	svc.SetMembershipCache(launchcache.NewTeamMembershipCache(cache, nil))
+	return cache
+}
+
 // =============================================================================
 // Tests: InviteTeamMember
 // =============================================================================
@@ -369,6 +392,7 @@ func TestInviteTeamMember_EmailIsNormalized(t *testing.T) {
 
 func TestAcceptTeamInvitation_Success(t *testing.T) {
 	reg, svc := newTestRegistry()
+	cache := attachMembershipCache(svc)
 	ctx := context.Background()
 
 	// Create an invitation for user_001
@@ -391,6 +415,7 @@ func TestAcceptTeamInvitation_Success(t *testing.T) {
 	// Invitation should be deleted
 	_, exists := reg.teamInvitation.invitations["inv_001"]
 	assert.False(t, exists)
+	assert.Equal(t, []string{"team_membership:user_001:team_001"}, cache.deleted)
 }
 
 func TestAcceptTeamInvitation_InvitationNotFound(t *testing.T) {
@@ -519,6 +544,7 @@ func TestCancelTeamInvitation_InvitationFromDifferentTeam(t *testing.T) {
 
 func TestRemoveTeamMember_OwnerCanRemove(t *testing.T) {
 	reg, svc := newTestRegistry()
+	cache := attachMembershipCache(svc)
 	ctx := context.Background()
 
 	reg.teamMember.members["team_001"]["user_001"] = &models.TeamMember{
@@ -532,6 +558,7 @@ func TestRemoveTeamMember_OwnerCanRemove(t *testing.T) {
 
 	_, exists := reg.teamMember.members["team_001"]["user_001"]
 	assert.False(t, exists)
+	assert.Equal(t, []string{"team_membership:user_001:team_001"}, cache.deleted)
 }
 
 func TestRemoveTeamMember_MemberCanRemoveSelf(t *testing.T) {
@@ -580,6 +607,7 @@ func TestRemoveTeamMember_MemberCannotRemoveOthers(t *testing.T) {
 
 func TestUpdateTeamMemberRole_OwnerCanUpdate(t *testing.T) {
 	reg, svc := newTestRegistry()
+	cache := attachMembershipCache(svc)
 	ctx := context.Background()
 
 	req := &dto.UpdateTeamMemberRequest{Role: "editor"}
@@ -589,6 +617,7 @@ func TestUpdateTeamMemberRole_OwnerCanUpdate(t *testing.T) {
 
 	member := reg.teamMember.members["team_001"]["admin_001"]
 	assert.Equal(t, "editor", *member.Role)
+	assert.Equal(t, []string{"team_membership:admin_001:team_001"}, cache.deleted)
 }
 
 func TestUpdateTeamMemberRole_NonOwnerCannotUpdate(t *testing.T) {

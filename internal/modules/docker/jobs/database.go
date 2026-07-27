@@ -104,9 +104,11 @@ func (j *RunDatabaseJob) Handle(ctx context.Context) error {
 		j.broadcastDeployment("docker.database.deployment.started", deployment, "")
 	}
 
-	_ = j.Deps.Repos.Database().UpdateFields(ctx, j.db.ID, map[string]any{
+	if err := j.Deps.Repos.Database().UpdateFields(ctx, j.db.ID, map[string]any{
 		"status": dockertypes.ApplicationStatusBuilding,
-	})
+	}); err != nil {
+		j.Deps.Logger.Error().Err(err).Str("database_id", j.db.ID).Msg("failed to persist database build state")
+	}
 	j.broadcastLifecycle("docker.database.starting", "building")
 
 	cfg, err := j.buildRunConfig(ctx)
@@ -151,9 +153,11 @@ func (j *RunDatabaseJob) Handle(ctx context.Context) error {
 		return nil
 	}
 
-	_ = j.Deps.Repos.Database().UpdateFields(ctx, j.db.ID, map[string]any{
+	if err := j.Deps.Repos.Database().UpdateFields(ctx, j.db.ID, map[string]any{
 		"status": dockertypes.ApplicationStatusRunning,
-	})
+	}); err != nil {
+		j.Deps.Logger.Error().Err(err).Str("database_id", j.db.ID).Msg("failed to persist database running state")
+	}
 	if deployment != nil {
 		finalizeDeploymentRow(ctx, j.Deps, deployment.ID, dockertypes.DeploymentStatusSuccess, "")
 		j.broadcastDeployment("docker.database.deployment.succeeded", deployment, "")
@@ -280,9 +284,11 @@ func (j *RunDatabaseJob) markFailed(ctx context.Context, errMsg string) {
 	if j.db == nil {
 		return
 	}
-	_ = j.Deps.Repos.Database().UpdateFields(ctx, j.db.ID, map[string]any{
+	if err := j.Deps.Repos.Database().UpdateFields(ctx, j.db.ID, map[string]any{
 		"status": dockertypes.ApplicationStatusFailed,
-	})
+	}); err != nil {
+		j.Deps.Logger.Error().Err(err).Str("database_id", j.db.ID).Msg("failed to persist database failure state")
+	}
 	j.Deps.BroadcastToTeam(j.Payload.TeamID, "docker.database.failed", map[string]any{
 		"id":         j.db.ID,
 		"server_id":  j.Payload.ServerID,
@@ -463,9 +469,11 @@ func (j *DatabaseLifecycleJob) Handle(ctx context.Context) error {
 			newStatus = dockertypes.ApplicationStatusStopped
 		}
 		if newStatus != j.db.Status {
-			_ = j.Deps.Repos.Database().UpdateFields(ctx, j.db.ID, map[string]any{
+			if err := j.Deps.Repos.Database().UpdateFields(ctx, j.db.ID, map[string]any{
 				"status": newStatus,
-			})
+			}); err != nil {
+				j.Deps.Logger.Error().Err(err).Str("database_id", j.db.ID).Msg("failed to persist database lifecycle state")
+			}
 		}
 		j.Deps.BroadcastToTeam(j.Payload.TeamID, "docker.database.lifecycle_done", map[string]any{
 			"id":         j.db.ID,
