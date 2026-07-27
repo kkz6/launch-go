@@ -70,16 +70,17 @@ func (s *DashboardService) GetDashboard(ctx context.Context, teamID string) (*dt
 	}, nil
 }
 
-// ActiveActions combines the active site and Docker deployment tables. They
-// intentionally remain separate queries: their status vocabularies and target
-// relationships differ, while the result is a small, bounded top-bar list.
+// ActiveActions combines active site deployments, Docker deployments, and SSH
+// commands. They intentionally remain separate queries because their status
+// vocabularies and target relationships differ.
 func (s *DashboardService) ActiveActions(ctx context.Context, teamID string) ([]dto.ActiveAction, error) {
 	siteStatuses := []string{"pending", "installing"}
 	dockerStatuses := []string{"pending", "building", "deploying", "running"}
+	commandStatuses := []string{"pending", "running"}
 
 	var actions []dto.ActiveAction
 	if err := s.db.WithContext(ctx).Raw(`
-		SELECT d.id, 'deployment' AS kind, d.status, sites.address AS label,
+		SELECT d.id, 'deployment' AS kind, d.status, sites.address AS label, '' AS description,
 		       sites.server_id, '' AS project_id, 'site' AS target_type, d.site_id AS target_id,
 		       d.task_id, NULL AS started_at, d.created_at
 		FROM deployments d JOIN sites ON sites.id = d.site_id
@@ -97,6 +98,7 @@ func (s *DashboardService) ActiveActions(ctx context.Context, teamID string) ([]
 	if err := s.db.WithContext(ctx).Raw(`
 		SELECT d.id, 'deployment' AS kind, d.status,
 		       COALESCE(app.name, compose.name, db_target.name, d.target_type) AS label,
+		       '' AS description,
 		       d.server_id, COALESCE(app.project_id, compose.project_id, db_target.project_id, '') AS project_id,
 		       d.target_type, d.target_id, d.task_id, d.started_at, d.created_at
 		FROM docker_deployments d
@@ -108,6 +110,21 @@ func (s *DashboardService) ActiveActions(ctx context.Context, teamID string) ([]
 		return nil, err
 	}
 	actions = append(actions, dockerActions...)
+
+	var commandActions []dto.ActiveAction
+	if err := s.db.WithContext(ctx).Raw(`
+		SELECT c.id, 'command' AS kind, c.status, sites.address AS label,
+		       c.command AS description, sites.server_id, '' AS project_id,
+		       'site' AS target_type, c.site_id AS target_id, NULL AS task_id,
+		       NULL AS started_at, c.created_at
+		FROM commands c
+		JOIN sites ON sites.id = c.site_id
+		WHERE c.team_id = ? AND c.status IN ?
+	`, teamID, commandStatuses).Scan(&commandActions).Error; err != nil {
+		return nil, err
+	}
+	actions = append(actions, commandActions...)
+
 	sort.Slice(actions, func(i, j int) bool { return actions[i].CreatedAt.After(actions[j].CreatedAt) })
 	return actions, nil
 }

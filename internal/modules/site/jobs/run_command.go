@@ -67,10 +67,7 @@ func (j *RunCommandJob) Handle(ctx context.Context) error {
 		j.Deps.Logger.Error().Err(err).Str("command_id", j.command.ID).Msg("Failed to update command status")
 	}
 
-	// Broadcast that command is running with full command data
-	j.Deps.BroadcastServerEvent(j.server, "command.updated", map[string]any{
-		"command": dto.ToCommandResponse(j.command),
-	})
+	j.broadcastCommandUpdate()
 
 	// Create the task
 	task := tasks.RunCommand(tasks.RunCommandConfig{
@@ -110,10 +107,7 @@ func (j *RunCommandJob) Handle(ctx context.Context) error {
 		j.Deps.Logger.Error().Err(updateErr).Str("command_id", j.command.ID).Msg("Failed to update command result")
 	}
 
-	// Broadcast completion with full command data
-	j.Deps.BroadcastServerEvent(j.server, "command.updated", map[string]any{
-		"command": dto.ToCommandResponse(j.command),
-	})
+	j.broadcastCommandUpdate()
 
 	j.Deps.Logger.Info().
 		Str("site_id", j.site.ID).
@@ -152,23 +146,25 @@ func (j *RunCommandJob) Failed(ctx context.Context, err error) {
 		return
 	}
 
-	// Get site and server for broadcasting
-	site, siteErr := j.Deps.Repos.Site().FindByID(ctx, j.Payload.SiteID)
-	if siteErr != nil {
-		j.Deps.Logger.Error().Err(siteErr).Msg("Failed to find site for broadcast")
+	j.command = command
+	j.broadcastCommandUpdate()
+}
+
+func (j *RunCommandJob) broadcastCommandUpdate() {
+	if j.command == nil {
 		return
 	}
 
-	server, serverErr := j.Deps.ServerRepos.Server().FindByID(ctx, site.ServerID)
-	if serverErr != nil {
-		j.Deps.Logger.Error().Err(serverErr).Msg("Failed to find server for broadcast")
-		return
-	}
+	j.Deps.BroadcastToTeam(j.command.TeamID, "command.updated", commandEventData(j.command))
+}
 
-	// Broadcast failure with full command data
-	j.Deps.BroadcastServerEvent(server, "command.updated", map[string]any{
-		"command": dto.ToCommandResponse(command),
-	})
+func commandEventData(command *models.Command) map[string]any {
+	return map[string]any{
+		"command_id": command.ID,
+		"site_id":    command.SiteID,
+		"status":     string(command.Status),
+		"command":    dto.ToCommandResponse(command),
+	}
 }
 
 // NewRunCommandTask creates a run command job
