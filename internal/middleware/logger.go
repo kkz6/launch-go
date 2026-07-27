@@ -53,6 +53,7 @@ func RequestLogger(logger *zerolog.Logger, isDev bool) fiber.Handler {
 		method := c.Method()
 		path := c.Path()
 		ip := c.IP()
+		traceID := GetTraceID(c)
 
 		var event *zerolog.Event
 		switch {
@@ -70,6 +71,9 @@ func RequestLogger(logger *zerolog.Logger, isDev bool) fiber.Handler {
 			Int("status", status).
 			Str("latency", formatDuration(latency)).
 			Str("ip", ip)
+		if traceID != "" {
+			event.Str("trace_id", traceID)
+		}
 
 		if isDev {
 			event.Msgf("%s %s%d%s %s", method, getStatusColor(status), status, colorReset, path)
@@ -93,6 +97,7 @@ func RequestLoggerWithBody(logger *zerolog.Logger, isDev bool) fiber.Handler {
 		method := c.Method()
 		path := c.Path()
 		resSize := len(c.Response().Body())
+		traceID := GetTraceID(c)
 
 		var event *zerolog.Event
 		switch {
@@ -112,6 +117,9 @@ func RequestLoggerWithBody(logger *zerolog.Logger, isDev bool) fiber.Handler {
 			Str("ip", c.IP()).
 			Int("req_size", reqSize).
 			Int("res_size", resSize)
+		if traceID != "" {
+			event.Str("trace_id", traceID)
+		}
 
 		if isDev {
 			event.Msgf("%s %s%d%s %s", method, getStatusColor(status), status, colorReset, path)

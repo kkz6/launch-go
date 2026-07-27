@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"database/sql"
 	"errors"
 	"time"
 
@@ -14,11 +15,40 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/staff/services"
 	"github.com/kkz6/launch-go/internal/pkg/dto"
 	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
+	"github.com/kkz6/launch-go/internal/pkg/observability"
 )
 
 // AdminHandler serves the back-office /admin endpoints.
 type AdminHandler struct {
-	service *services.Service
+	service       *services.Service
+	db            *gorm.DB
+	observability *observability.Tracker
+}
+
+// SetObservability wires bounded process diagnostics into staff-only routes.
+func (h *AdminHandler) SetObservability(db *gorm.DB, tracker *observability.Tracker) {
+	h.db = db
+	h.observability = tracker
+}
+
+func (h *AdminHandler) ObservabilitySnapshot(c *fiber.Ctx) error {
+	var sqlDB *sql.DB
+	if h.db != nil {
+		sqlDB, _ = h.db.DB()
+	}
+	return fiberutil.OK(c, "Observability snapshot retrieved", observability.NewSnapshot(sqlDB, h.observability))
+}
+
+func (h *AdminHandler) ObservabilityQueries(c *fiber.Ctx) error {
+	return fiberutil.OK(c, "Queries retrieved", h.observability.Queries(fiberutil.ParseLimit(c, 50, 200), false))
+}
+
+func (h *AdminHandler) ObservabilitySlowQueries(c *fiber.Ctx) error {
+	return fiberutil.OK(c, "Slow queries retrieved", h.observability.Queries(fiberutil.ParseLimit(c, 50, 200), true))
+}
+
+func (h *AdminHandler) ObservabilityN1(c *fiber.Ctx) error {
+	return fiberutil.OK(c, "N+1 query patterns retrieved", h.observability.Summary().N1Patterns)
 }
 
 // NewAdminHandler creates a new AdminHandler.

@@ -23,6 +23,7 @@ func (a *Application) registerMiddleware() {
 		AllowHeaders:     "Origin,Content-Type,Accept,Authorization,X-Team-ID",
 		AllowCredentials: true,
 	}))
+	a.fiber.Use(middleware.Trace())
 
 	middleware.InitRateLimitMiddleware(a.redisCache)
 	a.fiber.Use(middleware.GlobalRateLimit(600, time.Minute))

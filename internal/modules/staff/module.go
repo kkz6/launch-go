@@ -1,6 +1,8 @@
 package staff
 
 import (
+	"time"
+
 	"github.com/gofiber/fiber/v2"
 	"gorm.io/gorm"
 
@@ -11,6 +13,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/staff/tables"
 	stafftypes "github.com/kkz6/launch-go/internal/modules/staff/types"
 	"github.com/kkz6/launch-go/internal/pkg/app"
+	"github.com/kkz6/launch-go/internal/pkg/observability"
 	"github.com/kkz6/launch-go/internal/pkg/table"
 )
 
@@ -47,6 +50,13 @@ func NewModule(b *app.Builder) *Module {
 	}
 
 	handler := handlers.NewAdminHandler(service)
+	threshold := 200 * time.Millisecond
+	if deps.Config != nil && deps.Config.Database.SlowQueryMS > 0 {
+		threshold = time.Duration(deps.Config.Database.SlowQueryMS) * time.Millisecond
+	}
+	tracker := observability.NewTracker(threshold)
+	tracker.Register(deps.DB)
+	handler.SetObservability(deps.DB, tracker)
 
 	return &Module{
 		Base:    app.NewBase(ModuleName, b),
@@ -74,6 +84,10 @@ func (m *Module) SetServerLogReader(reader services.ServerLogReader) {
 func (m *Module) RegisterRoutes(router fiber.Router, authMiddleware fiber.Handler) {
 	admin := router.Group("/admin", middleware.StaffChain(authMiddleware, stafftypes.StaffRoleSupport)...)
 	admin.Get("/overview", m.handler.Overview)
+	admin.Get("/observability/snapshot", m.handler.ObservabilitySnapshot)
+	admin.Get("/observability/queries", m.handler.ObservabilityQueries)
+	admin.Get("/observability/queries/slow", m.handler.ObservabilitySlowQueries)
+	admin.Get("/observability/queries/n1", m.handler.ObservabilityN1)
 	admin.Get("/users", m.handler.ListUsers)
 	admin.Get("/users/:id", m.handler.ShowUser)
 	admin.Get("/users/:id/servers", m.handler.ShowUserServers)

@@ -53,10 +53,14 @@ func ConnectWithLogger(cfg config.DatabaseConfig, appLogger *zerolog.Logger) (*g
 	// Always use custom logger to suppress noisy ErrRecordNotFound from GORM's default logger.
 	// LogQueries controls whether individual queries are logged (Info level) or only errors/slow queries (Warn level).
 	if appLogger != nil {
+		slowThreshold := time.Duration(cfg.SlowQueryMS) * time.Millisecond
+		if slowThreshold <= 0 {
+			slowThreshold = 200 * time.Millisecond
+		}
 		if cfg.LogQueries {
-			gormConfig.Logger = logger.NewGormLogger(appLogger)
+			gormConfig.Logger = logger.NewGormLoggerWithConfig(appLogger, gormlogger.Info, slowThreshold)
 		} else {
-			gormConfig.Logger = logger.NewGormLoggerWithConfig(appLogger, gormlogger.Warn, 200*time.Millisecond)
+			gormConfig.Logger = logger.NewGormLoggerWithConfig(appLogger, gormlogger.Warn, slowThreshold)
 		}
 	}
 

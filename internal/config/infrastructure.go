@@ -45,15 +45,16 @@ func (c AppConfig) Frontend() string {
 
 // DatabaseConfig holds database configuration
 type DatabaseConfig struct {
-	URL        string `env:"DB_URL" default:""`
-	Driver     string `env:"DB_DRIVER" default:"mysql"`
-	Host       string `env:"DB_HOST" default:"localhost"`
-	Port       string `env:"DB_PORT" default:"3306"`
-	Database   string `env:"DB_DATABASE" default:"launch"`
-	Username   string `env:"DB_USERNAME" default:"root"`
-	Password   string `env:"DB_PASSWORD" default:""`
-	SSLMode    string `env:"DB_SSLMODE" default:"disable"`
-	LogQueries bool   `env:"DB_LOG_QUERIES" default:"false"`
+	URL         string `env:"DB_URL" default:""`
+	Driver      string `env:"DB_DRIVER" default:"mysql"`
+	Host        string `env:"DB_HOST" default:"localhost"`
+	Port        string `env:"DB_PORT" default:"3306"`
+	Database    string `env:"DB_DATABASE" default:"launch"`
+	Username    string `env:"DB_USERNAME" default:"root"`
+	Password    string `env:"DB_PASSWORD" default:""`
+	SSLMode     string `env:"DB_SSLMODE" default:"disable"`
+	LogQueries  bool   `env:"DB_LOG_QUERIES" default:"false"`
+	SlowQueryMS int    `env:"DB_SLOW_QUERY_MS" default:"200"`
 }
 
 // ResolveDriver returns the effective database driver, inferring from URL if set.
