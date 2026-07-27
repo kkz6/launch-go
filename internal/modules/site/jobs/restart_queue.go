@@ -135,8 +135,14 @@ func (j *RestartAllSiteQueuesJob) Handle(ctx context.Context) error {
 		return fmt.Errorf("failed to find queues: %w", err)
 	}
 
-	if len(queues) == 0 {
-		j.Deps.Logger.Info().Str("site_id", site.ID).Msg("No queues to restart")
+	queueIDs := make([]string, 0, len(queues))
+	for i := range queues {
+		if queues[i].InstalledAt != nil && queues[i].InstallationFailedAt == nil {
+			queueIDs = append(queueIDs, queues[i].ID)
+		}
+	}
+	if len(queueIDs) == 0 {
+		j.Deps.Logger.Info().Str("site_id", site.ID).Msg("No installed queues to restart")
 		return nil
 	}
 
@@ -149,14 +155,8 @@ func (j *RestartAllSiteQueuesJob) Handle(ctx context.Context) error {
 
 	j.Deps.Logger.Info().
 		Str("site_id", site.ID).
-		Int("queue_count", len(queues)).
+		Int("queue_count", len(queueIDs)).
 		Msg("Restarting all queues for site")
-
-	// Collect queue IDs
-	queueIDs := make([]string, len(queues))
-	for i, q := range queues {
-		queueIDs[i] = q.ID
-	}
 
 	// Restart all queues
 	restartTask := tasks.RestartAllQueues(queueIDs)
@@ -169,12 +169,13 @@ func (j *RestartAllSiteQueuesJob) Handle(ctx context.Context) error {
 
 	if result.GetExitCode() != 0 {
 		j.Deps.Logger.Error().Str("site_id", site.ID).Int("exit_code", result.GetExitCode()).Msg("Queue restart failed")
+		return fmt.Errorf("queue restart failed with exit code %d", result.GetExitCode())
 	}
 
 	// Broadcast success
 	j.Deps.BroadcastServerEvent(server, "queues.restarted", map[string]interface{}{
 		"site_id":     site.ID,
-		"queue_count": len(queues),
+		"queue_count": len(queueIDs),
 	})
 
 	j.Deps.Logger.Info().Str("site_id", site.ID).Msg("All queues restarted successfully")
@@ -197,9 +198,13 @@ func NewRestartQueueTask(siteID, queueID string, userID *string) (*asynq.Task, e
 }
 
 // NewRestartAllSiteQueuesTask creates a restart all site queues job
-func NewRestartAllSiteQueuesTask(siteID string, userID *string) (*asynq.Task, error) {
+func NewRestartAllSiteQueuesTask(
+	siteID string,
+	userID *string,
+	opts ...asynq.Option,
+) (*asynq.Task, error) {
 	return pkgjobs.Task(TypeRestartAllSiteQueues, RestartAllSiteQueuesPayload{
 		SiteID: siteID,
 		UserID: userID,
-	})
+	}, opts...)
 }

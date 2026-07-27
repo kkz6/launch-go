@@ -6,6 +6,7 @@ import (
 	gitproviders "github.com/kkz6/launch-go/internal/modules/git/providers"
 	gitrepos "github.com/kkz6/launch-go/internal/modules/git/repositories"
 	serverrepos "github.com/kkz6/launch-go/internal/modules/server/repositories"
+	siteevents "github.com/kkz6/launch-go/internal/modules/site/events"
 	"github.com/kkz6/launch-go/internal/modules/site/repositories"
 	"github.com/kkz6/launch-go/internal/pkg/app"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
@@ -23,6 +24,7 @@ func Register(
 	providerFactory *gitproviders.ProviderFactory,
 ) {
 	deps = NewJobDeps(appDeps, repos, serverRepos, sourceControlRepo, providerFactory)
+	siteEventDispatcher = configureSiteEventDispatcher(deps)
 	registerHandlers(mux)
 }
 
@@ -76,6 +78,7 @@ func registerHandlers(mux *asynq.ServeMux) {
 	pkgjobs.RegisterTyped(mux, TypeCreateDeployment, NewCreateDeploymentJob)
 	pkgjobs.RegisterTyped(mux, TypeCleanupPendingSiteDeployment, NewCleanupPendingSiteDeploymentJob)
 	pkgjobs.RegisterTyped(mux, TypeUpdateProviderDeploymentStatus, NewUpdateProviderDeploymentStatusJob)
+	pkgjobs.RegisterTyped(mux, siteevents.TypeProcessEvent, NewProcessSiteEventJob)
 
 	// Site configuration jobs
 	pkgjobs.RegisterTyped(mux, TypeUpdateSiteTLSSetting, NewUpdateSiteTLSSettingJob)

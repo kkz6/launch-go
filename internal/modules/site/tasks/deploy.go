@@ -3,6 +3,7 @@ package tasks
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -10,8 +11,10 @@ import (
 	"github.com/hibiken/asynq"
 
 	"github.com/kkz6/launch-go/internal/modules/notification/notifications"
+	siteevents "github.com/kkz6/launch-go/internal/modules/site/events"
 	"github.com/kkz6/launch-go/internal/modules/site/models"
 	sitetypes "github.com/kkz6/launch-go/internal/modules/site/types"
+	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner/templates"
 )
@@ -19,8 +22,9 @@ import (
 // Task type constants for deployment operations
 const (
 	// DeploySiteTaskType is the registered type name for callback reconstruction
-	DeploySiteTaskType         = "site:deploy"
-	RollbackDeploymentTaskType = "site:rollback_deployment"
+	DeploySiteTaskType            = "site:deploy"
+	RollbackDeploymentTaskType    = "site:rollback_deployment"
+	postDeploymentEventMaxRetries = 3
 )
 
 // DeployOptions holds options for deploying a site
@@ -57,7 +61,6 @@ type callbackData struct {
 	SiteType                    string `json:"site_type"`
 	IsFirstDeploy               bool   `json:"is_first_deploy"`
 	QueueDeployments            bool   `json:"queue_deployments"`
-	AutoRestartQueue            bool   `json:"auto_restart_queue"`
 	ZeroDowntimeDeployment      bool   `json:"zero_downtime_deployment"`
 	DeploymentReleasesRetention int    `json:"deployment_releases_retention"`
 
@@ -102,7 +105,6 @@ func DeploySiteTask(opts DeployOptions) taskrunner.Task {
 			SiteType:                    string(opts.Site.Type),
 			IsFirstDeploy:               opts.Site.InstalledAt == nil,
 			QueueDeployments:            opts.Site.QueueDeployments,
-			AutoRestartQueue:            opts.Site.AutoRestartQueue,
 			ZeroDowntimeDeployment:      opts.Site.ZeroDowntimeDeployment,
 			DeploymentReleasesRetention: opts.Site.DeploymentReleasesRetention,
 			SiteAddress:                 opts.Site.Address,
@@ -144,6 +146,16 @@ func (t *deploySiteTask) OnSuccess(ctx context.Context, cbCtx *taskrunner.Callba
 	// Update deployment status on git provider (GitHub/GitLab deployment status)
 	t.dispatchUpdateProviderDeploymentStatus(cbCtx, "success")
 
+	// Publish one durable, deployment-scoped domain event. Independently
+	// registered listeners fan out post-deployment actions (queue restarts
+	// today; more actions can be added without coupling them to this callback).
+	if err := t.dispatchDeploymentSucceeded(cbCtx, taskID); err != nil && cbCtx.Logger != nil {
+		cbCtx.Logger.Error().
+			Err(err).
+			Str("deployment_id", t.callback.DeploymentID).
+			Msg("failed to publish deployment succeeded event")
+	}
+
 	// If first deployment, dispatch InstallCaddyfile job and install pending queues
 	if t.callback.IsFirstDeploy {
 		t.dispatchInstallCaddyfile(cbCtx)
@@ -158,11 +170,6 @@ func (t *deploySiteTask) OnSuccess(ctx context.Context, cbCtx *taskrunner.Callba
 	// Process next queued deployment if enabled
 	if t.callback.QueueDeployments {
 		t.processNextQueuedDeployment(ctx, cbCtx)
-	}
-
-	// Restart queue workers if auto-restart is enabled
-	if t.callback.AutoRestartQueue {
-		t.restartQueueWorkers(ctx, cbCtx)
 	}
 
 	// Cleanup old deployment records
@@ -339,6 +346,38 @@ func (t *deploySiteTask) dispatchUpdateProviderDeploymentStatus(cbCtx *taskrunne
 	}, "")
 }
 
+func (t *deploySiteTask) dispatchDeploymentSucceeded(
+	cbCtx *taskrunner.CallbackContext,
+	taskID string,
+) error {
+	event, err := siteevents.NewDeploymentSucceeded(siteevents.DeploymentSucceeded{
+		DeploymentID: t.callback.DeploymentID,
+		SiteID:       t.callback.SiteID,
+		ServerID:     t.callback.ServerID,
+		TeamID:       t.callback.TeamID,
+		TaskID:       taskID,
+	})
+	if err != nil {
+		return err
+	}
+
+	eventTaskID := deploymentEventTaskID(event.Name, event.ID)
+	err = cbCtx.DispatchJobWithOptions(
+		siteevents.TypeProcessEvent,
+		event,
+		asynq.TaskID(eventTaskID),
+		asynq.MaxRetry(postDeploymentEventMaxRetries),
+	)
+	if errors.Is(err, asynq.ErrTaskIDConflict) || errors.Is(err, asynq.ErrDuplicateTask) {
+		return nil
+	}
+	return err
+}
+
+func deploymentEventTaskID(eventName, eventID string) string {
+	return pkgjobs.Dedup("site-event", eventName, eventID)
+}
+
 type caddyfilePayload struct {
 	SiteID string  `json:"site_id"`
 	UserID *string `json:"user_id,omitempty"`
@@ -408,19 +447,6 @@ func (t *deploySiteTask) installPendingQueues(ctx context.Context, cbCtx *taskru
 			"site_id":  t.callback.SiteID,
 			"queue_id": q.ID,
 		}, fmt.Sprintf("install_queue:%s:%s", t.callback.SiteID, q.ID))
-	}
-}
-
-// restartQueueWorkers restarts queue workers after deployment
-func (t *deploySiteTask) restartQueueWorkers(ctx context.Context, cbCtx *taskrunner.CallbackContext) {
-	var queues []models.Queue
-	cbCtx.DB.Where("site_id = ? AND installed_at IS NOT NULL", t.callback.SiteID).Find(&queues)
-
-	for _, q := range queues {
-		t.dispatchJob(cbCtx, "site:restart_queue", map[string]string{
-			"site_id":  t.callback.SiteID,
-			"queue_id": q.ID,
-		}, fmt.Sprintf("restart_queue:%s:%s", t.callback.SiteID, q.ID))
 	}
 }
 
