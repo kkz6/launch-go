@@ -57,6 +57,22 @@ func DefaultRetryOptions() RetryOptions {
 	}
 }
 
+func normalizeRetryOptions(opts RetryOptions) RetryOptions {
+	if opts.MaxAttempts <= 0 {
+		opts.MaxAttempts = 3
+	}
+	if opts.InitialDelay <= 0 {
+		opts.InitialDelay = 100 * time.Millisecond
+	}
+	if opts.MaxDelay <= 0 {
+		opts.MaxDelay = 10 * time.Second
+	}
+	if opts.Multiplier <= 0 {
+		opts.Multiplier = 2.0
+	}
+	return opts
+}
+
 // retryableError wraps an error to indicate it's retryable.
 type retryableError struct {
 	err error
@@ -158,24 +174,10 @@ func calculateDelay(opts *RetryOptions, attempt int) time.Duration {
 
 // doWithRetry executes a request with retry logic.
 func (c *Client) doWithRetry(req *http.Request) (*http.Response, error) {
-	opts := c.retryOpts
-	if opts == nil {
+	if c.retryOpts == nil {
 		return c.httpClient.Do(req)
 	}
-
-	// Fill in defaults
-	if opts.MaxAttempts <= 0 {
-		opts.MaxAttempts = 3
-	}
-	if opts.InitialDelay <= 0 {
-		opts.InitialDelay = 100 * time.Millisecond
-	}
-	if opts.MaxDelay <= 0 {
-		opts.MaxDelay = 10 * time.Second
-	}
-	if opts.Multiplier <= 0 {
-		opts.Multiplier = 2.0
-	}
+	opts := normalizeRetryOptions(*c.retryOpts)
 
 	var lastErr error
 	var lastResp *http.Response
@@ -202,7 +204,17 @@ func (c *Client) doWithRetry(req *http.Request) (*http.Response, error) {
 		}
 
 		// Check if we should retry
-		if !shouldRetry(opts, resp, err) {
+		if !shouldRetry(&opts, resp, err) {
+			if err != nil {
+				return nil, err
+			}
+			return resp, nil
+		}
+
+		// A retry must send the same payload. http.Request can only recreate its
+		// body when GetBody is available; retrying any other body would silently
+		// send an empty or partially consumed request.
+		if req.Body != nil && req.GetBody == nil {
 			if err != nil {
 				return nil, err
 			}
@@ -219,7 +231,7 @@ func (c *Client) doWithRetry(req *http.Request) (*http.Response, error) {
 
 		// Don't delay after the last attempt
 		if attempt < opts.MaxAttempts-1 {
-			delay := calculateDelay(opts, attempt)
+			delay := calculateDelay(&opts, attempt)
 
 			if opts.OnRetry != nil {
 				retryErr := err
@@ -252,19 +264,7 @@ func (c *Client) doWithRetry(req *http.Request) (*http.Response, error) {
 
 // Retry executes a function with retry logic.
 func Retry(ctx context.Context, opts RetryOptions, fn func() error) error {
-	// Fill in defaults
-	if opts.MaxAttempts <= 0 {
-		opts.MaxAttempts = 3
-	}
-	if opts.InitialDelay <= 0 {
-		opts.InitialDelay = 100 * time.Millisecond
-	}
-	if opts.MaxDelay <= 0 {
-		opts.MaxDelay = 10 * time.Second
-	}
-	if opts.Multiplier <= 0 {
-		opts.Multiplier = 2.0
-	}
+	opts = normalizeRetryOptions(opts)
 
 	var lastErr error
 
@@ -308,19 +308,7 @@ func RetryWithResult[T any](ctx context.Context, opts RetryOptions, fn func() (T
 	var result T
 	var lastErr error
 
-	// Fill in defaults
-	if opts.MaxAttempts <= 0 {
-		opts.MaxAttempts = 3
-	}
-	if opts.InitialDelay <= 0 {
-		opts.InitialDelay = 100 * time.Millisecond
-	}
-	if opts.MaxDelay <= 0 {
-		opts.MaxDelay = 10 * time.Second
-	}
-	if opts.Multiplier <= 0 {
-		opts.Multiplier = 2.0
-	}
+	opts = normalizeRetryOptions(opts)
 
 	for attempt := 0; attempt < opts.MaxAttempts; attempt++ {
 		result, lastErr = fn()

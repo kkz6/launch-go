@@ -113,7 +113,11 @@ func (j *CreateDeploymentJob) Handle(ctx context.Context) error {
 	// Add a small delay to ensure DB transaction is committed
 	if err := j.Deps.DispatchTaskIn(task, time.Second); err != nil {
 		// Cleanup: mark deployment as failed if we can't dispatch the job
-		_ = j.Deps.Repos.Deployment().UpdateStatus(ctx, deployment.ID, sitetypes.DeploymentStatusFailed)
+		if updateErr := j.Deps.Repos.Deployment().UpdateStatus(ctx, deployment.ID, sitetypes.DeploymentStatusFailed); updateErr != nil {
+			j.Deps.Logger.Error().Err(updateErr).
+				Str("deployment_id", deployment.ID).
+				Msg("Failed to mark deployment as failed after dispatch error")
+		}
 		return fmt.Errorf("failed to enqueue deploy job: %w", err)
 	}
 

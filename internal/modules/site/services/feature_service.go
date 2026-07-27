@@ -154,9 +154,14 @@ func (s *FeatureService) removeQueueFeature(ctx context.Context, site *models.Si
 		if err != nil {
 			continue
 		}
-		_ = s.EnqueueTask(task)
+		if err := s.EnqueueTask(task); err != nil {
+			s.LogError(err, "failed to enqueue queue uninstall", "queue_id", q.ID)
+			continue
+		}
 
-		_ = s.Repos().Queue().Delete(ctx, q.ID)
+		if err := s.Repos().Queue().Delete(ctx, q.ID); err != nil {
+			s.LogError(err, "failed to delete queue after uninstall dispatch", "queue_id", q.ID)
+		}
 	}
 
 	// Update site features
@@ -282,7 +287,9 @@ func (s *FeatureService) dispatchFeatureJob(factories map[sitetypes.LaravelFeatu
 // rollbackPendingFeature removes a feature from pending on dispatch failure
 func (s *FeatureService) rollbackPendingFeature(ctx context.Context, site *models.Site, featureName string) {
 	site.RemovePendingFeature(featureName)
-	_ = s.Repos().Site().UpdateFields(ctx, site.ID, map[string]interface{}{
+	if err := s.Repos().Site().UpdateFields(ctx, site.ID, map[string]interface{}{
 		"pending_features": site.PendingFeatures,
-	})
+	}); err != nil {
+		s.LogError(err, "failed to roll back pending feature", "site_id", site.ID, "feature", featureName)
+	}
 }

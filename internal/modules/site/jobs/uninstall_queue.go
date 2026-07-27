@@ -111,7 +111,9 @@ func (j *UninstallQueueJob) Failed(ctx context.Context, err error) {
 
 	now := time.Now()
 	queue.UninstallationFailedAt = &now
-	_ = j.Deps.Repos.Queue().Update(ctx, queue)
+	if updateErr := j.Deps.Repos.Queue().Update(ctx, queue); updateErr != nil {
+		j.Deps.Logger.Error().Err(updateErr).Str("queue_id", queue.ID).Msg("Failed to persist queue uninstall failure")
+	}
 }
 
 // NewUninstallQueueTask creates an uninstall queue job

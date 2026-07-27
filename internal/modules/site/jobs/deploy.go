@@ -93,7 +93,7 @@ func (j *DeployJob) Handle(ctx context.Context) error {
 	j.broadcastDeploymentProgress(ctx, j.site.ID, j.deployment.ID, "installing", startMsg)
 
 	// Build deploy config
-	config := j.buildDeployConfig(j.site, j.deployment, j.server.TeamID)
+	config := j.buildDeployConfig(ctx, j.site, j.deployment, j.server.TeamID)
 
 	// Create deploy task
 	task := tasks.DeploySiteTask(config)
@@ -146,20 +146,20 @@ func (j *DeployJob) Failed(ctx context.Context, err error) {
 	}
 }
 
-func (j *DeployJob) buildDeployConfig(site *models.Site, deployment *models.Deployment, teamID string) tasks.DeployOptions {
+func (j *DeployJob) buildDeployConfig(ctx context.Context, site *models.Site, deployment *models.Deployment, teamID string) tasks.DeployOptions {
 	repositoryURL := ""
 	var hasAppAuth bool
 	var tempToken, authURL, appName string
 
 	if site.SourceControlRepositoriesID != nil {
 		// Get repository and source control info
-		repo, sourceControl := j.getRepositoryAndSourceControl(site)
+		repo, sourceControl := j.getRepositoryAndSourceControl(ctx, site)
 		if repo != nil {
 			repositoryURL = repo.SSHURL
 
 			// Try to get app-based auth token
 			if sourceControl != nil && j.Deps.ProviderFactory != nil {
-				token, url, name := j.getAppAuthToken(context.Background(), sourceControl, repo)
+				token, url, name := j.getAppAuthToken(ctx, sourceControl, repo)
 				if token != "" {
 					hasAppAuth = true
 					tempToken = token
@@ -207,7 +207,7 @@ func (j *DeployJob) buildDeployConfig(site *models.Site, deployment *models.Depl
 	}
 }
 
-func (j *DeployJob) getRepositoryAndSourceControl(site *models.Site) (*gitmodels.SourceControlRepository, *gitmodels.SourceControl) {
+func (j *DeployJob) getRepositoryAndSourceControl(ctx context.Context, site *models.Site) (*gitmodels.SourceControlRepository, *gitmodels.SourceControl) {
 	if site.SourceControlID == nil || site.SourceControlRepositoriesID == nil {
 		return nil, nil
 	}
@@ -221,7 +221,7 @@ func (j *DeployJob) getRepositoryAndSourceControl(site *models.Site) (*gitmodels
 	// Get source control
 	var sourceControl *gitmodels.SourceControl
 	if j.Deps.SourceControlRepo != nil {
-		sc, err := j.Deps.SourceControlRepo.FindByID(context.Background(), *site.SourceControlID)
+		sc, err := j.Deps.SourceControlRepo.FindByID(ctx, *site.SourceControlID)
 		if err == nil {
 			sourceControl = sc
 		}
@@ -394,7 +394,7 @@ func (j *DeployJob) createProviderDeployment(ctx context.Context, site *models.S
 		return
 	}
 
-	repo, sourceControl := j.getRepositoryAndSourceControl(site)
+	repo, sourceControl := j.getRepositoryAndSourceControl(ctx, site)
 	if repo == nil || sourceControl == nil {
 		return
 	}
@@ -468,7 +468,7 @@ func (j *DeployJob) updateProviderDeploymentStatus(ctx context.Context, site *mo
 		return
 	}
 
-	repo, sourceControl := j.getRepositoryAndSourceControl(site)
+	repo, sourceControl := j.getRepositoryAndSourceControl(ctx, site)
 	if repo == nil || sourceControl == nil {
 		return
 	}

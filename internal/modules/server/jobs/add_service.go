@@ -152,7 +152,11 @@ func (j *AddServiceJob) Failed(ctx context.Context, err error) {
 		Str("server_id", j.Payload.ServerID).
 		Msg("failed to install service")
 
-	_ = j.Deps.Repos.Service().UpdateStatus(ctx, j.Payload.ServiceID, types.ServiceStatusFailed)
+	if updateErr := j.Deps.Repos.Service().UpdateStatus(ctx, j.Payload.ServiceID, types.ServiceStatusFailed); updateErr != nil {
+		j.Deps.Logger.Error().Err(updateErr).
+			Str("service_id", j.Payload.ServiceID).
+			Msg("Failed to mark service installation as failed")
+	}
 }
 
 func NewAddServiceTask(serverID, serviceID, software string) (*asynq.Task, error) {

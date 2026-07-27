@@ -97,6 +97,9 @@ func WithBackoff[T any](ctx context.Context, cfg Config, fn func() (T, error)) (
 	delay := cfg.Initial
 
 	for attempt := 1; attempt <= cfg.MaxAttempts; attempt++ {
+		if err := ctx.Err(); err != nil {
+			return result, err
+		}
 		result, lastErr = fn()
 		if lastErr == nil {
 			return result, nil
@@ -155,6 +158,9 @@ func DoWithAttempts(ctx context.Context, cfg Config, fn func() error) (int, erro
 	var lastErr error
 
 	for attempt := 1; attempt <= cfg.MaxAttempts; attempt++ {
+		if err := ctx.Err(); err != nil {
+			return attempt - 1, err
+		}
 		lastErr = fn()
 		if lastErr == nil {
 			return attempt, nil
@@ -204,6 +210,9 @@ func Until(ctx context.Context, cfg Config, fn func() bool) bool {
 	delay := cfg.Initial
 
 	for attempt := 1; attempt <= cfg.MaxAttempts; attempt++ {
+		if ctx.Err() != nil {
+			return false
+		}
 		if fn() {
 			return true
 		}

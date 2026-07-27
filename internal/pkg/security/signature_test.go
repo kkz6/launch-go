@@ -63,7 +63,7 @@ func TestVerifier_Verify_PrefixedFormat(t *testing.T) {
 			name:      "wrong algorithm prefix",
 			signature: "sha512=" + verifier.Sign(payload, secret),
 			secret:    secret,
-			want:      true, // We only compare the signature part, not the prefix
+			want:      false,
 		},
 	}
 
@@ -221,6 +221,36 @@ func TestVerifier_Verify_StripeFormat_ExpiredTimestamp(t *testing.T) {
 	verifierNoMaxAge := NewSignatureVerifier(SignatureSHA256, SignatureFormatStripe)
 	if !verifierNoMaxAge.Verify(payload, expiredHeader, secret) {
 		t.Error("expected signature without max age to be accepted")
+	}
+}
+
+func TestVerifier_Verify_StripeFormat_RejectsFarFutureTimestamp(t *testing.T) {
+	secret := "whsec_test_secret"
+	payload := []byte(`{"type":"checkout.session.completed"}`)
+	timestamp := time.Now().Add(10 * time.Minute).Unix()
+	signedPayload := strconv.FormatInt(timestamp, 10) + "." + string(payload)
+	mac := hmac.New(sha256.New, []byte(secret))
+	_, _ = mac.Write([]byte(signedPayload))
+	header := "t=" + strconv.FormatInt(timestamp, 10) + ",v1=" + hex.EncodeToString(mac.Sum(nil))
+
+	verifier := NewSignatureVerifier(SignatureSHA256, SignatureFormatStripe).WithMaxAge(5 * time.Minute)
+	if verifier.Verify(payload, header, secret) {
+		t.Error("expected far-future signature to be rejected")
+	}
+}
+
+func TestVerifier_VerifyStandardWebhooks_RejectsFarFutureTimestamp(t *testing.T) {
+	secret := "standard-webhooks-secret"
+	payload := []byte(`{"type":"subscription.active"}`)
+	webhookID := "wh_123"
+	timestamp := strconv.FormatInt(time.Now().Add(10*time.Minute).Unix(), 10)
+	signedPayload := webhookID + "." + timestamp + "." + string(payload)
+	mac := hmac.New(sha256.New, []byte(secret))
+	_, _ = mac.Write([]byte(signedPayload))
+	signature := "v1," + base64.StdEncoding.EncodeToString(mac.Sum(nil))
+
+	if VerifyStandardWebhooksSignature(payload, webhookID, signature, timestamp, secret) {
+		t.Error("expected far-future signature to be rejected")
 	}
 }
 

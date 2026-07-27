@@ -1,7 +1,7 @@
 package handlers
 
 import (
-	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"strconv"
@@ -25,6 +25,8 @@ import (
 type ScriptExecutionHandler struct {
 	Base
 }
+
+const maxStoredScriptOutput = 10 << 20
 
 // NewScriptExecutionHandler creates a new script execution handler
 func NewScriptExecutionHandler(base Base) *ScriptExecutionHandler {
@@ -120,10 +122,14 @@ func (h *ScriptExecutionHandler) Handler() fiber.Handler {
 func (h *ScriptExecutionHandler) executeScript(c *websocket.Conn, execution *scriptModels.ScriptExecution, script *scriptModels.Script, server *serverModels.Server) {
 	// Update status to running
 	now := time.Now()
-	h.DB.Model(execution).Updates(map[string]any{
+	if err := h.DB.Model(execution).Updates(map[string]any{
 		"status":     scriptModels.ExecutionStatusRunning,
 		"started_at": now,
-	})
+	}).Error; err != nil {
+		h.LogError(err, "Failed to persist script execution start", "execution_id", execution.ID)
+		h.sendError(c, "Failed to start execution")
+		return
+	}
 
 	h.sendJSON(c, map[string]any{
 		"type":   "started",
@@ -145,8 +151,8 @@ func (h *ScriptExecutionHandler) executeScript(c *websocket.Conn, execution *scr
 	// Resolve the run-as type to actual username from server
 	runAsUser := resolveRunAsUser(execution.RunAs, script.RunAs, server)
 
-	// Use the shared SSH client so script execution gets the same TOFU
-	// host-key verification as deployments and interactive terminals.
+	// Use the managed taskrunner connection so script execution enforces the
+	// server's pinned/TOFU host key just like other remote tasks.
 	sshConfig.User = runAsUser
 	conn, err := sshConfig.Dial(10 * time.Second)
 	if err != nil {
@@ -194,46 +200,67 @@ func (h *ScriptExecutionHandler) executeScript(c *websocket.Conn, execution *scr
 		return
 	}
 
-	// SSH exposes stdout and stderr independently, but a WebSocket permits
-	// only one concurrent writer. Funnel both streams through one consumer so
-	// each chunk is sent and persisted exactly once without data races.
-	chunks := make(chan []byte, 32)
-	var readers sync.WaitGroup
-	for _, reader := range []io.Reader{stdout, stderr} {
-		readers.Add(1)
-		go func(reader io.Reader) {
-			defer readers.Done()
-			buf := make([]byte, 4096)
-			for {
-				n, readErr := reader.Read(buf)
-				if n > 0 {
-					chunks <- append([]byte(nil), buf[:n]...)
-				}
-				if readErr != nil {
+	// Collect output for storage. Gorilla WebSocket permits one concurrent
+	// writer, so both SSH streams are serialized before they reach the socket.
+	var (
+		outputBuffer []byte
+		outputMu     sync.Mutex
+		writeMu      sync.Mutex
+		readers      sync.WaitGroup
+	)
+	appendOutput := func(chunk []byte) {
+		outputMu.Lock()
+		defer outputMu.Unlock()
+		remaining := maxStoredScriptOutput - len(outputBuffer)
+		if remaining > 0 {
+			if len(chunk) > remaining {
+				chunk = chunk[:remaining]
+			}
+			outputBuffer = append(outputBuffer, chunk...)
+		}
+	}
+	stream := func(reader io.Reader) {
+		defer readers.Done()
+		buf := make([]byte, 4096)
+		for {
+			n, err := reader.Read(buf)
+			if n > 0 {
+				chunk := append([]byte(nil), buf[:n]...)
+				appendOutput(chunk)
+				writeMu.Lock()
+				writeErr := c.WriteMessage(websocket.TextMessage, chunk)
+				writeMu.Unlock()
+				if writeErr != nil {
+					h.LogError(writeErr, "Failed to stream script output", "execution_id", execution.ID)
 					return
 				}
 			}
-		}(reader)
+			if err != nil {
+				if !errors.Is(err, io.EOF) {
+					h.LogError(err, "Failed to read script output", "execution_id", execution.ID)
+				}
+				return
+			}
+		}
 	}
 
-	waitResult := make(chan error, 1)
-	go func() {
-		err := session.Wait()
-		readers.Wait()
-		close(chunks)
-		waitResult <- err
-	}()
+	readers.Add(2)
+	go stream(stdout)
+	go stream(stderr)
 
-	var outputBuffer bytes.Buffer
-	for chunk := range chunks {
-		_, _ = outputBuffer.Write(chunk)
-		_ = c.WriteMessage(websocket.TextMessage, chunk)
-	}
-	err = <-waitResult
+	// Wait for command to complete
+	err = session.Wait()
+	readers.Wait()
+	outputMu.Lock()
+	output := string(outputBuffer)
+	outputMu.Unlock()
 
 	// Get exit code
 	exitCode := 0
 	if err != nil {
+		if _, ok := err.(*ssh.ExitError); !ok {
+			h.LogError(err, "Script process wait failed", "execution_id", execution.ID)
+		}
 		if exitErr, ok := err.(*ssh.ExitError); ok {
 			exitCode = exitErr.ExitStatus()
 		} else {
@@ -249,13 +276,17 @@ func (h *ScriptExecutionHandler) executeScript(c *websocket.Conn, execution *scr
 
 	// Update execution record
 	finishedAt := time.Now()
-	output := outputBuffer.String()
-	h.DB.Model(execution).Updates(map[string]any{
+	if err := h.DB.Model(execution).Updates(map[string]any{
 		"status":      finalStatus,
 		"exit_code":   exitCode,
 		"output":      output,
 		"finished_at": finishedAt,
-	})
+	}).Error; err != nil {
+		h.LogError(err, "Failed to persist script execution result", "execution_id", execution.ID)
+		h.sendError(c, "Failed to persist execution result")
+		c.Close()
+		return
+	}
 
 	// Send completion message
 	h.sendJSON(c, map[string]any{
@@ -281,11 +312,13 @@ func (h *ScriptExecutionHandler) finishWithError(c *websocket.Conn, execution *s
 
 	// Update execution record
 	finishedAt := time.Now()
-	h.DB.Model(execution).Updates(map[string]any{
+	if err := h.DB.Model(execution).Updates(map[string]any{
 		"status":      scriptModels.ExecutionStatusFailed,
 		"output":      errMsg,
 		"finished_at": finishedAt,
-	})
+	}).Error; err != nil {
+		h.LogError(err, "Failed to persist script execution failure", "execution_id", execution.ID)
+	}
 
 	h.sendJSON(c, map[string]any{
 		"type":    "error",
@@ -305,7 +338,9 @@ func (h *ScriptExecutionHandler) sendError(c *websocket.Conn, msg string) {
 }
 
 func (h *ScriptExecutionHandler) sendJSON(c *websocket.Conn, data map[string]any) {
-	_ = h.SendJSON(c, data)
+	if err := h.SendJSON(c, data); err != nil {
+		h.LogError(err, "Failed to send script execution event")
+	}
 }
 
 // resolveRunAsUser resolves the run-as type to the actual username from the server

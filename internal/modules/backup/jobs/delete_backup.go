@@ -43,18 +43,7 @@ func (j *DeleteBackupJob) Handle(ctx context.Context) error {
 		Str("backup_id", j.Payload.BackupID).
 		Msg("removing backup configuration")
 
-	// TODO: Remove backup agent configuration from the server
-	// This would involve:
-	// 1. Remove the backup cron job
-	// 2. Remove the backup configuration file
-	// 3. Optionally clean up any local backup files
-
-	j.Deps.Logger.Info().
-		Str("server_id", j.server.ID).
-		Str("backup_id", j.Payload.BackupID).
-		Msg("backup configuration removed successfully")
-
-	return nil
+	return fmt.Errorf("backup agent configuration removal is not implemented")
 }
 
 func (j *DeleteBackupJob) Failed(ctx context.Context, err error) {

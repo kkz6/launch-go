@@ -26,7 +26,11 @@ func (h *QueueHandler) UpdateAutoRestartQueue(c *fiber.Ctx, req *dto.UpdateAutoR
 	if err != nil {
 		return err
 	}
-	if err := h.queueService.UpdateAutoRestart(c.Context(), siteID, serverID, req.Enabled); err != nil {
+	teamID, err := fiberctx.MustGetTeamID(c)
+	if err != nil {
+		return err
+	}
+	if err := h.queueService.UpdateAutoRestart(c.Context(), siteID, serverID, teamID, req.Enabled); err != nil {
 		return err
 	}
 	message := "Auto-restart queue disabled"

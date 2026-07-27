@@ -222,22 +222,24 @@ func (s *WebhookService) CreateOrder(ctx context.Context, teamID string, in Webh
 
 	// Update card details on the associated subscription
 	if in.SubscriptionID != "" && in.CardLastFour != "" {
-		s.updateSubscriptionCardInfo(ctx, in.SubscriptionID, in.CardBrand, in.CardLastFour)
+		if err := s.updateSubscriptionCardInfo(ctx, in.SubscriptionID, in.CardBrand, in.CardLastFour); err != nil {
+			return fmt.Errorf("update subscription card details: %w", err)
+		}
 	}
 
 	return nil
 }
 
 // updateSubscriptionCardInfo updates card brand and last four on a subscription
-func (s *WebhookService) updateSubscriptionCardInfo(ctx context.Context, providerSubscriptionID, cardNetwork, cardLastFour string) {
+func (s *WebhookService) updateSubscriptionCardInfo(ctx context.Context, providerSubscriptionID, cardNetwork, cardLastFour string) error {
 	subscription, err := s.repos.Subscription().FindByProviderSubscriptionID(ctx, providerSubscriptionID)
 	if err != nil {
-		return
+		return nil
 	}
 
 	subscription.CardBrand = stringOrNil(cardNetwork)
 	subscription.CardLastFour = stringOrNil(cardLastFour)
-	_ = s.repos.Subscription().Update(ctx, subscription)
+	return s.repos.Subscription().Update(ctx, subscription)
 }
 
 // RefundOrder marks an order as refunded by provider order ID

@@ -34,7 +34,7 @@ func (s *Service) buildAndDispatchDatabaseUser(ctx context.Context, serverID, te
 	}
 
 	if len(req.Databases) > 0 {
-		validDBs, err := s.repos.Database().FindByIDsAndServer(ctx, req.Databases, serverID)
+		validDBs, err := s.repos.Database().FindByIDsAndServerAndTeam(ctx, req.Databases, serverID, teamID)
 		if err != nil {
 			return nil, fmt.Errorf("failed to validate databases: %w", err)
 		}
@@ -70,11 +70,9 @@ func (s *Service) buildAndDispatchDatabaseUser(ctx context.Context, serverID, te
 }
 
 // GetDatabaseUser retrieves a database user by ID and returns the
-// response DTO. Signature matches ShowNestedFunc; teamID is currently
-// unused but threaded for the framework convention.
+// response DTO. Signature matches ShowNestedFunc.
 func (s *Service) GetDatabaseUser(ctx context.Context, id, serverID, teamID string) (dto.DatabaseUserResponse, error) {
-	_ = teamID
-	user, err := s.repos.User().FindByIDAndServer(ctx, id, serverID)
+	user, err := s.repos.User().FindByIDAndServerAndTeam(ctx, id, serverID, teamID)
 	if err != nil {
 		return dto.DatabaseUserResponse{}, err
 	}
@@ -82,10 +80,9 @@ func (s *Service) GetDatabaseUser(ctx context.Context, id, serverID, teamID stri
 }
 
 // ListDatabaseUsers lists all database users for a server. Signature
-// matches IndexNestedFunc; teamID is currently unused.
+// matches IndexNestedFunc.
 func (s *Service) ListDatabaseUsers(ctx context.Context, serverID, teamID string) ([]dto.DatabaseUserResponse, error) {
-	_ = teamID
-	users, err := s.repos.User().FindByServer(ctx, serverID)
+	users, err := s.repos.User().FindByServerAndTeam(ctx, serverID, teamID)
 	if err != nil {
 		return nil, err
 	}
@@ -95,16 +92,15 @@ func (s *Service) ListDatabaseUsers(ctx context.Context, serverID, teamID string
 // UpdateDatabaseUser updates a database user and returns the response
 // DTO. Signature matches UpdateNestedFunc.
 func (s *Service) UpdateDatabaseUser(ctx context.Context, id, serverID, teamID, userID string, req *dto.UpdateDatabaseUserRequest) (dto.DatabaseUserResponse, error) {
-	_ = teamID
-	dbUser, err := s.applyDatabaseUserUpdate(ctx, id, serverID, userID, req)
+	dbUser, err := s.applyDatabaseUserUpdate(ctx, id, serverID, teamID, userID, req)
 	if err != nil {
 		return dto.DatabaseUserResponse{}, err
 	}
 	return dto.ToDatabaseUserResponse(dbUser), nil
 }
 
-func (s *Service) applyDatabaseUserUpdate(ctx context.Context, id, serverID, userID string, req *dto.UpdateDatabaseUserRequest) (*models.DatabaseUser, error) {
-	dbUser, err := s.repos.User().FindByIDAndServer(ctx, id, serverID)
+func (s *Service) applyDatabaseUserUpdate(ctx context.Context, id, serverID, teamID, userID string, req *dto.UpdateDatabaseUserRequest) (*models.DatabaseUser, error) {
+	dbUser, err := s.repos.User().FindByIDAndServerAndTeam(ctx, id, serverID, teamID)
 	if err != nil {
 		return nil, err
 	}
@@ -114,7 +110,7 @@ func (s *Service) applyDatabaseUserUpdate(ctx context.Context, id, serverID, use
 	}
 
 	if len(req.Databases) > 0 {
-		validDBs, err := s.repos.Database().FindByIDsAndServer(ctx, req.Databases, serverID)
+		validDBs, err := s.repos.Database().FindByIDsAndServerAndTeam(ctx, req.Databases, serverID, teamID)
 		if err != nil {
 			return nil, fmt.Errorf("failed to validate databases: %w", err)
 		}
@@ -151,8 +147,7 @@ func (s *Service) applyDatabaseUserUpdate(ctx context.Context, id, serverID, use
 // DeleteDatabaseUser deletes a database user from a server. Signature
 // matches DeleteNestedFunc.
 func (s *Service) DeleteDatabaseUser(ctx context.Context, id, serverID, teamID, userID string) error {
-	_ = teamID
-	dbUser, err := s.repos.User().FindByIDAndServer(ctx, id, serverID)
+	dbUser, err := s.repos.User().FindByIDAndServerAndTeam(ctx, id, serverID, teamID)
 	if err != nil {
 		return err
 	}

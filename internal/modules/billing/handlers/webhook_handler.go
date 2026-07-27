@@ -123,11 +123,16 @@ func (h *WebhookHandler) HandleWebhook(c *fiber.Ctx) error {
 
 	if err := h.processEvent(c.Context(), envelope); err != nil {
 		h.logger.Error().Err(err).Str("event_id", event.ID).Str("type", envelope.Type).Msg("Failed to process webhook")
-		_ = h.webhookService.MarkWebhookEventFailed(c.Context(), event.ID, err.Error())
+		if markErr := h.webhookService.MarkWebhookEventFailed(c.Context(), event.ID, err.Error()); markErr != nil {
+			h.logger.Error().Err(markErr).Str("event_id", event.ID).Msg("Failed to mark webhook event failed")
+		}
 		return fiberctx.OK(c, "Webhook received but processing failed", nil)
 	}
 
-	_ = h.webhookService.MarkWebhookEventProcessed(c.Context(), event.ID)
+	if markErr := h.webhookService.MarkWebhookEventProcessed(c.Context(), event.ID); markErr != nil {
+		h.logger.Error().Err(markErr).Str("event_id", event.ID).Msg("Failed to mark webhook event processed")
+		return fiberctx.RespondInternalError(c, "Failed to finalize webhook event")
+	}
 
 	return fiberctx.OK(c, "Webhook processed successfully", nil)
 }
@@ -295,16 +300,23 @@ func (h *WebhookHandler) ProcessPendingWebhooks(ctx context.Context) error {
 	for _, event := range events {
 		var envelope polarEvent
 		if err := json.Unmarshal([]byte(event.Payload), &envelope); err != nil {
-			_ = h.webhookService.MarkWebhookEventFailed(ctx, event.ID, err.Error())
+			if markErr := h.webhookService.MarkWebhookEventFailed(ctx, event.ID, err.Error()); markErr != nil {
+				h.logger.Error().Err(markErr).Str("event_id", event.ID).Msg("Failed to mark malformed webhook failed")
+			}
 			continue
 		}
 
 		if err := h.processEvent(ctx, envelope); err != nil {
-			_ = h.webhookService.MarkWebhookEventFailed(ctx, event.ID, err.Error())
+			if markErr := h.webhookService.MarkWebhookEventFailed(ctx, event.ID, err.Error()); markErr != nil {
+				h.logger.Error().Err(markErr).Str("event_id", event.ID).Msg("Failed to mark webhook processing failure")
+			}
 			continue
 		}
 
-		_ = h.webhookService.MarkWebhookEventProcessed(ctx, event.ID)
+		if markErr := h.webhookService.MarkWebhookEventProcessed(ctx, event.ID); markErr != nil {
+			h.logger.Error().Err(markErr).Str("event_id", event.ID).Msg("Failed to mark pending webhook processed")
+			return markErr
+		}
 	}
 
 	return nil

@@ -106,7 +106,9 @@ func (j *EnableLaravelSchedulerJob) dispatchInstallCron(ctx context.Context, cro
 	}
 
 	if err := j.Deps.DispatchTask(task); err != nil {
-		_ = j.Deps.ServerRepos.Cron().Delete(ctx, cronID)
+		if cleanupErr := j.Deps.ServerRepos.Cron().Delete(ctx, cronID); cleanupErr != nil {
+			j.Deps.Logger.Error().Err(cleanupErr).Str("cron_id", cronID).Msg("Failed to clean up scheduler cron after dispatch failure")
+		}
 		return fmt.Errorf("failed to dispatch install cron job: %w", err)
 	}
 

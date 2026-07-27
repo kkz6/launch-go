@@ -234,9 +234,13 @@ func (j *WaitForServerToConnectJob) Failed(ctx context.Context, err error) {
 	}
 
 	// Update connectivity status
-	_ = j.Deps.Repos.Server().UpdateFields(ctx, j.Payload.ServerID, map[string]any{
+	if updateErr := j.Deps.Repos.Server().UpdateFields(ctx, j.Payload.ServerID, map[string]any{
 		"connected": false,
-	})
+	}); updateErr != nil {
+		j.Deps.Logger.Error().Err(updateErr).
+			Str("server_id", j.Payload.ServerID).
+			Msg("Failed to mark server disconnected after connection failure")
+	}
 
 	server, findErr := j.Deps.Repos.Server().FindByID(ctx, j.Payload.ServerID)
 	if findErr == nil {

@@ -169,7 +169,9 @@ func (j *InstallCaddyfileJob) Failed(ctx context.Context, err error) {
 	now := time.Now()
 	site.InstalledAt = nil
 	site.InstallationFailedAt = &now
-	_ = j.Deps.Repos.Site().Update(ctx, site)
+	if updateErr := j.Deps.Repos.Site().Update(ctx, site); updateErr != nil {
+		j.Deps.Logger.Error().Err(updateErr).Str("site_id", site.ID).Msg("Failed to persist Caddyfile installation failure")
+	}
 
 	// Broadcast site.installation_failed event
 	server, serverErr := j.Deps.ServerRepos.Server().FindByID(ctx, site.ServerID)

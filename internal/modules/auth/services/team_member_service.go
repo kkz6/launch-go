@@ -16,16 +16,24 @@ import (
 	authtypes "github.com/kkz6/launch-go/internal/modules/auth/types"
 	"github.com/kkz6/launch-go/internal/modules/notification/channels"
 	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
+	launchcache "github.com/kkz6/launch-go/internal/pkg/launch/cache"
 	"github.com/kkz6/launch-go/internal/pkg/mail/templates"
 	"github.com/kkz6/launch-go/internal/pkg/signedurl"
 )
 
 // TeamMemberService handles team member management operations
 type TeamMemberService struct {
-	repos       contracts.RepositoryRegistry
-	config      *config.Config
-	emailSender channels.EmailSender
-	logger      *zerolog.Logger
+	repos           contracts.RepositoryRegistry
+	config          *config.Config
+	emailSender     channels.EmailSender
+	logger          *zerolog.Logger
+	membershipCache *launchcache.TeamMembershipCache
+}
+
+// SetMembershipCache wires the shared membership cache so mutations cannot
+// leave stale authorization data behind.
+func (s *TeamMemberService) SetMembershipCache(c *launchcache.TeamMembershipCache) {
+	s.membershipCache = c
 }
 
 // NewTeamMemberService creates a new TeamMemberService instance
@@ -127,6 +135,7 @@ func (s *TeamMemberService) AcceptTeamInvitation(ctx context.Context, userID, in
 	if err := s.repos.TeamMember().AddUser(ctx, invitation.TeamID, userID, role); err != nil {
 		return err
 	}
+	s.invalidateMembership(ctx, userID, invitation.TeamID)
 
 	// Delete invitation
 	return s.repos.TeamInvitation().Delete(ctx, invitationID)
@@ -194,7 +203,11 @@ func (s *TeamMemberService) UpdateTeamMemberRole(ctx context.Context, userID, te
 		return errors.New("cannot update owner's role")
 	}
 
-	return s.repos.TeamMember().UpdateRole(ctx, teamID, memberID, req.Role)
+	if err := s.repos.TeamMember().UpdateRole(ctx, teamID, memberID, req.Role); err != nil {
+		return err
+	}
+	s.invalidateMembership(ctx, memberID, teamID)
+	return nil
 }
 
 // RemoveTeamMember removes a member from a team
@@ -218,6 +231,7 @@ func (s *TeamMemberService) RemoveTeamMember(ctx context.Context, userID, teamID
 	if err := s.repos.TeamMember().RemoveUser(ctx, teamID, memberID); err != nil {
 		return err
 	}
+	s.invalidateMembership(ctx, memberID, teamID)
 
 	// If this was their current team, switch to another.
 	// Errors here are logged but not returned since the member removal already succeeded.
@@ -249,6 +263,18 @@ func (s *TeamMemberService) RemoveTeamMember(ctx context.Context, userID, teamID
 	}
 
 	return nil
+}
+
+func (s *TeamMemberService) invalidateMembership(ctx context.Context, userID, teamID string) {
+	if s.membershipCache == nil {
+		return
+	}
+	if err := s.membershipCache.InvalidateMembership(ctx, userID, teamID); err != nil {
+		s.logger.Error().Err(err).
+			Str("user_id", userID).
+			Str("team_id", teamID).
+			Msg("Failed to invalidate team membership cache")
+	}
 }
 
 // GetTeamMembers gets all members of a team (excluding owner)

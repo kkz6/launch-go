@@ -224,7 +224,9 @@ func (j *RollbackJob) Failed(ctx context.Context, err error) {
 	}
 
 	deployment.Status = sitetypes.DeploymentStatusFailed
-	_ = j.Deps.Repos.Deployment().Update(ctx, deployment)
+	if updateErr := j.Deps.Repos.Deployment().Update(ctx, deployment); updateErr != nil {
+		j.Deps.Logger.Error().Err(updateErr).Str("deployment_id", deployment.ID).Msg("Failed to mark rollback deployment failed")
+	}
 
 	// Get site and server for broadcasting
 	site, siteErr := j.Deps.Repos.Site().FindByID(ctx, j.Payload.SiteID)

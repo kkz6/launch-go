@@ -98,7 +98,9 @@ func (h *FeatureJobHelpers) DispatchInstallQueue(ctx context.Context, queueID, s
 
 	if err := h.Deps.DispatchTask(task); err != nil {
 		// Cleanup the queue record if dispatch fails
-		_ = h.Deps.Repos.Queue().Delete(ctx, queueID)
+		if cleanupErr := h.Deps.Repos.Queue().Delete(ctx, queueID); cleanupErr != nil {
+			h.Deps.Logger.Error().Err(cleanupErr).Str("queue_id", queueID).Msg("failed to clean up queue after dispatch failure")
+		}
 		return fmt.Errorf("failed to dispatch install queue job: %w", err)
 	}
 
@@ -152,7 +154,9 @@ func (h *FeatureJobHelpers) HandleFailure(ctx context.Context, err error, siteID
 	}
 
 	site.RemovePendingFeature(featureName)
-	_ = h.Deps.Repos.Site().UpdateFields(ctx, site.ID, map[string]interface{}{
+	if updateErr := h.Deps.Repos.Site().UpdateFields(ctx, site.ID, map[string]interface{}{
 		"pending_features": site.PendingFeatures,
-	})
+	}); updateErr != nil {
+		h.Deps.Logger.Error().Err(updateErr).Str("site_id", site.ID).Msg("failed to clear pending feature after job failure")
+	}
 }

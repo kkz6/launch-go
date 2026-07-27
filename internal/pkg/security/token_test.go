@@ -59,6 +59,15 @@ func TestGenerateHex(t *testing.T) {
 	}
 }
 
+func TestGenerateRejectsNonPositiveLength(t *testing.T) {
+	for _, length := range []int{0, -1} {
+		_, err := NewTokenGenerator(length).Generate()
+		if err == nil {
+			t.Errorf("expected error for length %d", length)
+		}
+	}
+}
+
 func TestGenerateBase64(t *testing.T) {
 	byteLength := 24
 	g := NewTokenGenerator(byteLength).WithEncoding(TokenBase64)

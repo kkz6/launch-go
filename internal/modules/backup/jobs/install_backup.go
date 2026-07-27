@@ -44,27 +44,7 @@ func (j *InstallBackupJob) Handle(ctx context.Context) error {
 		Str("backup_id", j.backup.ID).
 		Msg("installing backup configuration")
 
-	// TODO: Generate and deploy backup agent configuration to the server
-	// This would involve:
-	// 1. Generate the backup agent configuration
-	// 2. Deploy it to the server via SSH
-	// 3. Set up the cron schedule
-	// 4. Test connectivity to storage provider
-
-	// Mark backup as installed
-	if err := j.Deps.Repos.Backup().UpdateBackupFields(ctx, j.backup.ID, map[string]interface{}{
-		"installed_at":           "NOW()",
-		"installation_failed_at": nil,
-	}); err != nil {
-		return fmt.Errorf("mark backup as installed: %w", err)
-	}
-
-	j.Deps.Logger.Info().
-		Str("server_id", j.server.ID).
-		Str("backup_id", j.backup.ID).
-		Msg("backup configuration installed successfully")
-
-	return nil
+	return fmt.Errorf("backup agent installation is not implemented")
 }
 
 func (j *InstallBackupJob) Failed(ctx context.Context, err error) {
@@ -74,9 +54,11 @@ func (j *InstallBackupJob) Failed(ctx context.Context, err error) {
 		Msg("failed to install backup configuration")
 
 	// Mark installation as failed
-	_ = j.Deps.Repos.Backup().UpdateBackupFields(ctx, j.Payload.BackupID, map[string]interface{}{
+	if updateErr := j.Deps.Repos.Backup().UpdateBackupFields(ctx, j.Payload.BackupID, map[string]interface{}{
 		"installation_failed_at": "NOW()",
-	})
+	}); updateErr != nil {
+		j.Deps.Logger.Error().Err(updateErr).Str("backup_id", j.Payload.BackupID).Msg("failed to persist backup installation failure")
+	}
 }
 
 func NewInstallBackupTask(serverID, backupID string, userID *string) (*asynq.Task, error) {

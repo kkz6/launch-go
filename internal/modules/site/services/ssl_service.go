@@ -14,6 +14,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/site/models"
 	sitetypes "github.com/kkz6/launch-go/internal/modules/site/types"
 	"github.com/kkz6/launch-go/internal/pkg/dbtype"
+	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 )
 
 // SSLService handles business logic for SSL/TLS.
@@ -42,10 +43,13 @@ func (s *SSLService) SetStoredCertificateRepository(r *certrepos.StoredCertifica
 }
 
 // UpdateSSL updates SSL settings for a site
-func (s *SSLService) UpdateSSL(ctx context.Context, siteID, serverID, userID string, req *dto.UpdateSSLRequest) error {
+func (s *SSLService) UpdateSSL(ctx context.Context, siteID, serverID, teamID, userID string, req *dto.UpdateSSLRequest) error {
 	site, err := s.Repos().Site().FindByIDAndServer(ctx, siteID, serverID)
 	if err != nil {
 		return err
+	}
+	if site.TeamID != teamID {
+		return fiberutil.NotFound()
 	}
 
 	// `stored` is a client-side label only; on the server it folds
@@ -184,9 +188,12 @@ func (s *SSLService) UpdateSSL(ctx context.Context, siteID, serverID, userID str
 // ListCertificates returns all certificates for a site. Signature
 // matches IndexDoubleNestedFunc.
 func (s *SSLService) ListCertificates(ctx context.Context, siteID, serverID, teamID string) ([]dto.CertificateResponse, error) {
-	_ = teamID
-	if _, err := s.Repos().Site().FindByIDAndServer(ctx, siteID, serverID); err != nil {
+	site, err := s.Repos().Site().FindByIDAndServer(ctx, siteID, serverID)
+	if err != nil {
 		return nil, err
+	}
+	if site.TeamID != teamID {
+		return nil, fiberutil.NotFound()
 	}
 	certs, err := s.Repos().Certificate().FindBySite(ctx, siteID)
 	if err != nil {

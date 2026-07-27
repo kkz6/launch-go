@@ -4,6 +4,7 @@
 package httpclient
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -199,7 +200,7 @@ func (c *Client) NewRequest(ctx context.Context, method, path string, body inter
 		if err != nil {
 			return nil, fmt.Errorf("failed to marshal request body: %w", err)
 		}
-		bodyReader = &bytesReader{data: jsonBody}
+		bodyReader = bytes.NewReader(jsonBody)
 	}
 
 	url := c.baseURL + path
@@ -324,19 +325,4 @@ func IsHTTPError(err error) (*HTTPError, bool) {
 		return httpErr, true
 	}
 	return nil, false
-}
-
-// bytesReader is a simple io.Reader implementation for byte slices.
-type bytesReader struct {
-	data []byte
-	pos  int
-}
-
-func (r *bytesReader) Read(p []byte) (n int, err error) {
-	if r.pos >= len(r.data) {
-		return 0, io.EOF
-	}
-	n = copy(p, r.data[r.pos:])
-	r.pos += n
-	return n, nil
 }

@@ -93,8 +93,7 @@ func (s *BackupService) buildAndDispatchBackup(ctx context.Context, serverID, te
 // UpdateBackup updates an existing backup configuration. The backup must
 // belong to the given server.
 func (s *BackupService) UpdateBackup(ctx context.Context, id, serverID, teamID, userID string, req *dto.UpdateBackupRequest) (dto.BackupResponse, error) {
-	_ = teamID
-	backup, err := s.Repos().Backup().FindBackupByIDAndServer(ctx, id, serverID)
+	backup, err := s.Repos().Backup().FindBackupByIDAndServerAndTeam(ctx, id, serverID, teamID)
 	if err != nil {
 		return dto.BackupResponse{}, err
 	}
@@ -136,8 +135,7 @@ func (s *BackupService) UpdateBackup(ctx context.Context, id, serverID, teamID, 
 
 // DeleteBackup deletes a backup configuration.
 func (s *BackupService) DeleteBackup(ctx context.Context, id, serverID, teamID, userID string) error {
-	_ = teamID
-	backup, err := s.Repos().Backup().FindBackupByIDAndServer(ctx, id, serverID)
+	backup, err := s.Repos().Backup().FindBackupByIDAndServerAndTeam(ctx, id, serverID, teamID)
 	if err != nil {
 		return err
 	}
@@ -160,8 +158,7 @@ func (s *BackupService) DeleteBackup(ctx context.Context, id, serverID, teamID, 
 // GetBackup retrieves a backup by ID, verifying it belongs to the server.
 // Signature matches ShowNestedFunc.
 func (s *BackupService) GetBackup(ctx context.Context, id, serverID, teamID string) (dto.BackupResponse, error) {
-	_ = teamID
-	backup, err := s.Repos().Backup().FindBackupByIDAndServer(ctx, id, serverID)
+	backup, err := s.Repos().Backup().FindBackupByIDAndServerAndTeam(ctx, id, serverID, teamID)
 	if err != nil {
 		return dto.BackupResponse{}, err
 	}
@@ -170,8 +167,7 @@ func (s *BackupService) GetBackup(ctx context.Context, id, serverID, teamID stri
 
 // ListBackups lists all backups for a server. Signature matches IndexNestedFunc.
 func (s *BackupService) ListBackups(ctx context.Context, serverID, teamID string) ([]dto.BackupResponse, error) {
-	_ = teamID
-	backups, err := s.Repos().Backup().FindBackupsByServerID(ctx, serverID)
+	backups, err := s.Repos().Backup().FindBackupsByServerAndTeam(ctx, serverID, teamID)
 	if err != nil {
 		return nil, err
 	}
@@ -184,9 +180,8 @@ func (s *BackupService) ListBackups(ctx context.Context, serverID, teamID string
 
 // RunBackup triggers a manual backup run. Signature matches ActionItemNestedFunc.
 func (s *BackupService) RunBackup(ctx context.Context, id, serverID, teamID, userID string) error {
-	_ = teamID
 	_ = userID
-	backup, err := s.Repos().Backup().FindBackupByIDAndServer(ctx, id, serverID)
+	backup, err := s.Repos().Backup().FindBackupByIDAndServerAndTeam(ctx, id, serverID, teamID)
 	if err != nil {
 		return err
 	}

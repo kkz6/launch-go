@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/hibiken/asynq"
 
@@ -71,8 +70,6 @@ func (j *RunManualBackupJob) Handle(ctx context.Context) error {
 
 	// Create the backup_jobs row up-front so the history list shows it
 	// immediately. Status starts pending; OnTaskCreated flips to running.
-	now := time.Now().UTC()
-	_ = now
 	j.job = &models.BackupJob{
 		Status:            backuptypes.BackupJobStatusPending,
 		BackupID:          j.backup.ID,
@@ -84,9 +81,16 @@ func (j *RunManualBackupJob) Handle(ctx context.Context) error {
 	}
 
 	// Parse the JSON-encoded include/exclude paths off the backup row.
-	var includes, excludes []string
-	_ = json.Unmarshal([]byte(j.backup.IncludeFiles), &includes)
-	_ = json.Unmarshal([]byte(j.backup.ExcludeFiles), &excludes)
+	includes, err := parseBackupPaths(j.backup.IncludeFiles)
+	if err != nil {
+		j.recordFailure(ctx, fmt.Sprintf("invalid include files configuration: %v", err), nil)
+		return nil
+	}
+	excludes, err := parseBackupPaths(j.backup.ExcludeFiles)
+	if err != nil {
+		j.recordFailure(ctx, fmt.Sprintf("invalid exclude files configuration: %v", err), nil)
+		return nil
+	}
 
 	// Resolve linked databases → dump specs. Best-effort: skip any that
 	// can't be resolved and log instead of failing the whole run, but if
@@ -122,7 +126,9 @@ func (j *RunManualBackupJob) Handle(ctx context.Context) error {
 			tid := taskID
 			j.job.TaskID = &tid
 			j.job.Status = backuptypes.BackupJobStatusRunning
-			_ = j.Deps.Repos.BackupJob().UpdateBackupJob(ctx, j.job)
+			if err := j.Deps.Repos.BackupJob().UpdateBackupJob(ctx, j.job); err != nil {
+				j.Deps.Logger.Error().Err(err).Str("job_id", j.job.ID).Msg("failed to persist running backup job")
+			}
 			j.broadcast("backup.run.started", map[string]any{
 				"backup_id": j.backup.ID,
 				"job_id":    j.job.ID,
@@ -141,8 +147,6 @@ func (j *RunManualBackupJob) Handle(ctx context.Context) error {
 		exit = result.GetExitCode()
 	}
 
-	finishedAt := time.Now().UTC()
-	_ = finishedAt
 	if runErr != nil || exit != 0 {
 		msg := ""
 		if runErr != nil {
@@ -190,7 +194,7 @@ func (j *RunManualBackupJob) Failed(ctx context.Context, err error) {
 	// already handled by recordFailure().
 	if j.job != nil && j.job.Status != backuptypes.BackupJobStatusFailed && j.job.Status != backuptypes.BackupJobStatusFinished {
 		msg := err.Error()
-		_ = j.Deps.Repos.BackupJob().UpdateBackupJob(ctx, &models.BackupJob{
+		if updateErr := j.Deps.Repos.BackupJob().UpdateBackupJob(ctx, &models.BackupJob{
 			BaseModel:         j.job.BaseModel,
 			TeamScoped:        j.job.TeamScoped,
 			Status:            backuptypes.BackupJobStatusFailed,
@@ -198,7 +202,9 @@ func (j *RunManualBackupJob) Failed(ctx context.Context, err error) {
 			StorageProviderID: j.job.StorageProviderID,
 			TaskID:            j.job.TaskID,
 			Error:             &msg,
-		})
+		}); updateErr != nil {
+			j.Deps.Logger.Error().Err(updateErr).Str("job_id", j.job.ID).Msg("failed to persist manual backup failure")
+		}
 	}
 }
 
@@ -211,7 +217,9 @@ func (j *RunManualBackupJob) recordFailure(ctx context.Context, message string, 
 		errCopy := truncate(message, 4000)
 		j.job.Error = &errCopy
 		j.job.TaskID = taskID
-		_ = j.Deps.Repos.BackupJob().UpdateBackupJob(ctx, j.job)
+		if updateErr := j.Deps.Repos.BackupJob().UpdateBackupJob(ctx, j.job); updateErr != nil {
+			j.Deps.Logger.Error().Err(updateErr).Str("job_id", j.job.ID).Msg("failed to persist backup failure state")
+		}
 	}
 	payload := map[string]any{
 		"backup_id": j.Payload.BackupID,
@@ -224,6 +232,17 @@ func (j *RunManualBackupJob) recordFailure(ctx context.Context, message string, 
 		payload["task_id"] = *taskID
 	}
 	j.broadcast("backup.run.failed", payload)
+}
+
+func parseBackupPaths(raw string) ([]string, error) {
+	if strings.TrimSpace(raw) == "" {
+		return nil, nil
+	}
+	var paths []string
+	if err := json.Unmarshal([]byte(raw), &paths); err != nil {
+		return nil, err
+	}
+	return paths, nil
 }
 
 // broadcast emits a WS event scoped to the backup's team channel. The

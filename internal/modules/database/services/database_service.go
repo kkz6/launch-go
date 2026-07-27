@@ -62,7 +62,7 @@ func (s *Service) buildAndDispatchDatabase(ctx context.Context, serverID, teamID
 		}
 
 		if !req.CreateUser && req.ExistingUserID != nil && *req.ExistingUserID != "" {
-			user, err := s.repos.User().FindByIDAndServer(ctx, *req.ExistingUserID, serverID)
+			user, err := s.repos.User().FindByIDAndServerAndTeam(ctx, *req.ExistingUserID, serverID, teamID)
 			if err != nil {
 				return fmt.Errorf("existing user not found: %w", err)
 			}
@@ -232,10 +232,8 @@ func (s *Service) DeleteDatabase(ctx context.Context, id, serverID, teamID, user
 
 // SyncDatabases dispatches a job to sync the server's databases into the
 // local DB. Signature matches ActionNestedFunc:
-// (ctx, parentID/serverID, teamID, userID). teamID is currently unused.
+// (ctx, parentID/serverID, teamID, userID).
 func (s *Service) SyncDatabases(ctx context.Context, serverID, teamID, userID string) error {
-	_ = ctx
-	_ = teamID
 	task, err := jobs.NewSyncDatabasesTask(serverID, userIDPtr(userID))
 	if err != nil {
 		return err

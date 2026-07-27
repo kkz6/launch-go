@@ -88,7 +88,9 @@ func (j *EnableLaravelReverbJob) Handle(ctx context.Context) error {
 
 		if err := j.dispatchInstallDaemon(daemon.ID, server.ID); err != nil {
 			// Cleanup daemon record if dispatch fails
-			_ = j.Deps.ServerRepos.Daemon().Delete(ctx, daemon.ID)
+			if cleanupErr := j.Deps.ServerRepos.Daemon().Delete(ctx, daemon.ID); cleanupErr != nil {
+				j.Deps.Logger.Error().Err(cleanupErr).Str("daemon_id", daemon.ID).Msg("Failed to clean up Reverb daemon after dispatch failure")
+			}
 			return fmt.Errorf("failed to dispatch install daemon job: %w", err)
 		}
 

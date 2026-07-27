@@ -14,6 +14,7 @@ func TestNewProviderFactory(t *testing.T) {
 	factory := NewProviderFactory()
 	if factory == nil {
 		t.Fatal("NewProviderFactory() returned nil")
+		return
 	}
 	if factory.configs == nil {
 		t.Error("ProviderFactory.configs should be initialized")
@@ -104,7 +105,8 @@ func TestProviderFactory_GetProvider(t *testing.T) {
 					t.Errorf("Unexpected error: %v", err)
 				}
 				if provider == nil {
-					t.Error("Expected provider but got nil")
+					t.Fatal("Expected provider but got nil")
+					return
 				}
 				if provider.GetType() != tt.provider {
 					t.Errorf("Provider type = %v, want %v", provider.GetType(), tt.provider)
@@ -137,6 +139,7 @@ func TestProviderFactory_GetProviderWithInstallation(t *testing.T) {
 
 	if provider == nil {
 		t.Fatal("Expected provider but got nil")
+		return
 	}
 
 	// Verify that SetSourceControl was called
@@ -338,6 +341,7 @@ func TestGitHubProvider_GetCommitData(t *testing.T) {
 
 	if commitData == nil {
 		t.Fatal("GetCommitData() returned nil")
+		return
 	}
 	if commitData.CommitID != "abc123def456789" {
 		t.Errorf("CommitID = %v, want abc123def456789", commitData.CommitID)

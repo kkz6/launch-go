@@ -198,9 +198,11 @@ func (s *DatabaseService) CreateDatabase(
 	if err := s.EnqueueTask(task); err != nil {
 		// Failure to enqueue → mark failed so the UI shows the dispatch
 		// error rather than a forever-spinner.
-		_ = s.Repos().Database().UpdateFields(ctx, d.ID, map[string]any{
+		if updateErr := s.Repos().Database().UpdateFields(ctx, d.ID, map[string]any{
 			"status": dockertypes.ApplicationStatusFailed,
-		})
+		}); updateErr != nil {
+			s.LogError(updateErr, "failed to mark database dispatch as failed", "database_id", d.ID)
+		}
 		return dto.DatabaseResponse{}, err
 	}
 
@@ -235,8 +237,13 @@ func (s *DatabaseService) DeleteDatabase(
 	// will compute the deterministic launch-db-<id>-data volume name
 	// and `docker volume rm` it after the container is gone.
 	task, err := jobs.NewDatabaseLifecycleTask(d.ID, d.ProjectID, serverID, teamID, "rm", removeVolume)
-	if err == nil {
-		_ = s.EnqueueTask(task)
+	if err != nil {
+		s.LogError(err, "failed to create database removal task", "database_id", d.ID)
+	} else if err := s.EnqueueTask(task); err != nil {
+		// The row is already soft-deleted, so returning the enqueue error would
+		// report a failed deletion despite the durable state change. Log it for
+		// operator recovery instead of silently leaking the container.
+		s.LogError(err, "failed to enqueue database removal task", "database_id", d.ID)
 	}
 	s.BroadcastToTeam(teamID, "docker.database.deleted", map[string]any{
 		"id":         d.ID,

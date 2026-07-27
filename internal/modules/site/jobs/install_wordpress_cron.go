@@ -86,7 +86,9 @@ func (j *InstallWordpressCronJob) Handle(ctx context.Context) error {
 	// Dispatch InstallCron job
 	if err := j.dispatchInstallCron(cron.ID, server.ID); err != nil {
 		// Cleanup the cron record if dispatch fails
-		_ = j.Deps.ServerRepos.Cron().Delete(ctx, cron.ID)
+		if cleanupErr := j.Deps.ServerRepos.Cron().Delete(ctx, cron.ID); cleanupErr != nil {
+			j.Deps.Logger.Error().Err(cleanupErr).Str("cron_id", cron.ID).Msg("Failed to clean up WordPress cron after dispatch failure")
+		}
 		return fmt.Errorf("failed to dispatch install cron job: %w", err)
 	}
 

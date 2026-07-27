@@ -18,6 +18,18 @@ type mockChecker struct {
 	called atomic.Int32
 }
 
+type blockingChecker struct {
+	name    string
+	release <-chan struct{}
+}
+
+func (c *blockingChecker) Name() string { return c.name }
+
+func (c *blockingChecker) Check(context.Context) error {
+	<-c.release
+	return nil
+}
+
 func (m *mockChecker) Name() string {
 	return m.name
 }
@@ -224,6 +236,22 @@ func TestAggregator_Check(t *testing.T) {
 		assert.Equal(t, StatusDegraded, result.Status)
 		assert.Len(t, result.Checks, 1)
 		assert.Equal(t, StatusUnhealthy, result.Checks[0].Status)
+	})
+
+	t.Run("returns when a checker ignores cancellation", func(t *testing.T) {
+		agg := NewAggregator()
+		release := make(chan struct{})
+		agg.Add(&blockingChecker{name: "stuck", release: release})
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+		defer cancel()
+		defer close(release)
+
+		start := time.Now()
+		result := agg.Check(ctx)
+
+		assert.Less(t, time.Since(start), time.Second)
+		assert.Equal(t, StatusDegraded, result.Status)
+		assert.Equal(t, context.DeadlineExceeded.Error(), result.Checks[0].Message)
 	})
 
 	t.Run("calls each checker exactly once", func(t *testing.T) {

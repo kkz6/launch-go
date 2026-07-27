@@ -158,7 +158,7 @@ func (r *Request) Build(ctx context.Context) (*http.Request, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to marshal request body: %w", err)
 		}
-		bodyReader = &bytesReader{data: jsonBody}
+		bodyReader = bytes.NewReader(jsonBody)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, r.method, reqURL, bodyReader)

@@ -66,6 +66,16 @@ type GHAWebhookHandlerConfig struct {
 	Logger       *zerolog.Logger
 }
 
+const ghaPersistenceTimeout = 30 * time.Second
+
+// ghaContext keeps webhook persistence bounded without inheriting the
+// fasthttp request context, which is canceled as soon as Fiber finishes the
+// handler. The database write must be allowed to finish, but never hang
+// indefinitely after the callback has been accepted.
+func ghaContext(c *gofiber.Ctx) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.WithoutCancel(c.Context()), ghaPersistenceTimeout)
+}
+
 func NewGHAWebhookHandler(cfg GHAWebhookHandlerConfig) *GHAWebhookHandler {
 	return &GHAWebhookHandler{
 		db:           cfg.DB,
@@ -155,7 +165,9 @@ func (h *GHAWebhookHandler) GHAApplicationDeploy(c *gofiber.Ctx) error {
 		return err
 	}
 
-	deployment, err := h.upsertGHADeployment(ghaDeploymentUpsert{
+	requestCtx, cancel := ghaContext(c)
+	defer cancel()
+	deployment, err := h.upsertGHADeployment(requestCtx, ghaDeploymentUpsert{
 		TargetType:    "application",
 		TargetID:      app.ID,
 		TeamID:        app.TeamID,
@@ -415,7 +427,9 @@ func (h *GHAWebhookHandler) GHAApplicationStatus(c *gofiber.Ctx) error {
 		return fiberutil.Validation("run_id is required")
 	}
 
-	if err := h.markGHADeploymentFailed("application", app.ID, app.TeamID, app.ServerID, payload); err != nil {
+	requestCtx, cancel := ghaContext(c)
+	defer cancel()
+	if err := h.markGHADeploymentFailed(requestCtx, "application", app.ID, app.TeamID, app.ServerID, payload); err != nil {
 		return err
 	}
 
@@ -463,7 +477,9 @@ func (h *GHAWebhookHandler) GHAComposeDeploy(c *gofiber.Ctx) error {
 	// between deploys.
 	primaryImage := primaryServiceImage(payload.ServiceImages)
 
-	deployment, err := h.upsertGHADeployment(ghaDeploymentUpsert{
+	requestCtx, cancel := ghaContext(c)
+	defer cancel()
+	deployment, err := h.upsertGHADeployment(requestCtx, ghaDeploymentUpsert{
 		TargetType:    "compose",
 		TargetID:      compose.ID,
 		TeamID:        compose.TeamID,
@@ -563,7 +579,9 @@ func (h *GHAWebhookHandler) GHAComposeStatus(c *gofiber.Ctx) error {
 		return fiberutil.Validation("run_id is required")
 	}
 
-	if err := h.markGHADeploymentFailed("compose", compose.ID, compose.TeamID, compose.ServerID, payload); err != nil {
+	requestCtx, cancel := ghaContext(c)
+	defer cancel()
+	if err := h.markGHADeploymentFailed(requestCtx, "compose", compose.ID, compose.TeamID, compose.ServerID, payload); err != nil {
 		return err
 	}
 	return fiberutil.OK(c, "Status recorded", nil)
@@ -704,7 +722,7 @@ type ghaDeploymentUpsert struct {
 // rather than spawning a duplicate. We do the lookup ourselves
 // (rather than ON CONFLICT) because GORM's OnConflict-ignore returns
 // no useful "did we insert or hit conflict" signal across drivers.
-func (h *GHAWebhookHandler) upsertGHADeployment(input ghaDeploymentUpsert) (*dockermodels.Deployment, error) {
+func (h *GHAWebhookHandler) upsertGHADeployment(ctx context.Context, input ghaDeploymentUpsert) (*dockermodels.Deployment, error) {
 	var existing dockermodels.Deployment
 	err := h.db.Where(
 		"target_type = ? AND target_id = ? AND gha_run_id = ?",
@@ -768,13 +786,13 @@ func (h *GHAWebhookHandler) upsertGHADeployment(input ghaDeploymentUpsert) (*doc
 	deployment.TeamID = input.TeamID
 	deployment.ServerID = input.ServerID
 
-	if err := dockerrepositories.NewDeploymentRepository(h.db).Create(context.Background(), deployment); err != nil {
+	if err := dockerrepositories.NewDeploymentRepository(h.db).Create(ctx, deployment); err != nil {
 		return nil, err
 	}
 	return deployment, nil
 }
 
-func (h *GHAWebhookHandler) markGHADeploymentFailed(targetType, targetID, teamID, serverID string, payload statusPayload) error {
+func (h *GHAWebhookHandler) markGHADeploymentFailed(ctx context.Context, targetType, targetID, teamID, serverID string, payload statusPayload) error {
 	var existing dockermodels.Deployment
 	err := h.db.Where(
 		"target_type = ? AND target_id = ? AND gha_run_id = ?",
@@ -822,7 +840,7 @@ func (h *GHAWebhookHandler) markGHADeploymentFailed(targetType, targetID, teamID
 	deployment.ID = newULID()
 	deployment.TeamID = teamID
 	deployment.ServerID = serverID
-	return dockerrepositories.NewDeploymentRepository(h.db).Create(context.Background(), deployment)
+	return dockerrepositories.NewDeploymentRepository(h.db).Create(ctx, deployment)
 }
 
 // claimGHAPlaceholder returns the most recent dispatch-time placeholder

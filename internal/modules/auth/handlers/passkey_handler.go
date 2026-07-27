@@ -78,7 +78,9 @@ func (h *PasskeyHandler) FinishRegistration(c *fiber.Ctx) error {
 	}
 
 	var nameReq authdto.PasskeyRegisterRequest
-	_ = c.BodyParser(&nameReq)
+	if err := c.BodyParser(&nameReq); err != nil {
+		return fiberctx.BadRequest("invalid passkey registration payload")
+	}
 
 	var name *string
 	if nameReq.Name != "" {
@@ -100,7 +102,9 @@ func (h *PasskeyHandler) FinishRegistration(c *fiber.Ctx) error {
 // BeginLogin generates WebAuthn authentication options
 func (h *PasskeyHandler) BeginLogin(c *fiber.Ctx) error {
 	var req authdto.PasskeyLoginRequest
-	_ = c.BodyParser(&req)
+	if err := c.BodyParser(&req); err != nil {
+		return fiberctx.BadRequest("invalid passkey login payload")
+	}
 	req.Normalize()
 
 	options, err := h.Service().Passkey.BeginLogin(c.Context(), req.Email)
