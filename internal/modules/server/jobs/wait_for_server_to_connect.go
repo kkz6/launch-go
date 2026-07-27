@@ -182,6 +182,7 @@ func (j *WaitForServerToConnectJob) attemptConnection(ctx context.Context) (bool
 
 		connCtx, cancel := context.WithTimeout(ctx, connectionTimeout)
 		result, connErr := j.Deps.RunTask(server, task).
+			WithoutTracking().
 			AsRoot().
 			Dispatch(connCtx)
 		cancel()

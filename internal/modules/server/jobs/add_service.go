@@ -130,7 +130,7 @@ func (j *AddServiceJob) persistInstalledVersion(ctx context.Context) {
 		taskrunner.WithScript(vcmd),
 		taskrunner.WithTimeoutSeconds(30),
 	)
-	res, err := j.Deps.RunTask(j.server, probe).AsRoot().Run(ctx)
+	res, err := j.Deps.RunTask(j.server, probe).WithoutTracking().AsRoot().Run(ctx)
 	if err != nil || res == nil {
 		return
 	}
