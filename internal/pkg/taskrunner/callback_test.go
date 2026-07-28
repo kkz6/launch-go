@@ -4,7 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
+
+	"github.com/hibiken/asynq"
+	"github.com/rs/zerolog"
 )
 
 // =============================================================================
@@ -71,6 +75,22 @@ func (s stateWithFactory) NewTask() CallbackHandler {
 	return &testCallbackTask{
 		state: testState(s),
 	}
+}
+
+type callbackQueueClient struct {
+	tasks []*asynq.Task
+	err   error
+}
+
+func (q *callbackQueueClient) Enqueue(
+	task *asynq.Task,
+	_ ...asynq.Option,
+) (*asynq.TaskInfo, error) {
+	if q.err != nil {
+		return nil, q.err
+	}
+	q.tasks = append(q.tasks, task)
+	return &asynq.TaskInfo{}, nil
 }
 
 // =============================================================================
@@ -491,8 +511,10 @@ func TestCallbackHandler_ReturnsError(t *testing.T) {
 // =============================================================================
 
 func TestCallbackContext_DispatchJob_NoQueue(t *testing.T) {
+	logger := zerolog.Nop()
 	cbCtx := &CallbackContext{
-		Queue: nil,
+		Queue:  nil,
+		Logger: &logger,
 	}
 
 	err := cbCtx.DispatchJob("test:job", map[string]string{"key": "value"})
@@ -503,6 +525,57 @@ func TestCallbackContext_DispatchJob_NoQueue(t *testing.T) {
 
 	if err.Error() != "queue not available" {
 		t.Errorf("Expected 'queue not available' error, got: %s", err.Error())
+	}
+}
+
+func TestCallbackContext_DispatchJobWithOptions(t *testing.T) {
+	queue := &callbackQueueClient{}
+	logger := zerolog.Nop()
+	cbCtx := &CallbackContext{
+		Queue:  queue,
+		Logger: &logger,
+	}
+
+	err := cbCtx.DispatchJobWithOptions(
+		"test:job",
+		map[string]string{"key": "value"},
+		asynq.TaskID("job-1"),
+		asynq.MaxRetry(3),
+	)
+
+	if err != nil {
+		t.Fatalf("DispatchJobWithOptions returned an error: %v", err)
+	}
+	if len(queue.tasks) != 1 {
+		t.Fatalf("expected one queued task, got %d", len(queue.tasks))
+	}
+	if queue.tasks[0].Type() != "test:job" {
+		t.Fatalf("expected task type test:job, got %s", queue.tasks[0].Type())
+	}
+}
+
+func TestCallbackContext_DispatchJobWithOptionsRejectsInvalidPayload(t *testing.T) {
+	cbCtx := &CallbackContext{Queue: &callbackQueueClient{}}
+
+	err := cbCtx.DispatchJobWithOptions("test:job", make(chan struct{}))
+
+	if err == nil || !strings.Contains(err.Error(), "failed to marshal job payload") {
+		t.Fatalf("expected payload marshal error, got %v", err)
+	}
+}
+
+func TestCallbackContext_DispatchJobWithOptionsReturnsQueueError(t *testing.T) {
+	expectedErr := errors.New("queue unavailable")
+	logger := zerolog.Nop()
+	cbCtx := &CallbackContext{
+		Queue:  &callbackQueueClient{err: expectedErr},
+		Logger: &logger,
+	}
+
+	err := cbCtx.DispatchJobWithOptions("test:job", map[string]string{"key": "value"})
+
+	if !errors.Is(err, expectedErr) {
+		t.Fatalf("expected queue error, got %v", err)
 	}
 }
 

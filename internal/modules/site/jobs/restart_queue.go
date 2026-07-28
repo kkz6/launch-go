@@ -74,6 +74,10 @@ func (j *RestartQueueJob) Handle(ctx context.Context) error {
 		j.Deps.Logger.Error().Err(err).Str("queue_id", queue.ID).Msg("Failed to restart queue")
 		return err
 	}
+	if result.Error != nil {
+		j.Deps.Logger.Error().Err(result.Error).Str("queue_id", queue.ID).Msg("Failed to restart queue")
+		return result.Error
+	}
 
 	if result.GetExitCode() != 0 {
 		j.Deps.Logger.Error().Str("queue_id", queue.ID).Int("exit_code", result.GetExitCode()).Msg("Queue restart failed")
@@ -165,6 +169,10 @@ func (j *RestartAllSiteQueuesJob) Handle(ctx context.Context) error {
 	if err != nil {
 		j.Deps.Logger.Error().Err(err).Str("site_id", site.ID).Msg("Failed to restart queues")
 		return err
+	}
+	if result.Error != nil {
+		j.Deps.Logger.Error().Err(result.Error).Str("site_id", site.ID).Msg("Failed to restart queues")
+		return result.Error
 	}
 
 	if result.GetExitCode() != 0 {
