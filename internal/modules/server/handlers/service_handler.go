@@ -66,7 +66,7 @@ func (h *Handler) InstallPhpExtension(c *fiber.Ctx, req *dto.InstallPhpExtension
 		return err
 	}
 
-	if err := h.service.InstallPhpExtension(c.Context(), serverID, teamID, svc.Version, req.Extension, &userID); err != nil {
+	if err := h.service.InstallPhpExtension(c.Context(), serverID, teamID, svc.PhpVersionSeries(), req.Extension, &userID); err != nil {
 		return err
 	}
 	return fiberctx.OK(c, "Extension installation initiated", nil)
@@ -97,7 +97,7 @@ func (h *Handler) UninstallPhpExtension(c *fiber.Ctx) error {
 		return err
 	}
 
-	if err := h.service.UninstallPhpExtension(c.Context(), serverID, teamID, svc.Version, extension, &userID); err != nil {
+	if err := h.service.UninstallPhpExtension(c.Context(), serverID, teamID, svc.PhpVersionSeries(), extension, &userID); err != nil {
 		return err
 	}
 	return fiberctx.OK(c, "Extension uninstall initiated", nil)

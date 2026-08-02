@@ -2,7 +2,9 @@ package jobs
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"time"
 
 	"github.com/hibiken/asynq"
 
@@ -16,10 +18,11 @@ import (
 const TypeServiceOperation = "server:service_operation"
 
 type ServiceOperationPayload struct {
-	ServerID  string  `json:"server_id"`
-	ServiceID string  `json:"service_id"`
-	Operation string  `json:"operation"`
-	UserID    *string `json:"user_id,omitempty"`
+	ServerID       string              `json:"server_id"`
+	ServiceID      string              `json:"service_id"`
+	Operation      string              `json:"operation"`
+	PreviousStatus types.ServiceStatus `json:"previous_status,omitempty"`
+	UserID         *string             `json:"user_id,omitempty"`
 }
 
 // ServiceOperationJob performs an operation (start/stop/restart/reload) on a service.
@@ -30,6 +33,11 @@ type ServiceOperationJob struct {
 
 	server  *models.Server
 	service *models.InstalledService
+
+	// remoteStatus is set only after the command succeeds. If persisting the
+	// terminal state then fails, Failed must not claim the old state is still
+	// true on the server.
+	remoteStatus *types.ServiceStatus
 }
 
 func NewServiceOperationJob(p ServiceOperationPayload) pkgjobs.Handler {
@@ -44,6 +52,17 @@ func (j *ServiceOperationJob) Handle(ctx context.Context) error {
 	j.service, err = j.Deps.Repos.Service().FindByID(ctx, j.Payload.ServiceID)
 	if err != nil {
 		return fmt.Errorf("failed to find service: %w", err)
+	}
+	if j.service.ServerID != j.Payload.ServerID {
+		return fmt.Errorf("service does not belong to server")
+	}
+	reservedPHP := j.service.Type == types.ServiceTypePhp &&
+		j.Payload.PreviousStatus.IsActive()
+	if reservedPHP && j.service.Status != types.ServiceStatusUpdating {
+		return errors.New("PHP service operation reservation was lost")
+	}
+	if !reservedPHP && j.service.Status == types.ServiceStatusUpdating {
+		return fmt.Errorf("service is being updated")
 	}
 
 	// Find the server
@@ -104,6 +123,18 @@ func (j *ServiceOperationJob) Handle(ctx context.Context) error {
 		return fmt.Errorf("failed to %s service: %s", j.Payload.Operation, result.GetOutput())
 	}
 
+	if reservedPHP {
+		status := types.ServiceStatusRunning
+		if j.Payload.Operation == "stop" {
+			status = types.ServiceStatusStopped
+		}
+		j.remoteStatus = &status
+		if err := j.Deps.Repos.Service().UpdateStatus(ctx, j.service.ID, status); err != nil {
+			return fmt.Errorf("persist PHP service operation status: %w", err)
+		}
+		j.service.Status = status
+	}
+
 	j.Deps.Logger.Info().
 		Str("service_id", j.service.ID).
 		Str("server_id", j.server.ID).
@@ -139,6 +170,39 @@ func (j *ServiceOperationJob) broadcastFailure(taskID, output string) {
 
 // Failed is called when the job fails after all retries
 func (j *ServiceOperationJob) Failed(ctx context.Context, err error) {
+	if j.Payload.PreviousStatus.IsActive() {
+		cleanupCtx, cancelCleanup := context.WithTimeout(context.WithoutCancel(ctx), 15*time.Second)
+		defer cancelCleanup()
+		if j.remoteStatus != nil {
+			if persistErr := j.Deps.Repos.Service().UpdateStatus(
+				cleanupCtx,
+				j.Payload.ServiceID,
+				*j.remoteStatus,
+			); persistErr != nil {
+				j.Deps.Logger.Error().Err(persistErr).
+					Str("service_id", j.Payload.ServiceID).
+					Str("status", j.remoteStatus.String()).
+					Msg("failed to persist completed PHP service operation")
+			}
+			return
+		}
+		restored, restoreErr := j.Deps.Repos.Service().RestorePhpPatchStatus(
+			cleanupCtx,
+			j.Payload.ServiceID,
+			j.Payload.PreviousStatus,
+		)
+		if restoreErr != nil {
+			j.Deps.Logger.Error().Err(restoreErr).
+				Str("service_id", j.Payload.ServiceID).
+				Msg("failed to restore PHP service status")
+		} else if restored && j.server != nil {
+			j.Deps.BroadcastServerEvent(j.server, "service.status_changed", map[string]any{
+				"service_id": j.Payload.ServiceID,
+				"server_id":  j.Payload.ServerID,
+				"status":     j.Payload.PreviousStatus.String(),
+			})
+		}
+	}
 	j.Deps.Logger.Error().Err(err).
 		Str("service_id", j.Payload.ServiceID).
 		Str("server_id", j.Payload.ServerID).
@@ -147,11 +211,18 @@ func (j *ServiceOperationJob) Failed(ctx context.Context, err error) {
 }
 
 // NewServiceOperationTask creates an asynq task for performing a service operation
-func NewServiceOperationTask(serverID, serviceID, operation string, userID *string) (*asynq.Task, error) {
+func NewServiceOperationTask(
+	serverID,
+	serviceID,
+	operation string,
+	previousStatus types.ServiceStatus,
+	userID *string,
+) (*asynq.Task, error) {
 	return pkgjobs.Task(TypeServiceOperation, ServiceOperationPayload{
-		ServerID:  serverID,
-		ServiceID: serviceID,
-		Operation: operation,
-		UserID:    userID,
+		ServerID:       serverID,
+		ServiceID:      serviceID,
+		Operation:      operation,
+		PreviousStatus: previousStatus,
+		UserID:         userID,
 	})
 }

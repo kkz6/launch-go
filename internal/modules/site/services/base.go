@@ -9,6 +9,7 @@ import (
 	gitproviders "github.com/kkz6/launch-go/internal/modules/git/providers"
 	servertasks "github.com/kkz6/launch-go/internal/modules/server/tasks"
 	"github.com/kkz6/launch-go/internal/modules/site/contracts"
+	"github.com/kkz6/launch-go/internal/modules/site/models"
 	"github.com/kkz6/launch-go/internal/modules/site/repositories"
 	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/service"
@@ -218,4 +219,13 @@ func addSliceIfSet(updates map[string]any, key string, value *string) {
 		}
 		updates[key] = string(data)
 	}
+}
+
+func ensureSiteConfigurationIdle(site *models.Site) error {
+	if site.PendingPhpVersion != nil ||
+		site.PendingCaddyfileUpdateSince != nil ||
+		site.PendingTLSUpdateSince != nil {
+		return fiberutil.Conflict("A site configuration update is already in progress")
+	}
+	return nil
 }

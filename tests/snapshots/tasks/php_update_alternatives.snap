@@ -1,3 +1,79 @@
-sudo update-alternatives --set php /usr/bin/php8.2
-sudo update-alternatives --set php-config /usr/bin/php-config8.2
-sudo update-alternatives --set phpize /usr/bin/phpize8.2
+set -euo pipefail
+trap '' PIPE
+export DEBIAN_FRONTEND=noninteractive
+previousVersion="$(php -r 'printf("%d.%d", PHP_MAJOR_VERSION, PHP_MINOR_VERSION);')"
+if [[ ! "${previousVersion}" =~ ^[0-9]+\.[0-9]+$ ]]; then
+    echo "Unable to determine the current default PHP runtime" >&2
+    exit 1
+fi
+printf 'LAUNCH_PREVIOUS_DEFAULT_PHP_VERSION=%s\n' "${previousVersion}"
+
+readAlternativeValue() {
+    local name="${1}"
+    sudo update-alternatives --query "${name}" \
+        | awk -F': ' '$1 == "Value" { print $2 }'
+}
+
+requireAlternativeTarget() {
+    local name="${1}"
+    local target="${2}"
+    if ! sudo update-alternatives --list "${name}" | grep -Fx "${target}" >/dev/null; then
+        printf 'PHP alternative %s does not include target %s\n' "${name}" "${target}" >&2
+        return 1
+    fi
+}
+
+if ! previousPhpAlternative="$(readAlternativeValue php)"; then
+    echo "Unable to determine the current php alternative" >&2
+    exit 1
+fi
+if ! previousPhpConfigAlternative="$(readAlternativeValue php-config)"; then
+    echo "Unable to determine the current php-config alternative" >&2
+    exit 1
+fi
+if ! previousPhpizeAlternative="$(readAlternativeValue phpize)"; then
+    echo "Unable to determine the current phpize alternative" >&2
+    exit 1
+fi
+if [[ -z "${previousPhpAlternative}" ||
+      -z "${previousPhpConfigAlternative}" ||
+      -z "${previousPhpizeAlternative}" ]]; then
+    echo "One or more current PHP alternatives are empty" >&2
+    exit 1
+fi
+
+targetPhpAlternative="/usr/bin/php8.2"
+targetPhpConfigAlternative="/usr/bin/php-config8.2"
+targetPhpizeAlternative="/usr/bin/phpize8.2"
+
+# Validate every target before changing any alternative. This avoids a
+# predictable missing registration leaving the alternatives out of sync.
+requireAlternativeTarget php "${targetPhpAlternative}"
+requireAlternativeTarget php-config "${targetPhpConfigAlternative}"
+requireAlternativeTarget phpize "${targetPhpizeAlternative}"
+
+rollbackAlternatives() {
+    local exitCode="${1}"
+    local rollbackFailed=0
+
+    trap - ERR INT TERM
+    set +e
+    sudo update-alternatives --set php "${previousPhpAlternative}" || rollbackFailed=1
+    sudo update-alternatives --set php-config "${previousPhpConfigAlternative}" || rollbackFailed=1
+    sudo update-alternatives --set phpize "${previousPhpizeAlternative}" || rollbackFailed=1
+
+    if (( rollbackFailed != 0 )); then
+        printf 'Failed to completely roll back PHP alternatives to %s\n' "${previousVersion}" >&2
+    fi
+    exit "${exitCode}"
+}
+
+trap 'rollbackAlternatives $?' ERR
+trap 'rollbackAlternatives 130' INT
+trap 'rollbackAlternatives 143' TERM
+
+sudo update-alternatives --set php "${targetPhpAlternative}"
+sudo update-alternatives --set php-config "${targetPhpConfigAlternative}"
+sudo update-alternatives --set phpize "${targetPhpizeAlternative}"
+
+trap - ERR INT TERM

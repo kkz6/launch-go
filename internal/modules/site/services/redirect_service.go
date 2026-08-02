@@ -30,6 +30,9 @@ func (s *RedirectService) Create(ctx context.Context, siteID, serverID, teamID, 
 	if err != nil {
 		return dto.RedirectResponse{}, err
 	}
+	if err := ensureSiteConfigurationIdle(site); err != nil {
+		return dto.RedirectResponse{}, err
+	}
 
 	redirect := &models.Redirect{
 		Mode:   req.Type,
@@ -74,7 +77,11 @@ func (s *RedirectService) List(ctx context.Context, siteID, serverID, teamID str
 // Status is reset to "pending" so the Caddyfile update job can flip
 // it back to "installed" on success — mirrors the Create lifecycle.
 func (s *RedirectService) Update(ctx context.Context, redirectID, siteID, serverID, teamID, userID string, req *dto.UpdateRedirectRequest) (dto.RedirectResponse, error) {
-	if _, err := s.findSite(ctx, siteID, serverID, teamID); err != nil {
+	site, err := s.findSite(ctx, siteID, serverID, teamID)
+	if err != nil {
+		return dto.RedirectResponse{}, err
+	}
+	if err := ensureSiteConfigurationIdle(site); err != nil {
 		return dto.RedirectResponse{}, err
 	}
 	redirect, err := s.Repos().Redirect().FindByID(ctx, redirectID)
@@ -108,7 +115,11 @@ func (s *RedirectService) Update(ctx context.Context, redirectID, siteID, server
 
 // Delete deletes a redirect. Signature matches DeleteDoubleNestedFunc.
 func (s *RedirectService) Delete(ctx context.Context, redirectID, siteID, serverID, teamID, userID string) error {
-	if _, err := s.findSite(ctx, siteID, serverID, teamID); err != nil {
+	site, err := s.findSite(ctx, siteID, serverID, teamID)
+	if err != nil {
+		return err
+	}
+	if err := ensureSiteConfigurationIdle(site); err != nil {
 		return err
 	}
 

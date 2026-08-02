@@ -65,7 +65,18 @@ func (j *CheckServiceStatusJob) Handle(ctx context.Context) error {
 		Dispatch(ctx)
 
 	if err != nil {
-		j.updateServiceStatus(ctx, j.service.ID, types.ServiceStatusFailed, "", nil, err.Error())
+		if _, updateErr := j.updateServiceStatus(
+			ctx,
+			j.service.ID,
+			types.ServiceStatusFailed,
+			"",
+			nil,
+			err.Error(),
+		); updateErr != nil {
+			j.Deps.Logger.Error().Err(updateErr).
+				Str("service_id", j.service.ID).
+				Msg("failed to persist service status check error")
+		}
 		return fmt.Errorf("check service status: %w", err)
 	}
 
@@ -73,7 +84,17 @@ func (j *CheckServiceStatusJob) Handle(ctx context.Context) error {
 	svcStatus := j.parseServiceStatus(output)
 	details := j.parseStatusDetails(output)
 
-	j.updateServiceStatus(ctx, j.service.ID, svcStatus, output, details, "")
+	updated, err := j.updateServiceStatus(ctx, j.service.ID, svcStatus, output, details, "")
+	if err != nil {
+		return fmt.Errorf("update service status: %w", err)
+	}
+	if !updated {
+		j.Deps.Logger.Info().
+			Str("service_id", j.service.ID).
+			Str("server_id", j.server.ID).
+			Msg("service status result ignored while lifecycle operation is in progress")
+		return nil
+	}
 
 	j.Deps.Logger.Info().
 		Str("service_id", j.service.ID).
@@ -97,7 +118,14 @@ func (j *CheckServiceStatusJob) Failed(ctx context.Context, err error) {
 		Msg("failed to check service status")
 }
 
-func (j *CheckServiceStatusJob) updateServiceStatus(ctx context.Context, serviceID string, svcStatus types.ServiceStatus, output string, details map[string]any, errorMsg string) {
+func (j *CheckServiceStatusJob) updateServiceStatus(
+	ctx context.Context,
+	serviceID string,
+	svcStatus types.ServiceStatus,
+	output string,
+	details map[string]any,
+	errorMsg string,
+) (bool, error) {
 	typeData := dbtype.JSONMap{
 		"last_status_check": time.Now().Format(time.RFC3339),
 		"status_output":     output,
@@ -111,11 +139,7 @@ func (j *CheckServiceStatusJob) updateServiceStatus(ctx context.Context, service
 		typeData["status_error"] = errorMsg
 	}
 
-	if err := j.Deps.Repos.Service().UpdateWithTypeData(ctx, serviceID, svcStatus, typeData); err != nil {
-		j.Deps.Logger.Error().Err(err).
-			Str("service_id", serviceID).
-			Msg("failed to update service status")
-	}
+	return j.Deps.Repos.Service().UpdateStatusFromProbe(ctx, serviceID, svcStatus, typeData)
 }
 
 func (j *CheckServiceStatusJob) parseServiceStatus(output string) types.ServiceStatus {

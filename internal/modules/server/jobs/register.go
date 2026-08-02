@@ -56,6 +56,7 @@ func registerHandlers(mux *asynq.ServeMux) {
 
 	// PHP jobs
 	pkgjobs.RegisterTyped(mux, TypeSetDefaultPhp, NewSetDefaultPhpJob)
+	pkgjobs.RegisterTyped(mux, TypePatchPhpVersion, NewPatchPhpVersionJob)
 	pkgjobs.RegisterTyped(mux, TypeInstallPhpExtension, NewInstallPhpExtensionJob)
 	pkgjobs.RegisterTyped(mux, TypeUninstallPhpExtension, NewUninstallPhpExtensionJob)
 	pkgjobs.RegisterTyped(mux, TypeCleanupFailedPhpInstallation, NewCleanupFailedPhpInstallationJob)

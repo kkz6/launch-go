@@ -38,6 +38,7 @@ type SiteResponse struct {
 	Path                         string                           `json:"path"`
 	WebFolder                    string                           `json:"web_folder"`
 	PhpVersion                   string                           `json:"php_version"`
+	PendingPhpVersion            string                           `json:"pending_php_version,omitempty"`
 	AutoDeployment               bool                             `json:"auto_deployment"`
 	QueueDeployments             bool                             `json:"queue_deployments"`
 	AutoRestartQueue             bool                             `json:"auto_restart_queue"`
@@ -61,6 +62,8 @@ type SiteResponse struct {
 	ReverbPort                   *int                             `json:"reverb_port,omitempty"`
 	QueueCount                   int                              `json:"queue_count"`
 	LoadBalancedUpstreamID       *string                          `json:"load_balanced_upstream_id,omitempty"`
+	PendingTLSUpdateSince        *string                          `json:"pending_tls_update_since,omitempty"`
+	PendingCaddyfileUpdateSince  *string                          `json:"pending_caddyfile_update_since,omitempty"`
 	Status                       string                           `json:"status"`
 	InstalledAt                  *string                          `json:"installed_at"`
 	InstallationFailedAt         *string                          `json:"installation_failed_at"`
@@ -220,6 +223,10 @@ func ToSiteResponse(site *models.Site) SiteResponse {
 	if site.PhpVersion != nil {
 		phpVersion = site.PhpVersion.String()
 	}
+	pendingPhpVersion := ""
+	if site.PendingPhpVersion != nil {
+		pendingPhpVersion = site.PendingPhpVersion.String()
+	}
 
 	// Build deploy webhook URL if token exists
 	var deployWebhookURL string
@@ -247,6 +254,7 @@ func ToSiteResponse(site *models.Site) SiteResponse {
 		Path:                         site.Path,
 		WebFolder:                    site.WebFolder,
 		PhpVersion:                   phpVersion,
+		PendingPhpVersion:            pendingPhpVersion,
 		AutoDeployment:               site.AutoDeployment,
 		QueueDeployments:             site.QueueDeployments,
 		AutoRestartQueue:             site.AutoRestartQueue,
@@ -265,6 +273,8 @@ func ToSiteResponse(site *models.Site) SiteResponse {
 		EnabledFeatures:              enabledFeatures,
 		PendingFeatures:              site.PendingFeatures,
 		LoadBalancedUpstreamID:       site.LoadBalancedUpstreamID,
+		PendingTLSUpdateSince:        pkgdto.FormatTime(site.PendingTLSUpdateSince),
+		PendingCaddyfileUpdateSince:  pkgdto.FormatTime(site.PendingCaddyfileUpdateSince),
 		Status:                       string(site.Status()),
 		InstalledAt:                  pkgdto.FormatTime(site.InstalledAt),
 		InstallationFailedAt:         pkgdto.FormatTime(site.InstallationFailedAt),

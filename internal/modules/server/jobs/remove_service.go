@@ -2,7 +2,9 @@ package jobs
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"time"
 
 	"github.com/hibiken/asynq"
 
@@ -16,9 +18,10 @@ import (
 const TypeRemoveService = "server:remove_service"
 
 type RemoveServicePayload struct {
-	ServerID  string  `json:"server_id"`
-	ServiceID string  `json:"service_id"`
-	UserID    *string `json:"user_id,omitempty"`
+	ServerID       string              `json:"server_id"`
+	ServiceID      string              `json:"service_id"`
+	PreviousStatus types.ServiceStatus `json:"previous_status,omitempty"`
+	UserID         *string             `json:"user_id,omitempty"`
 }
 
 // RemoveServiceJob removes a service from a server.
@@ -29,6 +32,8 @@ type RemoveServiceJob struct {
 
 	server  *models.Server
 	service *models.InstalledService
+
+	remoteRemoved bool
 }
 
 func NewRemoveServiceJob(p RemoveServicePayload) pkgjobs.Handler {
@@ -44,6 +49,17 @@ func (j *RemoveServiceJob) Handle(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to find service: %w", err)
 	}
+	if j.service.ServerID != j.Payload.ServerID {
+		return fmt.Errorf("service does not belong to server")
+	}
+	reservedPHP := j.service.Type == types.ServiceTypePhp &&
+		j.Payload.PreviousStatus.IsActive()
+	if reservedPHP && j.service.Status != types.ServiceStatusUpdating {
+		return errors.New("PHP service removal reservation was lost")
+	}
+	if !reservedPHP && j.service.Status == types.ServiceStatusUpdating {
+		return fmt.Errorf("service is being updated")
+	}
 
 	// Find the server
 	j.server, err = j.Deps.Repos.Server().FindByID(ctx, j.Payload.ServerID)
@@ -51,9 +67,12 @@ func (j *RemoveServiceJob) Handle(ctx context.Context) error {
 		return fmt.Errorf("failed to find server: %w", err)
 	}
 
-	// Mark service as uninstalling and broadcast status change
-	if err := j.Deps.Repos.Service().UpdateStatus(ctx, j.service.ID, types.ServiceStatusUninstalling); err != nil {
-		return fmt.Errorf("failed to update service status: %w", err)
+	// A reserved PHP removal keeps the durable "updating" ownership marker
+	// until the row is deleted or the terminal failure callback restores it.
+	if !reservedPHP {
+		if err := j.Deps.Repos.Service().UpdateStatus(ctx, j.service.ID, types.ServiceStatusUninstalling); err != nil {
+			return fmt.Errorf("failed to update service status: %w", err)
+		}
 	}
 
 	j.Deps.BroadcastServerEvent(j.server, "service.status_changed", map[string]any{
@@ -74,10 +93,9 @@ func (j *RemoveServiceJob) Handle(ctx context.Context) error {
 	}
 
 	if !result.IsSuccessful() {
-		j.Deps.Logger.Error().
-			Str("output", result.GetOutput()).
-			Msg("service removal completed with errors")
+		return fmt.Errorf("failed to remove service: %s", result.GetOutput())
 	}
+	j.remoteRemoved = true
 
 	// Log activity before deletion
 	activity.RecordWithLogPtr(ctx, "server", "removed", j.Payload.UserID, j.service, "Service was removed")
@@ -108,8 +126,31 @@ func (j *RemoveServiceJob) Failed(ctx context.Context, err error) {
 		Str("server_id", j.Payload.ServerID).
 		Msg("failed to remove service")
 
-	// Mark removal as failed
-	if markErr := j.Deps.Repos.Service().MarkRemovalFailed(ctx, j.Payload.ServiceID); markErr != nil {
+	cleanupCtx, cancelCleanup := context.WithTimeout(context.WithoutCancel(ctx), 15*time.Second)
+	defer cancelCleanup()
+	if j.remoteRemoved {
+		deleteErr := j.Deps.Repos.Service().Delete(cleanupCtx, j.Payload.ServiceID)
+		if deleteErr == nil {
+			return
+		}
+		j.Deps.Logger.Error().Err(deleteErr).
+			Msg("failed to delete service record after remote removal")
+	} else if j.Payload.PreviousStatus.IsActive() {
+		restored, restoreErr := j.Deps.Repos.Service().RestorePhpPatchStatus(
+			cleanupCtx,
+			j.Payload.ServiceID,
+			j.Payload.PreviousStatus,
+		)
+		if restoreErr != nil {
+			j.Deps.Logger.Error().Err(restoreErr).
+				Msg("failed to restore PHP service status after removal failure")
+		} else if restored {
+			return
+		}
+	}
+
+	// Mark non-reserved removals as failed.
+	if markErr := j.Deps.Repos.Service().MarkRemovalFailed(cleanupCtx, j.Payload.ServiceID); markErr != nil {
 		j.Deps.Logger.Error().Err(markErr).
 			Msg("failed to mark service removal as failed")
 	}
@@ -117,12 +158,18 @@ func (j *RemoveServiceJob) Failed(ctx context.Context, err error) {
 
 // NewRemoveServiceTask creates an asynq task for removing a service
 // Uses TaskID for deduplication to prevent duplicate service removals
-func NewRemoveServiceTask(serverID, serviceID string, userID *string) (*asynq.Task, error) {
+func NewRemoveServiceTask(
+	serverID,
+	serviceID string,
+	previousStatus types.ServiceStatus,
+	userID *string,
+) (*asynq.Task, error) {
 	return pkgjobs.TaskWithID(TypeRemoveService,
 		RemoveServicePayload{
-			ServerID:  serverID,
-			ServiceID: serviceID,
-			UserID:    userID,
+			ServerID:       serverID,
+			ServiceID:      serviceID,
+			PreviousStatus: previousStatus,
+			UserID:         userID,
 		},
 		pkgjobs.Dedup("remove_service", serverID, serviceID),
 	)

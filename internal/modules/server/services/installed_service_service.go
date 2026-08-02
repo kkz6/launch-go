@@ -6,20 +6,24 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/hibiken/asynq"
+	"gorm.io/gorm"
 
 	"github.com/kkz6/launch-go/internal/modules/server/dto"
 	"github.com/kkz6/launch-go/internal/modules/server/jobs"
 	"github.com/kkz6/launch-go/internal/modules/server/models"
 	"github.com/kkz6/launch-go/internal/modules/server/types"
 	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
+	pkgservice "github.com/kkz6/launch-go/internal/pkg/service"
 )
 
 // ListServices returns all services for a server. Signature matches
 // IndexNestedFunc.
 func (s *Service) ListServices(ctx context.Context, serverID, teamID string) ([]dto.ServiceResponse, error) {
-	if _, err := s.repos.Server().FindByIDAndTeam(ctx, serverID, teamID); err != nil {
+	server, err := s.repos.Server().FindByIDAndTeam(ctx, serverID, teamID)
+	if err != nil {
 		return nil, err
 	}
 	svcs, err := s.repos.Service().FindByServer(ctx, serverID)
@@ -29,6 +33,8 @@ func (s *Service) ListServices(ctx context.Context, serverID, teamID string) ([]
 	out := make([]dto.ServiceResponse, len(svcs))
 	for i := range svcs {
 		out[i] = dto.ToServiceResponse(&svcs[i])
+		out[i].DefaultPending = server.PendingDefaultPHPServiceID != nil &&
+			*server.PendingDefaultPHPServiceID == svcs[i].ID
 	}
 	return out, nil
 }
@@ -100,15 +106,19 @@ func (s *Service) HandleServiceOperation(ctx context.Context, serverID, teamID, 
 		return fiberutil.NotFound()
 	}
 
+	if service.Status == types.ServiceStatusUpdating {
+		return ErrServiceBusy
+	}
+
 	switch operation {
 	case types.ServiceOptionStart:
-		return s.dispatchServiceOperationJob(server, service, "start")
+		return s.dispatchServiceOperationJob(ctx, server, service, "start")
 	case types.ServiceOptionRestart:
-		return s.dispatchServiceOperationJob(server, service, "restart")
+		return s.dispatchServiceOperationJob(ctx, server, service, "restart")
 	case types.ServiceOptionStop:
-		return s.dispatchServiceStopJob(server, service)
+		return s.dispatchServiceOperationJob(ctx, server, service, "stop")
 	case types.ServiceOptionRemove:
-		return s.dispatchServiceRemoveJob(server, service)
+		return s.dispatchServiceRemoveJob(ctx, server, service)
 	case types.ServiceOptionStatus:
 		return s.dispatchServiceStatusJob(server, service)
 	case types.ServiceOptionUpdate:
@@ -116,7 +126,7 @@ func (s *Service) HandleServiceOperation(ctx context.Context, serverID, teamID, 
 		// full install, which rewrites config/systemd and needs template
 		// vars the generic install path doesn't populate. For the Launch
 		// Agent this re-runs the installer's binary swap + restart.
-		return s.dispatchServiceOperationJob(server, service, "update")
+		return s.dispatchServiceOperationJob(ctx, server, service, "update")
 	default:
 		return fmt.Errorf("unknown operation: %s", operation)
 	}
@@ -128,22 +138,101 @@ func (s *Service) dispatchServiceInstallJob(server *models.Server, svc *models.I
 	})
 }
 
-func (s *Service) dispatchServiceOperationJob(server *models.Server, svc *models.InstalledService, operation string) error {
-	return s.MustDispatch(func() (*asynq.Task, error) {
-		return jobs.NewServiceOperationTask(server.ID, svc.ID, operation, nil)
+func (s *Service) dispatchServiceOperationJob(
+	ctx context.Context,
+	server *models.Server,
+	svc *models.InstalledService,
+	operation string,
+) error {
+	previousStatus, reserved, err := s.reservePHPServiceLifecycle(ctx, svc)
+	if err != nil {
+		return err
+	}
+
+	dispatchErr := s.MustDispatch(func() (*asynq.Task, error) {
+		return jobs.NewServiceOperationTask(
+			server.ID,
+			svc.ID,
+			operation,
+			previousStatus,
+			nil,
+		)
 	})
+	if dispatchErr != nil && reserved {
+		return s.rollbackPHPServiceDispatch(ctx, svc, previousStatus, dispatchErr)
+	}
+	return dispatchErr
 }
 
-func (s *Service) dispatchServiceStopJob(server *models.Server, svc *models.InstalledService) error {
-	return s.MustDispatch(func() (*asynq.Task, error) {
-		return jobs.NewServiceOperationTask(server.ID, svc.ID, "stop", nil)
+func (s *Service) dispatchServiceRemoveJob(
+	ctx context.Context,
+	server *models.Server,
+	svc *models.InstalledService,
+) error {
+	previousStatus, reserved, err := s.reservePHPServiceLifecycle(ctx, svc)
+	if err != nil {
+		return err
+	}
+
+	dispatchErr := s.MustDispatch(func() (*asynq.Task, error) {
+		return jobs.NewRemoveServiceTask(
+			server.ID,
+			svc.ID,
+			previousStatus,
+			nil,
+		)
 	})
+	if dispatchErr != nil && reserved {
+		return s.rollbackPHPServiceDispatch(ctx, svc, previousStatus, dispatchErr)
+	}
+	return dispatchErr
 }
 
-func (s *Service) dispatchServiceRemoveJob(server *models.Server, svc *models.InstalledService) error {
-	return s.MustDispatch(func() (*asynq.Task, error) {
-		return jobs.NewRemoveServiceTask(server.ID, svc.ID, nil)
-	})
+func (s *Service) reservePHPServiceLifecycle(
+	ctx context.Context,
+	svc *models.InstalledService,
+) (types.ServiceStatus, bool, error) {
+	if svc.Type != types.ServiceTypePhp || !svc.Status.IsActive() {
+		return "", false, nil
+	}
+	if !s.HasQueue() {
+		return "", false, pkgservice.ErrQueueRequired
+	}
+
+	previousStatus := svc.Status
+	claimed, err := s.repos.Service().ClaimPhpPatch(ctx, svc.ID, previousStatus)
+	if err != nil {
+		return "", false, fmt.Errorf("reserve PHP service operation: %w", err)
+	}
+	if !claimed {
+		return "", false, ErrServiceBusy
+	}
+	svc.Status = types.ServiceStatusUpdating
+	return previousStatus, true, nil
+}
+
+func (s *Service) rollbackPHPServiceDispatch(
+	ctx context.Context,
+	svc *models.InstalledService,
+	previousStatus types.ServiceStatus,
+	dispatchErr error,
+) error {
+	restored, restoreErr := s.restorePhpPatchReservation(ctx, svc.ID, previousStatus)
+	if restoreErr != nil {
+		return fmt.Errorf(
+			"queue PHP service operation: %w (restore status: %v)",
+			dispatchErr,
+			restoreErr,
+		)
+	}
+	if !restored {
+		return fmt.Errorf(
+			"queue PHP service operation: %w (reservation could not be released)",
+			dispatchErr,
+		)
+	}
+	svc.Status = previousStatus
+	return dispatchErr
 }
 
 func (s *Service) dispatchServiceStatusJob(server *models.Server, svc *models.InstalledService) error {
@@ -408,8 +497,9 @@ func compareVersions(v1, v2 string) int {
 	return 0
 }
 
-// SetDefaultPhpVersion sets the default PHP version for a server
-func (s *Service) SetDefaultPhpVersion(ctx context.Context, serverID, teamID, serviceID string, userID *string) error {
+// SetDefaultPhpVersion sets the default PHP version for a server. Its
+// parameter order matches fiber.ActionItemNestedFunc.
+func (s *Service) SetDefaultPhpVersion(ctx context.Context, serviceID, serverID, teamID, userID string) error {
 	server, err := s.repos.Server().FindByIDAndTeam(ctx, serverID, teamID)
 	if err != nil {
 		return err
@@ -425,12 +515,306 @@ func (s *Service) SetDefaultPhpVersion(ctx context.Context, serverID, teamID, se
 	}
 
 	if service.Type != types.ServiceTypePhp {
-		return fmt.Errorf("service is not a PHP service")
+		return fiberutil.BadRequest("Service is not a PHP installation")
 	}
 
-	return s.MustDispatch(func() (*asynq.Task, error) {
-		return jobs.NewSetDefaultPhpTask(server.ID, service.ID, service.Version, userID)
+	software := service.GetSoftware()
+	if !software.IsPhp() {
+		return fiberutil.BadRequest("Service has an invalid PHP software identity")
+	}
+	if service.Status == types.ServiceStatusUpdating {
+		return ErrServiceBusy
+	}
+	if !service.Status.IsActive() {
+		return fiberutil.BadRequest("PHP service must be active to become the default")
+	}
+	if service.IsDefault {
+		return nil
+	}
+	if !s.HasQueue() {
+		return pkgservice.ErrQueueRequired
+	}
+	if s.repos.DB() == nil {
+		return fmt.Errorf("database not configured")
+	}
+
+	previousStatus := service.Status
+	if err := s.reserveDefaultPHPChange(
+		ctx,
+		server.ID,
+		service.ID,
+		previousStatus,
+	); err != nil {
+		return err
+	}
+	service.Status = types.ServiceStatusUpdating
+
+	task, err := jobs.NewSetDefaultPhpTask(
+		server.ID,
+		service.ID,
+		software.GetVersion(),
+		previousStatus,
+		&userID,
+	)
+	if err == nil {
+		_, err = s.Queue.EnqueueDefault(task)
+	}
+	if err != nil {
+		restored, releaseErr := s.releaseDefaultPHPReservation(
+			ctx,
+			server.ID,
+			service.ID,
+			previousStatus,
+		)
+		if releaseErr != nil {
+			return fmt.Errorf("queue default PHP change: %w (release reservation: %v)", err, releaseErr)
+		}
+		if !restored {
+			return fmt.Errorf(
+				"queue default PHP change: %w (target service reservation was lost)",
+				err,
+			)
+		}
+		service.Status = previousStatus
+		return err
+	}
+
+	s.BroadcastToTeam(teamID, "php.default_change", map[string]any{
+		"server_id":  server.ID,
+		"service_id": service.ID,
+		"status":     "queued",
+		"version":    software.GetVersion(),
 	})
+	return nil
+}
+
+func (s *Service) reserveDefaultPHPChange(
+	ctx context.Context,
+	serverID,
+	serviceID string,
+	previousStatus types.ServiceStatus,
+) error {
+	if !previousStatus.IsActive() {
+		return fiberutil.BadRequest("PHP service must be active to become the default")
+	}
+
+	err := s.repos.DB().WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		target := tx.Model(&models.InstalledService{}).
+			Where(
+				"id = ? AND server_id = ? AND type = ? AND status = ?",
+				serviceID,
+				serverID,
+				types.ServiceTypePhp,
+				previousStatus,
+			).
+			Update("status", types.ServiceStatusUpdating)
+		if target.Error != nil {
+			return target.Error
+		}
+		if target.RowsAffected != 1 {
+			return ErrServiceBusy
+		}
+
+		reservation := tx.Model(&models.Server{}).
+			Where("id = ? AND pending_default_php_service_id IS NULL", serverID).
+			Update("pending_default_php_service_id", serviceID)
+		if reservation.Error != nil {
+			return reservation.Error
+		}
+		if reservation.RowsAffected != 1 {
+			return ErrServiceBusy
+		}
+		return nil
+	})
+	if err != nil {
+		if err == ErrServiceBusy {
+			return err
+		}
+		return fmt.Errorf("reserve default PHP change: %w", err)
+	}
+	return nil
+}
+
+func (s *Service) releaseDefaultPHPReservation(
+	ctx context.Context,
+	serverID,
+	serviceID string,
+	previousStatus types.ServiceStatus,
+) (bool, error) {
+	cleanupCtx, cancelCleanup := context.WithTimeout(context.WithoutCancel(ctx), 15*time.Second)
+	defer cancelCleanup()
+
+	restored := false
+	err := s.repos.DB().WithContext(cleanupCtx).Transaction(func(tx *gorm.DB) error {
+		reservation := tx.Model(&models.Server{}).
+			Where(
+				"id = ? AND pending_default_php_service_id = ?",
+				serverID,
+				serviceID,
+			).
+			Update("pending_default_php_service_id", nil)
+		if reservation.Error != nil {
+			return reservation.Error
+		}
+		if reservation.RowsAffected != 1 {
+			return fmt.Errorf("default PHP reservation could not be released")
+		}
+
+		target := tx.Model(&models.InstalledService{}).
+			Where(
+				"id = ? AND server_id = ? AND type = ? AND status = ?",
+				serviceID,
+				serverID,
+				types.ServiceTypePhp,
+				types.ServiceStatusUpdating,
+			).
+			Update("status", previousStatus)
+		if target.Error != nil {
+			return target.Error
+		}
+		restored = target.RowsAffected == 1
+		return nil
+	})
+	return restored, err
+}
+
+// PatchPhpVersion queues an in-place patch of an installed PHP major.minor
+// series. Its parameter order matches fiber.ActionItemNestedFunc.
+func (s *Service) PatchPhpVersion(ctx context.Context, serviceID, serverID, teamID, userID string) error {
+	server, err := s.repos.Server().FindByIDAndTeam(ctx, serverID, teamID)
+	if err != nil {
+		return err
+	}
+
+	service, err := s.repos.Service().FindByID(ctx, serviceID)
+	if err != nil {
+		return err
+	}
+
+	if service.ServerID != serverID {
+		return fiberutil.NotFound()
+	}
+
+	if service.Type != types.ServiceTypePhp || !service.GetSoftware().IsPhp() {
+		return fiberutil.BadRequest("Service is not a PHP installation")
+	}
+	if service.Status == types.ServiceStatusUpdating {
+		return ErrServiceBusy
+	}
+	if !service.Status.IsActive() {
+		return fiberutil.BadRequest("PHP service must be active before patching")
+	}
+	if !s.HasQueue() {
+		return pkgservice.ErrQueueRequired
+	}
+
+	previousStatus := service.Status
+	claimed, err := s.repos.Service().ClaimPhpPatch(ctx, service.ID, previousStatus)
+	if err != nil {
+		return fmt.Errorf("reserve PHP patch: %w", err)
+	}
+	if !claimed {
+		if service.Status == types.ServiceStatusUpdating || previousStatus.IsActive() {
+			return ErrServiceBusy
+		}
+		return fiberutil.BadRequest("PHP service must be active before patching")
+	}
+	queuedTypeData := make(map[string]any, len(service.TypeData)+1)
+	for key, value := range service.TypeData {
+		queuedTypeData[key] = value
+	}
+	queuedTypeData["patch_status"] = "queued"
+	delete(queuedTypeData, "patch_error")
+	delete(queuedTypeData, "patch_finished_at")
+	if err := s.repos.Service().UpdateFields(ctx, service.ID, map[string]any{
+		"type_data": queuedTypeData,
+		"task_id":   nil,
+	}); err != nil {
+		restored, rollbackErr := s.restorePhpPatchReservation(
+			ctx,
+			service.ID,
+			previousStatus,
+		)
+		if rollbackErr != nil {
+			return fmt.Errorf(
+				"initialize PHP patch state: %w (rollback status: %v)",
+				err,
+				rollbackErr,
+			)
+		}
+		if !restored {
+			return fmt.Errorf(
+				"initialize PHP patch state: %w (patch reservation could not be released)",
+				err,
+			)
+		}
+		return fmt.Errorf("initialize PHP patch state: %w", err)
+	}
+	service.TypeData = queuedTypeData
+	service.TaskID = nil
+	s.BroadcastToTeam(teamID, "service.status_changed", map[string]any{
+		"server_id":  server.ID,
+		"service_id": service.ID,
+		"status":     types.ServiceStatusUpdating.String(),
+	})
+	s.BroadcastToTeam(teamID, "php.patch", map[string]any{
+		"server_id":  server.ID,
+		"service_id": service.ID,
+		"status":     "queued",
+		"version":    service.PhpVersionSeries(),
+	})
+
+	task, dispatchErr := jobs.NewPatchPhpVersionTask(
+		server.ID,
+		service.ID,
+		previousStatus,
+		&userID,
+	)
+	if dispatchErr == nil {
+		_, dispatchErr = s.Queue.EnqueueDefault(task)
+	}
+	if dispatchErr == nil {
+		return nil
+	}
+
+	restored, rollbackErr := s.restorePhpPatchReservation(
+		ctx,
+		service.ID,
+		previousStatus,
+	)
+	if rollbackErr != nil {
+		return fmt.Errorf("queue PHP patch: %w (rollback status: %v)", dispatchErr, rollbackErr)
+	}
+	if !restored {
+		return fmt.Errorf("queue PHP patch: %w (patch reservation could not be released)", dispatchErr)
+	}
+	s.BroadcastToTeam(teamID, "service.status_changed", map[string]any{
+		"server_id":  server.ID,
+		"service_id": service.ID,
+		"status":     previousStatus.String(),
+	})
+	s.BroadcastToTeam(teamID, "php.patch", map[string]any{
+		"server_id":  server.ID,
+		"service_id": service.ID,
+		"status":     "failed",
+		"version":    service.PhpVersionSeries(),
+		"output":     dispatchErr.Error(),
+	})
+	return dispatchErr
+}
+
+func (s *Service) restorePhpPatchReservation(
+	ctx context.Context,
+	serviceID string,
+	previousStatus types.ServiceStatus,
+) (bool, error) {
+	cleanupCtx, cancelCleanup := context.WithTimeout(context.WithoutCancel(ctx), 15*time.Second)
+	defer cancelCleanup()
+	return s.repos.Service().RestorePhpPatchStatus(
+		cleanupCtx,
+		serviceID,
+		previousStatus,
+	)
 }
 
 // InstallPhpExtension installs a PHP extension on a server
@@ -440,15 +824,20 @@ func (s *Service) InstallPhpExtension(ctx context.Context, serverID, teamID, ver
 		return err
 	}
 
+	phpService, err := s.repos.Service().FindPhpByServerAndVersion(ctx, serverID, version)
+	if err != nil {
+		return err
+	}
+	if phpService.Status == types.ServiceStatusUpdating {
+		return ErrServiceBusy
+	}
+	if !phpService.Status.IsActive() {
+		return fiberutil.BadRequest("PHP service must be active to install extensions")
+	}
 	if !s.HasQueue() {
 		return ErrQueueNotConfigured
 	}
-
-	// Mark extension as "installing" in the database
-	phpService, err := s.repos.Service().FindPhpByServerAndVersion(ctx, serverID, version)
-	if err == nil {
-		_ = s.repos.Service().SetExtensionStatus(ctx, phpService.ID, extension, "installing")
-	}
+	_ = s.repos.Service().SetExtensionStatus(ctx, phpService.ID, extension, "installing")
 
 	return s.MustDispatch(func() (*asynq.Task, error) {
 		return jobs.NewInstallPhpExtensionTask(server.ID, version, extension, userID)
@@ -462,15 +851,20 @@ func (s *Service) UninstallPhpExtension(ctx context.Context, serverID, teamID, v
 		return err
 	}
 
+	phpService, err := s.repos.Service().FindPhpByServerAndVersion(ctx, serverID, version)
+	if err != nil {
+		return err
+	}
+	if phpService.Status == types.ServiceStatusUpdating {
+		return ErrServiceBusy
+	}
+	if !phpService.Status.IsActive() {
+		return fiberutil.BadRequest("PHP service must be active to remove extensions")
+	}
 	if !s.HasQueue() {
 		return ErrQueueNotConfigured
 	}
-
-	// Mark extension as "removing" in the database
-	phpService, err := s.repos.Service().FindPhpByServerAndVersion(ctx, serverID, version)
-	if err == nil {
-		_ = s.repos.Service().SetExtensionStatus(ctx, phpService.ID, extension, "removing")
-	}
+	_ = s.repos.Service().SetExtensionStatus(ctx, phpService.ID, extension, "removing")
 
 	return s.MustDispatch(func() (*asynq.Task, error) {
 		return jobs.NewUninstallPhpExtensionTask(server.ID, version, extension, userID)

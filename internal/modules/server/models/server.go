@@ -46,26 +46,27 @@ type Server struct {
 	// stored value and refuses to authenticate on mismatch. Public
 	// data by definition, so this is plain text rather than the
 	// EncryptedString that wraps the private key on line 42.
-	HostKey                   string                 `gorm:"column:host_key;type:text" json:"-"`
-	UserPublicKey             dbtype.EncryptedString `gorm:"column:user_public_key;type:longtext" json:"-"`
-	Username                  *string                `gorm:"type:varchar(255)" json:"username,omitempty"`
-	Password                  dbtype.EncryptedString `gorm:"type:longtext" json:"-"`
-	DatabasePassword          dbtype.EncryptedString `gorm:"column:database_password;type:longtext" json:"-"`
-	SSHPort                   *int                   `gorm:"column:ssh_port;type:int" json:"ssh_port,omitempty"`
-	WorkingDirectory          *string                `gorm:"column:working_directory;type:varchar(255)" json:"-"`
-	CompletedProvisionSteps   dbtype.JSONStringSlice `gorm:"column:completed_provision_steps;type:json" json:"-"`
-	ProvisionedAt             *time.Time             `gorm:"column:provisioned_at;type:timestamp null" json:"provisioned_at,omitempty"`
-	UninstallationRequestedAt *time.Time             `gorm:"column:uninstallation_requested_at;type:timestamp null" json:"-"`
-	Updates                   bool                   `gorm:"type:tinyint(1);not null;default:0" json:"-"`
-	AutoUpdate                bool                   `gorm:"column:auto_update;type:tinyint(1);not null;default:0" json:"auto_update"`
-	AvailableUpdates          *int                   `gorm:"column:available_updates;type:int" json:"-"`
-	SecurityUpdates           *int                   `gorm:"column:security_updates;type:int" json:"-"`
-	Progress                  int                    `gorm:"type:int;not null;default:0" json:"progress"`
-	ProgressStep              *string                `gorm:"column:progress_step;type:varchar(255)" json:"progress_step,omitempty"`
-	ProvisionError            *string                `gorm:"column:provision_error;type:text" json:"provision_error,omitempty"`
-	LastUpdateCheck           *time.Time             `gorm:"column:last_update_check;type:timestamp null" json:"-"`
-	LastConnectivityCheck     *time.Time             `gorm:"column:last_connectivity_check;type:timestamp null" json:"last_connectivity_check,omitempty"`
-	ArchivedAt                *time.Time             `gorm:"column:archived_at;type:timestamp null" json:"archived_at,omitempty"`
+	HostKey                    string                 `gorm:"column:host_key;type:text" json:"-"`
+	UserPublicKey              dbtype.EncryptedString `gorm:"column:user_public_key;type:longtext" json:"-"`
+	Username                   *string                `gorm:"type:varchar(255)" json:"username,omitempty"`
+	Password                   dbtype.EncryptedString `gorm:"type:longtext" json:"-"`
+	DatabasePassword           dbtype.EncryptedString `gorm:"column:database_password;type:longtext" json:"-"`
+	SSHPort                    *int                   `gorm:"column:ssh_port;type:int" json:"ssh_port,omitempty"`
+	WorkingDirectory           *string                `gorm:"column:working_directory;type:varchar(255)" json:"-"`
+	CompletedProvisionSteps    dbtype.JSONStringSlice `gorm:"column:completed_provision_steps;type:json" json:"-"`
+	ProvisionedAt              *time.Time             `gorm:"column:provisioned_at;type:timestamp null" json:"provisioned_at,omitempty"`
+	UninstallationRequestedAt  *time.Time             `gorm:"column:uninstallation_requested_at;type:timestamp null" json:"-"`
+	Updates                    bool                   `gorm:"type:tinyint(1);not null;default:0" json:"-"`
+	AutoUpdate                 bool                   `gorm:"column:auto_update;type:tinyint(1);not null;default:0" json:"auto_update"`
+	AvailableUpdates           *int                   `gorm:"column:available_updates;type:int" json:"-"`
+	SecurityUpdates            *int                   `gorm:"column:security_updates;type:int" json:"-"`
+	Progress                   int                    `gorm:"type:int;not null;default:0" json:"progress"`
+	ProgressStep               *string                `gorm:"column:progress_step;type:varchar(255)" json:"progress_step,omitempty"`
+	ProvisionError             *string                `gorm:"column:provision_error;type:text" json:"provision_error,omitempty"`
+	PendingDefaultPHPServiceID *string                `gorm:"column:pending_default_php_service_id;type:char(26)" json:"pending_default_php_service_id,omitempty"`
+	LastUpdateCheck            *time.Time             `gorm:"column:last_update_check;type:timestamp null" json:"-"`
+	LastConnectivityCheck      *time.Time             `gorm:"column:last_connectivity_check;type:timestamp null" json:"last_connectivity_check,omitempty"`
+	ArchivedAt                 *time.Time             `gorm:"column:archived_at;type:timestamp null" json:"archived_at,omitempty"`
 	// Detected runtime facts about the box, populated by the detect_os
 	// provision step from /etc/os-release + uname. Distinct from
 	// OperatingSystem above (which is what the user picked in the

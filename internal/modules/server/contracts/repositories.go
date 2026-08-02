@@ -43,6 +43,9 @@ type ServiceRepository interface {
 	FindDatabaseService(ctx context.Context, serverID string) (*models.InstalledService, error)
 	Update(ctx context.Context, service *models.InstalledService) error
 	UpdateStatus(ctx context.Context, id string, status types.ServiceStatus) error
+	ClaimPhpPatch(ctx context.Context, id string, previousStatus types.ServiceStatus) (bool, error)
+	RestorePhpPatchStatus(ctx context.Context, id string, status types.ServiceStatus) (bool, error)
+	UpdateStatusFromProbe(ctx context.Context, id string, status types.ServiceStatus, typeData map[string]any) (bool, error)
 	UpdateFields(ctx context.Context, id string, fields map[string]any) error
 	UpdateWithTypeData(ctx context.Context, id string, status types.ServiceStatus, typeData map[string]any) error
 	Delete(ctx context.Context, id string) error

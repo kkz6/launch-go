@@ -197,11 +197,15 @@ type ServiceResponse struct {
 	Status          string              `json:"status"`
 	StatusLabel     string              `json:"status_label"`
 	IsDefault       bool                `json:"is_default"`
+	DefaultPending  bool                `json:"default_change_pending"`
 	Software        *string             `json:"software,omitempty"`
 	SoftwareLabel   *string             `json:"software_label,omitempty"`
 	LastStatusCheck *string             `json:"last_status_check,omitempty"`
 	StatusDetails   map[string]any      `json:"status_details,omitempty"`
 	StatusOutput    *string             `json:"status_output,omitempty"`
+	TaskID          *string             `json:"task_id,omitempty"`
+	PatchStatus     *string             `json:"patch_status,omitempty"`
+	PatchError      *string             `json:"patch_error,omitempty"`
 	Extensions      []ExtensionResponse `json:"extensions,omitempty"`
 	Opcache         map[string]any      `json:"opcache,omitempty"`
 	CreatedAt       string              `json:"created_at"`
@@ -239,6 +243,7 @@ func ToServiceResponse(service *models.InstalledService) ServiceResponse {
 		Status:      service.Status.String(),
 		StatusLabel: service.Status.Label(),
 		IsDefault:   service.IsDefault,
+		TaskID:      service.TaskID,
 		CreatedAt:   createdAt,
 		UpdatedAt:   updatedAt,
 	}
@@ -262,6 +267,12 @@ func ToServiceResponse(service *models.InstalledService) ServiceResponse {
 		}
 		if statusOutput, ok := service.TypeData["status_output"].(string); ok {
 			resp.StatusOutput = &statusOutput
+		}
+		if patchStatus, ok := service.TypeData["patch_status"].(string); ok {
+			resp.PatchStatus = &patchStatus
+		}
+		if patchError, ok := service.TypeData["patch_error"].(string); ok {
+			resp.PatchError = &patchError
 		}
 		// Extract OPcache settings (PHP only)
 		if opcache, ok := service.TypeData["opcache"].(map[string]any); ok {

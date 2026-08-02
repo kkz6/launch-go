@@ -46,6 +46,16 @@ func (j *UpdateSiteTLSSettingJob) Handle(ctx context.Context) error {
 	j.site = site
 
 	oldTLSSetting := site.TLSSetting
+	certificates, err := j.Deps.Repos.Certificate().FindBySite(ctx, site.ID)
+	if err != nil {
+		return fmt.Errorf("failed to load active certificates: %w", err)
+	}
+	previousCertificateIDs := make([]string, 0, len(certificates))
+	for i := range certificates {
+		if certificates[i].IsActive {
+			previousCertificateIDs = append(previousCertificateIDs, certificates[i].ID)
+		}
+	}
 
 	j.Deps.Logger.Info().
 		Str("site_id", site.ID).
@@ -57,13 +67,16 @@ func (j *UpdateSiteTLSSettingJob) Handle(ctx context.Context) error {
 	site.TLSSetting = j.Payload.TLSSetting
 	now := time.Now()
 	site.PendingTLSUpdateSince = &now
+	site.PendingTLSPreviousSetting = &oldTLSSetting
+	site.PendingTLSPreviousCertIDs = previousCertificateIDs
+	site.PendingTLSReplacementCertID = nil
 
 	if err := j.Deps.Repos.Site().Update(ctx, site); err != nil {
 		return fmt.Errorf("failed to update site TLS setting: %w", err)
 	}
 
 	// Dispatch UpdateCaddyfile job to apply the new TLS configuration
-	task, err := NewUpdateCaddyfileTask(site.ID, j.Payload.UserID)
+	task, err := NewTLSUpdateCaddyfileTask(site.ID, j.Payload.UserID)
 	if err != nil {
 		return fmt.Errorf("failed to create update caddyfile task: %w", err)
 	}
@@ -97,13 +110,13 @@ func (j *UpdateSiteTLSSettingJob) Failed(ctx context.Context, err error) {
 		Str("tls_setting", string(j.Payload.TLSSetting)).
 		Msg("Failed to update TLS setting")
 
-	// Clear pending TLS update flag on failure
-	site, findErr := j.Deps.Repos.Site().FindByID(ctx, j.Payload.SiteID)
-	if findErr == nil && site != nil {
-		site.PendingTLSUpdateSince = nil
-		if updateErr := j.Deps.Repos.Site().Update(ctx, site); updateErr != nil {
-			j.Deps.Logger.Error().Err(updateErr).Str("site_id", site.ID).Msg("Failed to clear pending TLS update flag")
-		}
+	cleanupCtx, cancelCleanup := context.WithTimeout(context.WithoutCancel(ctx), 15*time.Second)
+	defer cancelCleanup()
+	if rollbackErr := rollbackTLSReservation(cleanupCtx, j.Deps.DB, j.Payload.SiteID); rollbackErr != nil {
+		j.Deps.Logger.Error().
+			Err(rollbackErr).
+			Str("site_id", j.Payload.SiteID).
+			Msg("Failed to roll back TLS setting")
 	}
 }
 

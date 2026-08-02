@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/kkz6/launch-go/internal/modules/site/dto"
@@ -43,6 +44,9 @@ func (s *QueueService) createQueue(ctx context.Context, siteID, serverID, teamID
 	if err != nil {
 		return nil, err
 	}
+	if err := ensureSiteConfigurationIdle(site); err != nil {
+		return nil, err
+	}
 
 	user := req.User
 	if user == nil || *user == "" {
@@ -61,6 +65,11 @@ func (s *QueueService) createQueue(ctx context.Context, siteID, serverID, teamID
 	failedJobDelaySeconds := req.FailedJobDelaySeconds
 
 	queueModel := &models.Queue{
+		Command: fmt.Sprintf(
+			"%s %s/artisan queue:work",
+			site.GetPhpBinary(),
+			site.GetApplicationDirectory(),
+		),
 		Directory:             directory,
 		User:                  *user,
 		QueueConnection:       req.QueueConnection,
@@ -162,6 +171,9 @@ func (s *QueueService) updateQueue(ctx context.Context, queueID, siteID, serverI
 	if err != nil {
 		return nil, err
 	}
+	if err := ensureSiteConfigurationIdle(site); err != nil {
+		return nil, err
+	}
 
 	queueModel, err := s.Repos().Queue().FindByIDAndSite(ctx, queueID, siteID)
 	if err != nil {
@@ -252,7 +264,11 @@ func (s *QueueService) updateQueue(ctx context.Context, queueID, siteID, serverI
 // Delete deletes a queue. Signature matches DeleteDoubleNestedFunc.
 func (s *QueueService) Delete(ctx context.Context, queueID, siteID, serverID, teamID, userID string) error {
 	_ = userID
-	if _, err := s.findSite(ctx, siteID, serverID, teamID); err != nil {
+	site, err := s.findSite(ctx, siteID, serverID, teamID)
+	if err != nil {
+		return err
+	}
+	if err := ensureSiteConfigurationIdle(site); err != nil {
 		return err
 	}
 	queueModel, err := s.Repos().Queue().FindByIDAndSite(ctx, queueID, siteID)
@@ -286,7 +302,11 @@ func (s *QueueService) Delete(ctx context.Context, queueID, siteID, serverID, te
 
 // Restart restarts a single queue worker. Signature matches ActionItemDoubleNestedFunc.
 func (s *QueueService) Restart(ctx context.Context, queueID, siteID, serverID, teamID, userID string) error {
-	if _, err := s.findSite(ctx, siteID, serverID, teamID); err != nil {
+	site, err := s.findSite(ctx, siteID, serverID, teamID)
+	if err != nil {
+		return err
+	}
+	if err := ensureSiteConfigurationIdle(site); err != nil {
 		return err
 	}
 	queue, err := s.Repos().Queue().FindByIDAndSite(ctx, queueID, siteID)

@@ -44,6 +44,7 @@ func registerHandlers(mux *asynq.ServeMux) {
 	pkgjobs.RegisterTyped(mux, TypeInstallCaddyfile, NewInstallCaddyfileJob)
 	pkgjobs.RegisterTyped(mux, TypeUpdateCaddyfile, NewUpdateCaddyfileJob)
 	pkgjobs.RegisterTyped(mux, TypeUninstallCaddyfile, NewUninstallCaddyfileJob)
+	pkgjobs.RegisterTyped(mux, TypeUpdateSitePHPVersion, NewUpdateSitePHPVersionJob)
 
 	// Queue jobs
 	pkgjobs.RegisterTyped(mux, TypeSyncQueues, NewSyncQueuesJob)

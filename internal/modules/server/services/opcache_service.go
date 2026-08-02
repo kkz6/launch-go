@@ -172,6 +172,9 @@ func (s *Service) ResetOpcache(ctx context.Context, phpID, serverID, teamID, use
 	if service.Type != types.ServiceTypePhp {
 		return fmt.Errorf("service is not a PHP installation")
 	}
+	if service.Status == types.ServiceStatusUpdating {
+		return ErrServiceBusy
+	}
 
 	// Get the PHP version from the software
 	software := types.Software(service.Software)
@@ -208,6 +211,9 @@ func (s *Service) ConfigureOpcache(ctx context.Context, serverID, teamID, phpID 
 
 	if service.Type != types.ServiceTypePhp {
 		return fmt.Errorf("service is not a PHP installation")
+	}
+	if service.Status == types.ServiceStatusUpdating {
+		return ErrServiceBusy
 	}
 
 	// Build settings map

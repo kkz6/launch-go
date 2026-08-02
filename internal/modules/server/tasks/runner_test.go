@@ -7,11 +7,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/kkz6/launch-go/internal/database/serializers"
 	"github.com/kkz6/launch-go/internal/modules/server/models"
 	servertypes "github.com/kkz6/launch-go/internal/modules/server/types"
 	"github.com/kkz6/launch-go/internal/pkg/dbtype"
 	basemodels "github.com/kkz6/launch-go/internal/pkg/models"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
 )
 
 // =============================================================================
@@ -417,6 +420,144 @@ func TestTaskRunner_Run_NoPrivateKey(t *testing.T) {
 
 	if err == nil {
 		t.Fatal("Expected error when server has no private key")
+	}
+}
+
+func TestTaskRunner_Run_TracksConnectionPreflightFailure(t *testing.T) {
+	if err := serializers.SetEncryptionKey([]byte("0123456789abcdef0123456789abcdef")); err != nil {
+		t.Fatalf("set encryption key: %v", err)
+	}
+
+	db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared"), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open database: %v", err)
+	}
+	if err := db.AutoMigrate(&models.Task{}); err != nil {
+		t.Fatalf("migrate task: %v", err)
+	}
+
+	server := createTestServer()
+	server.PublicIPv4 = nil
+	callbackTask := createTestCallbackTask()
+	dispatcher := &mockDispatcher{}
+	var createdTaskID string
+
+	runner := NewTaskRunner(server, callbackTask).
+		WithDB(db).
+		WithDispatcher(dispatcher).
+		TrackInDB().
+		OnTaskCreated(func(taskID string) {
+			createdTaskID = taskID
+		})
+
+	result, runErr := runner.Run(context.Background())
+
+	if runErr == nil {
+		t.Fatal("Expected connection preflight error")
+	}
+	if result == nil || result.TaskModel == nil {
+		t.Fatal("Expected the failed task to be tracked")
+	}
+	if createdTaskID != result.TaskModel.ID {
+		t.Fatalf("OnTaskCreated() ID = %q, want %q", createdTaskID, result.TaskModel.ID)
+	}
+	if atomic.LoadInt32(&dispatcher.callCount) != 0 {
+		t.Fatal("Dispatcher must not run when connection preflight fails")
+	}
+
+	var stored models.Task
+	if err := db.First(&stored, "id = ?", result.TaskModel.ID).Error; err != nil {
+		t.Fatalf("find tracked task: %v", err)
+	}
+	if stored.Status != string(servertypes.TaskStatusFailed) {
+		t.Fatalf("task status = %q, want failed", stored.Status)
+	}
+	if stored.Output.String() != "server has no public IP address" {
+		t.Fatalf("task output = %q", stored.Output.String())
+	}
+	if !callbackTask.onFailureCalled {
+		t.Fatal("Expected failure callback for connection preflight error")
+	}
+}
+
+func TestTaskRunner_AsyncModesTrackConnectionPreflightFailure(t *testing.T) {
+	if err := serializers.SetEncryptionKey([]byte("0123456789abcdef0123456789abcdef")); err != nil {
+		t.Fatalf("set encryption key: %v", err)
+	}
+
+	tests := []struct {
+		name string
+		run  func(context.Context, *TaskRunner) (*models.Task, error)
+	}{
+		{
+			name: "async",
+			run: func(ctx context.Context, runner *TaskRunner) (*models.Task, error) {
+				return runner.RunAsync(ctx)
+			},
+		},
+		{
+			name: "background",
+			run: func(ctx context.Context, runner *TaskRunner) (*models.Task, error) {
+				return runner.RunInBackground(ctx)
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			db, err := gorm.Open(
+				sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared"),
+				&gorm.Config{},
+			)
+			if err != nil {
+				t.Fatalf("open database: %v", err)
+			}
+			if err := db.AutoMigrate(&models.Task{}); err != nil {
+				t.Fatalf("migrate task: %v", err)
+			}
+
+			server := createTestServer()
+			server.PublicIPv4 = nil
+			callbackTask := createTestCallbackTask()
+			dispatcher := &mockDispatcher{}
+			var createdTaskID string
+
+			runner := NewTaskRunner(server, callbackTask).
+				WithDB(db).
+				WithDispatcher(dispatcher).
+				OnTaskCreated(func(taskID string) {
+					createdTaskID = taskID
+				})
+
+			taskModel, runErr := tt.run(context.Background(), runner)
+
+			if runErr == nil {
+				t.Fatal("Expected connection preflight error")
+			}
+			if taskModel == nil {
+				t.Fatal("Expected the failed task to be tracked")
+			}
+			if createdTaskID != taskModel.ID {
+				t.Fatalf("OnTaskCreated() ID = %q, want %q", createdTaskID, taskModel.ID)
+			}
+			if atomic.LoadInt32(&dispatcher.callCount) != 0 {
+				t.Fatal("Dispatcher must not run when connection preflight fails")
+			}
+
+			var stored models.Task
+			if err := db.First(&stored, "id = ?", taskModel.ID).Error; err != nil {
+				t.Fatalf("find tracked task: %v", err)
+			}
+			if stored.Status != string(servertypes.TaskStatusFailed) {
+				t.Fatalf("task status = %q, want failed", stored.Status)
+			}
+			if stored.Output.String() != "server has no public IP address" {
+				t.Fatalf("task output = %q", stored.Output.String())
+			}
+			if !callbackTask.onFailureCalled {
+				t.Fatal("Expected failure callback for connection preflight error")
+			}
+		})
 	}
 }
 
