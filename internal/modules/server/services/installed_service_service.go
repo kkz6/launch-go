@@ -15,6 +15,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/server/jobs"
 	"github.com/kkz6/launch-go/internal/modules/server/models"
 	"github.com/kkz6/launch-go/internal/modules/server/types"
+	"github.com/kkz6/launch-go/internal/pkg/dbtype"
 	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 	pkgservice "github.com/kkz6/launch-go/internal/pkg/service"
 )
@@ -719,7 +720,7 @@ func (s *Service) PatchPhpVersion(ctx context.Context, serviceID, serverID, team
 		}
 		return fiberutil.BadRequest("PHP service must be active before patching")
 	}
-	queuedTypeData := make(map[string]any, len(service.TypeData)+1)
+	queuedTypeData := make(dbtype.JSONMap, len(service.TypeData)+1)
 	for key, value := range service.TypeData {
 		queuedTypeData[key] = value
 	}

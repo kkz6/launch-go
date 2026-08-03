@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/alicebob/miniredis/v2"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -13,11 +14,13 @@ import (
 	"gorm.io/gorm"
 	gormlogger "gorm.io/gorm/logger"
 
+	"github.com/kkz6/launch-go/internal/config"
 	"github.com/kkz6/launch-go/internal/modules/server/dto"
 	"github.com/kkz6/launch-go/internal/modules/server/models"
 	"github.com/kkz6/launch-go/internal/modules/server/repositories"
 	"github.com/kkz6/launch-go/internal/modules/server/types"
 	basemodels "github.com/kkz6/launch-go/internal/pkg/models"
+	queuepkg "github.com/kkz6/launch-go/internal/pkg/queue"
 	pkgservice "github.com/kkz6/launch-go/internal/pkg/service"
 )
 
@@ -207,6 +210,73 @@ func TestServiceInstallationAndOperationsValidateBeforeDispatch(t *testing.T) {
 		context.Background(), server.ID, server.TeamID, services[2].ID,
 	)
 	assert.ErrorIs(t, err, pkgservice.ErrQueueRequired)
+}
+
+func TestPHPLifecycleOperationsReserveAndEnqueue(t *testing.T) {
+	t.Run("set default", func(t *testing.T) {
+		service, db, server, services := phpLifecycleDatabaseFixture(t)
+		attachTestQueue(t, service)
+
+		err := service.SetDefaultPhpVersion(
+			context.Background(), services[1].ID, server.ID, server.TeamID, "user-1",
+		)
+		require.NoError(t, err)
+
+		var persistedServer models.Server
+		require.NoError(t, db.First(&persistedServer, "id = ?", server.ID).Error)
+		require.NotNil(t, persistedServer.PendingDefaultPHPServiceID)
+		assert.Equal(t, services[1].ID, *persistedServer.PendingDefaultPHPServiceID)
+		var target models.InstalledService
+		require.NoError(t, db.First(&target, "id = ?", services[1].ID).Error)
+		assert.Equal(t, types.ServiceStatusUpdating, target.Status)
+	})
+
+	t.Run("patch", func(t *testing.T) {
+		service, db, server, services := phpLifecycleDatabaseFixture(t)
+		attachTestQueue(t, service)
+
+		err := service.PatchPhpVersion(
+			context.Background(), services[0].ID, server.ID, server.TeamID, "user-1",
+		)
+		require.NoError(t, err)
+
+		var target models.InstalledService
+		require.NoError(t, db.First(&target, "id = ?", services[0].ID).Error)
+		assert.Equal(t, types.ServiceStatusUpdating, target.Status)
+		assert.Equal(t, "queued", target.TypeData["patch_status"])
+	})
+
+	t.Run("generic operations", func(t *testing.T) {
+		service, _, server, services := phpLifecycleDatabaseFixture(t)
+		attachTestQueue(t, service)
+
+		for _, operation := range []types.ServiceOption{
+			types.ServiceOptionStart,
+			types.ServiceOptionRestart,
+			types.ServiceOptionStop,
+			types.ServiceOptionRemove,
+			types.ServiceOptionStatus,
+			types.ServiceOptionUpdate,
+		} {
+			err := service.HandleServiceOperation(
+				context.Background(), server.ID, server.TeamID, services[2].ID, operation,
+			)
+			require.NoError(t, err)
+		}
+		require.NoError(t, service.CheckServiceStatus(
+			context.Background(), server.ID, server.TeamID, services[2].ID,
+		))
+	})
+}
+
+func attachTestQueue(t *testing.T, service *Service) {
+	t.Helper()
+	redis := miniredis.RunT(t)
+	client := queuepkg.NewClient(config.RedisConfig{Address: redis.Addr()})
+	service.Queue = client
+	t.Cleanup(func() {
+		require.NoError(t, client.Close())
+	})
 }
 
 func phpLifecycleDatabaseFixture(

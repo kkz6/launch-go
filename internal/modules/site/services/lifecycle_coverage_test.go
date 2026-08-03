@@ -5,13 +5,18 @@ import (
 	"testing"
 	"time"
 
+	"github.com/alicebob/miniredis/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/kkz6/launch-go/internal/config"
+	"github.com/kkz6/launch-go/internal/database/serializers"
+	"github.com/kkz6/launch-go/internal/modules/site/dto"
 	"github.com/kkz6/launch-go/internal/modules/site/models"
 	sitetypes "github.com/kkz6/launch-go/internal/modules/site/types"
 	"github.com/kkz6/launch-go/internal/pkg/dbtype"
 	basemodels "github.com/kkz6/launch-go/internal/pkg/models"
+	queuepkg "github.com/kkz6/launch-go/internal/pkg/queue"
 	pkgservice "github.com/kkz6/launch-go/internal/pkg/service"
 )
 
@@ -188,4 +193,135 @@ func TestTLSRollbackWithoutReplacementAndLostReservation(t *testing.T) {
 	)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "reservation was lost")
+}
+
+func TestUpdateSSLValidatesAndQueuesLifecycleChanges(t *testing.T) {
+	t.Run("invalid setting", func(t *testing.T) {
+		sslService, _, site := sslLifecycleFixture(t)
+		attachSSLTestQueue(t, sslService)
+		err := sslService.UpdateSSL(
+			context.Background(), site.ID, site.ServerID, site.TeamID, "user-1",
+			&dto.UpdateSSLRequest{TLSSetting: "invalid"},
+		)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "invalid TLS setting")
+	})
+
+	t.Run("stored certificate requires custom TLS", func(t *testing.T) {
+		sslService, _, site := sslLifecycleFixture(t)
+		attachSSLTestQueue(t, sslService)
+		storedID := "stored-1"
+		err := sslService.UpdateSSL(
+			context.Background(), site.ID, site.ServerID, site.TeamID, "user-1",
+			&dto.UpdateSSLRequest{
+				TLSSetting:          string(sitetypes.TLSSettingInternal),
+				StoredCertificateID: &storedID,
+			},
+		)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "requires the custom TLS setting")
+	})
+
+	t.Run("stored certificate repository is required", func(t *testing.T) {
+		sslService, _, site := sslLifecycleFixture(t)
+		attachSSLTestQueue(t, sslService)
+		storedID := "stored-1"
+		err := sslService.UpdateSSL(
+			context.Background(), site.ID, site.ServerID, site.TeamID, "user-1",
+			&dto.UpdateSSLRequest{TLSSetting: "stored", StoredCertificateID: &storedID},
+		)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "library is not configured")
+	})
+
+	t.Run("custom certificate fields are required", func(t *testing.T) {
+		sslService, _, site := sslLifecycleFixture(t)
+		attachSSLTestQueue(t, sslService)
+		empty := " "
+		err := sslService.UpdateSSL(
+			context.Background(), site.ID, site.ServerID, site.TeamID, "user-1",
+			&dto.UpdateSSLRequest{
+				TLSSetting:  string(sitetypes.TLSSettingCustom),
+				PrivateKey:  &empty,
+				Certificate: &empty,
+			},
+		)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "requires both a private key and certificate")
+	})
+
+	t.Run("internal TLS reserves state and enqueues", func(t *testing.T) {
+		sslService, db, site := sslLifecycleFixture(t)
+		attachSSLTestQueue(t, sslService)
+		err := sslService.UpdateSSL(
+			context.Background(), site.ID, site.ServerID, site.TeamID, "user-1",
+			&dto.UpdateSSLRequest{TLSSetting: string(sitetypes.TLSSettingInternal)},
+		)
+		require.NoError(t, err)
+
+		var persisted models.Site
+		require.NoError(t, db.First(&persisted, "id = ?", site.ID).Error)
+		assert.Equal(t, sitetypes.TLSSettingInternal, persisted.TLSSetting)
+		assert.NotNil(t, persisted.PendingTLSUpdateSince)
+		require.NotNil(t, persisted.PendingTLSPreviousSetting)
+		assert.Equal(t, sitetypes.TLSSettingAuto, *persisted.PendingTLSPreviousSetting)
+	})
+
+	t.Run("enqueue failure restores TLS state", func(t *testing.T) {
+		sslService, db, site := sslLifecycleFixture(t)
+		redis := attachSSLTestQueue(t, sslService)
+		redis.Close()
+		err := sslService.UpdateSSL(
+			context.Background(), site.ID, site.ServerID, site.TeamID, "user-1",
+			&dto.UpdateSSLRequest{TLSSetting: string(sitetypes.TLSSettingInternal)},
+		)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "enqueue TLS update")
+
+		var persisted models.Site
+		require.NoError(t, db.First(&persisted, "id = ?", site.ID).Error)
+		assert.Equal(t, sitetypes.TLSSettingAuto, persisted.TLSSetting)
+		assert.Nil(t, persisted.PendingTLSUpdateSince)
+	})
+
+	t.Run("inline custom certificate is activated transactionally", func(t *testing.T) {
+		require.NoError(t, serializers.SetEncryptionKey(
+			[]byte("0123456789abcdef0123456789abcdef"),
+		))
+		sslService, db, site := sslLifecycleFixture(t)
+		attachSSLTestQueue(t, sslService)
+		certificate := "certificate-pem"
+		privateKey := "private-key-pem"
+		err := sslService.UpdateSSL(
+			context.Background(), site.ID, site.ServerID, site.TeamID, "user-1",
+			&dto.UpdateSSLRequest{
+				TLSSetting:  string(sitetypes.TLSSettingCustom),
+				PrivateKey:  &privateKey,
+				Certificate: &certificate,
+			},
+		)
+		require.NoError(t, err)
+
+		var persisted models.Site
+		require.NoError(t, db.First(&persisted, "id = ?", site.ID).Error)
+		require.NotNil(t, persisted.PendingTLSReplacementCertID)
+		var replacement models.Certificate
+		require.NoError(t, db.First(
+			&replacement, "id = ?", *persisted.PendingTLSReplacementCertID,
+		).Error)
+		assert.True(t, replacement.IsActive)
+		assert.Equal(t, site.ID, replacement.SiteID)
+		assert.Equal(t, []string{site.Address}, []string(replacement.Domains))
+	})
+}
+
+func attachSSLTestQueue(t *testing.T, service *SSLService) *miniredis.Miniredis {
+	t.Helper()
+	redis := miniredis.RunT(t)
+	client := queuepkg.NewClient(config.RedisConfig{Address: redis.Addr()})
+	service.Queue = client
+	t.Cleanup(func() {
+		require.NoError(t, client.Close())
+	})
+	return redis
 }
