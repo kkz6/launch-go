@@ -3,6 +3,7 @@ package tasks
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -13,6 +14,10 @@ import (
 	"github.com/kkz6/launch-go/internal/pkg/dbtype"
 	basemodels "github.com/kkz6/launch-go/internal/pkg/models"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
+	"github.com/kkz6/launch-go/internal/pkg/taskrunner/markers"
+	"github.com/rs/zerolog"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
@@ -217,6 +222,129 @@ func TestTaskRunner_ThrowOnError(t *testing.T) {
 
 	if !runner.throwOnError {
 		t.Error("Expected throwOnError to be true")
+	}
+}
+
+func TestTaskRunner_BuilderOptions(t *testing.T) {
+	runner := NewTaskRunner(createTestServer(), createTestTask())
+	logger := zerolog.New(io.Discard)
+	marker := taskrunner.MarkerHandlerFunc(func(
+		context.Context,
+		string,
+		*markers.Marker,
+	) error {
+		return nil
+	})
+
+	returned := runner.
+		WithQueue(nil).
+		WithLogger(&logger).
+		WithBroadcaster(nil).
+		WithNotifier(nil).
+		WithMarkerHandler(marker).
+		WithoutTracking().
+		Throw()
+
+	assert.Same(t, runner, returned)
+	assert.Same(t, &logger, runner.logger)
+	assert.NotNil(t, runner.markerHandler)
+	assert.False(t, runner.trackInDB)
+	assert.True(t, runner.throwOnError)
+
+	runner.AsUser()
+	assert.Equal(t, runner.server.GetUsername(), runner.username)
+	runner.AsUser("")
+	assert.Equal(t, runner.server.GetUsername(), runner.username)
+	runner.AsRoot()
+	assert.Empty(t, runner.username)
+}
+
+func TestTaskRunner_CompletionBuilders(t *testing.T) {
+	runner := NewTaskRunner(createTestServer(), createTestTask()).
+		OnComplete("job:finished", map[string]string{"id": "1"}).
+		OnFailed("job:failed", map[string]string{"id": "2"}).
+		OnTimeout("job:timeout", map[string]string{"id": "3"})
+
+	require.NotNil(t, runner.completionConfig)
+	assert.Equal(t, "job:finished", runner.completionConfig.OnFinished.Type)
+	assert.Equal(t, "job:failed", runner.completionConfig.OnFailed.Type)
+	assert.Equal(t, "job:timeout", runner.completionConfig.OnTimeout.Type)
+
+	invalid := func() {}
+	runner.OnComplete("invalid", invalid).
+		OnFailed("invalid", invalid).
+		OnTimeout("invalid", invalid)
+	assert.Equal(t, "job:finished", runner.completionConfig.OnFinished.Type)
+	assert.Equal(t, "job:failed", runner.completionConfig.OnFailed.Type)
+	assert.Equal(t, "job:timeout", runner.completionConfig.OnTimeout.Type)
+}
+
+func TestTaskRunner_RunPersistsSuccessAndFailure(t *testing.T) {
+	require.NoError(t, serializers.SetEncryptionKey([]byte("0123456789abcdef0123456789abcdef")))
+
+	for _, test := range []struct {
+		name      string
+		result    *taskrunner.TaskResult
+		execErr   error
+		throw     bool
+		wantError bool
+		wantState string
+	}{
+		{
+			name:      "success",
+			result:    &taskrunner.TaskResult{ExitCode: 0, Output: "ok"},
+			wantState: string(servertypes.TaskStatusFinished),
+		},
+		{
+			name:      "failed result is returned when throwing",
+			result:    &taskrunner.TaskResult{ExitCode: 7, Output: "bad"},
+			throw:     true,
+			wantError: true,
+			wantState: string(servertypes.TaskStatusFailed),
+		},
+		{
+			name:      "dispatcher error is persisted",
+			execErr:   assert.AnError,
+			throw:     true,
+			wantError: true,
+			wantState: string(servertypes.TaskStatusFailed),
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared"), &gorm.Config{})
+			require.NoError(t, err)
+			require.NoError(t, db.AutoMigrate(&models.Task{}))
+
+			dispatcher := &mockDispatcher{runFunc: func(
+				context.Context,
+				*taskrunner.PendingTask,
+			) (*taskrunner.TaskResult, error) {
+				return test.result, test.execErr
+			}}
+			runner := NewTaskRunner(createTestServer(), createTestCallbackTask()).
+				WithDB(db).
+				WithDispatcher(dispatcher).
+				TrackInDB()
+			if test.throw {
+				runner.ThrowOnError()
+			}
+
+			result, runErr := runner.Dispatch(context.Background())
+			if test.wantError {
+				require.Error(t, runErr)
+			} else {
+				require.NoError(t, runErr)
+			}
+			require.NotNil(t, result)
+			require.NotNil(t, result.TaskModel)
+
+			var persisted models.Task
+			require.NoError(t, db.First(&persisted, "id = ?", result.TaskModel.ID).Error)
+			assert.Equal(t, test.wantState, persisted.Status)
+			if test.execErr != nil {
+				assert.Contains(t, persisted.Output.String(), test.execErr.Error())
+			}
+		})
 	}
 }
 
