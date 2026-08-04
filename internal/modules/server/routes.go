@@ -108,6 +108,8 @@ func (m *Module) registerServerRoutes(router fiber.Router, authMiddleware fiber.
 		servers.Get("/:id/php-versions", provisioned, fiberutil.IndexNested("id", "Installed PHP versions retrieved", m.service.GetInstalledPhpVersions))
 		servers.Get("/:id/php/opcache/defaults", provisioned, handler.GetOpcacheDefaults)
 		servers.Get("/:id/php/:phpId/opcache/status", provisioned, fiberutil.ShowNested("id", "phpId", "OPcache status retrieved", m.service.GetOpcacheStatus))
+		servers.Post("/:id/php/:phpId/default", provisioned, middleware.Can("server.manage"), fiberutil.ActionItemNested("id", "phpId", "Default PHP version update initiated", m.service.SetDefaultPhpVersion))
+		servers.Post("/:id/php/:phpId/patch", provisioned, middleware.Can("server.manage"), fiberutil.ActionItemNested("id", "phpId", "PHP patch initiated", m.service.PatchPhpVersion))
 		servers.Post("/:id/php/:phpId/opcache/reset", provisioned, middleware.Can("server.manage"), fiberutil.ActionItemNested("id", "phpId", "OPcache reset initiated", m.service.ResetOpcache))
 		servers.Post("/:id/php/:phpId/opcache/configure", provisioned, middleware.Can("server.manage"), fiberutil.Validate(handler.ConfigureOpcache))
 		servers.Post("/:id/php/:phpId/extensions", provisioned, middleware.Can("server.manage"), fiberutil.Validate(handler.InstallPhpExtension))

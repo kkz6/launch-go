@@ -2,7 +2,27 @@ package types
 
 import (
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
+
+func TestPhpVersionSeries(t *testing.T) {
+	t.Parallel()
+
+	assert.Equal(t, "8.3", PhpVersionSeries("php83"))
+	assert.Equal(t, "8.3", PhpVersionSeries("8.3"))
+	assert.Equal(t, "8.3", PhpVersionSeries("8.3.6"))
+	assert.Equal(t, "7.4", PhpVersionSeries("7.4.33-1+ubuntu"))
+}
+
+func TestPhpRuntimeIdentifiersUseSeries(t *testing.T) {
+	t.Parallel()
+
+	assert.Equal(t, "php8.3-fpm", PhpFPMServiceFromVersion("8.3.6"))
+	assert.Equal(t, "php8.3", PhpBinaryFromVersion("8.3.6"))
+	assert.Equal(t, "/run/php/php8.3-fpm.sock", PhpSocketFromVersion("8.3.6"))
+	assert.Equal(t, SoftwarePhp83, SoftwareFromPhpVersion("8.3.6"))
+}
 
 func TestSortSoftwareStack(t *testing.T) {
 	t.Run("PHP and Composer - Composer comes after PHP", func(t *testing.T) {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"gorm.io/gorm"
@@ -15,6 +16,7 @@ import (
 	sitetypes "github.com/kkz6/launch-go/internal/modules/site/types"
 	"github.com/kkz6/launch-go/internal/pkg/dbtype"
 	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
+	pkgservice "github.com/kkz6/launch-go/internal/pkg/service"
 )
 
 // SSLService handles business logic for SSL/TLS.
@@ -51,6 +53,9 @@ func (s *SSLService) UpdateSSL(ctx context.Context, siteID, serverID, teamID, us
 	if site.TeamID != teamID {
 		return fiberutil.NotFound()
 	}
+	if err := ensureSiteConfigurationIdle(site); err != nil {
+		return err
+	}
 
 	// `stored` is a client-side label only; on the server it folds
 	// into the existing `custom` path with the PEMs resolved from the
@@ -63,12 +68,15 @@ func (s *SSLService) UpdateSSL(ctx context.Context, siteID, serverID, teamID, us
 	if !tlsSetting.IsValid() {
 		return errors.New("invalid TLS setting")
 	}
+	if !s.HasQueue() {
+		return pkgservice.ErrQueueRequired
+	}
 
-	// Handle stored-cert path: user picked from their team library
-	// instead of pasting PEMs inline. Resolve the cert and fall through
-	// the same write path as a custom inline paste, with the FK back to
-	// the library row recorded on the resulting certificates row.
+	var replacementCertificate *models.Certificate
 	if req.StoredCertificateID != nil && *req.StoredCertificateID != "" {
+		if tlsSetting != sitetypes.TLSSettingCustom {
+			return fiberutil.BadRequest("A stored certificate requires the custom TLS setting")
+		}
 		if s.storedCerts == nil {
 			return errors.New("stored certificate library is not configured")
 		}
@@ -83,106 +91,171 @@ func (s *SSLService) UpdateSSL(ctx context.Context, siteID, serverID, teamID, us
 				stored.NotAfter.UTC().Format(time.DateOnly),
 			)
 		}
-
-		if err := s.WithTransaction(ctx, func(tx *gorm.DB) error {
-			if err := tx.Model(&models.Certificate{}).
-				Where("site_id = ?", site.ID).
-				Update("is_active", false).Error; err != nil {
-				return err
-			}
-
-			certPEM := stored.Certificate
-			storedID := stored.ID
-			cert := &models.Certificate{
-				Type:                sitetypes.CertificateTypeCustom,
-				PrivateKey:          stored.PrivateKey, // decrypted-on-Scan, re-encrypted-on-Value
-				Certificate:         &certPEM,
-				IsActive:            true,
-				StoredCertificateID: &storedID,
-			}
-			cert.SiteID = site.ID
-			cert.TeamID = site.TeamID
-			cert.Domains = append([]string{site.Address}, site.Aliases...)
-			now := time.Now()
-			cert.UploadedAt = &now
-
-			if err := tx.Create(cert).Error; err != nil {
-				return err
-			}
-
-			site.TLSSetting = tlsSetting
-			now2 := time.Now()
-			site.PendingTLSUpdateSince = &now2
-			return tx.Save(site).Error
-		}); err != nil {
-			return err
+		certPEM := stored.Certificate
+		storedID := stored.ID
+		replacementCertificate = &models.Certificate{
+			Type:                sitetypes.CertificateTypeCustom,
+			PrivateKey:          stored.PrivateKey,
+			Certificate:         &certPEM,
+			IsActive:            true,
+			StoredCertificateID: &storedID,
 		}
-
-		task, err := jobs.NewInstallSSLTask(site.ID, site.Address)
-		if err != nil {
-			s.LogError(err, "Failed to create install SSL task", "site_id", site.ID)
-		} else if err := s.EnqueueTask(task); err != nil {
-			s.LogError(err, "Failed to enqueue install SSL task", "site_id", site.ID)
-		}
-		return nil
 	}
 
-	// Handle custom certificate within a transaction
-	if tlsSetting == sitetypes.TLSSettingCustom && req.PrivateKey != nil && req.Certificate != nil {
-		if err := s.WithTransaction(ctx, func(tx *gorm.DB) error {
-			// Deactivate existing certificates
-			if err := tx.Model(&models.Certificate{}).
-				Where("site_id = ?", site.ID).
-				Update("is_active", false).Error; err != nil {
-				return err
-			}
-
-			// Create new certificate
-			privateKey := dbtype.EncryptedString(*req.PrivateKey)
-			cert := &models.Certificate{
-				Type:        sitetypes.CertificateTypeCustom,
-				PrivateKey:  privateKey,
-				Certificate: req.Certificate,
-				IsActive:    true,
-			}
-			cert.SiteID = site.ID
-			cert.TeamID = site.TeamID
-			cert.Domains = append([]string{site.Address}, site.Aliases...)
-
-			now := time.Now()
-			cert.UploadedAt = &now
-
-			if err := tx.Create(cert).Error; err != nil {
-				return err
-			}
-
-			// Update TLS setting within the same transaction
-			now2 := time.Now()
-			site.TLSSetting = tlsSetting
-			site.PendingTLSUpdateSince = &now2
-
-			return tx.Save(site).Error
-		}); err != nil {
-			return err
+	if tlsSetting == sitetypes.TLSSettingCustom && replacementCertificate == nil {
+		if req.PrivateKey == nil || req.Certificate == nil ||
+			strings.TrimSpace(*req.PrivateKey) == "" ||
+			strings.TrimSpace(*req.Certificate) == "" {
+			return fiberutil.BadRequest(
+				"Custom TLS requires both a private key and certificate",
+			)
 		}
-
-		// Dispatch certificate installation job (outside transaction)
-		task, err := jobs.NewInstallSSLTask(site.ID, site.Address)
-		if err != nil {
-			s.LogError(err, "Failed to create install SSL task", "site_id", site.ID)
-		} else if err := s.EnqueueTask(task); err != nil {
-			s.LogError(err, "Failed to enqueue install SSL task", "site_id", site.ID)
+		replacementCertificate = &models.Certificate{
+			Type:        sitetypes.CertificateTypeCustom,
+			PrivateKey:  dbtype.EncryptedString(*req.PrivateKey),
+			Certificate: req.Certificate,
+			IsActive:    true,
 		}
-
-		return nil
 	}
 
-	// Update TLS setting (non-custom case)
-	now := time.Now()
-	site.TLSSetting = tlsSetting
-	site.PendingTLSUpdateSince = &now
+	task, err := jobs.NewTLSUpdateCaddyfileTask(site.ID, stringToPtr(userID))
+	if err != nil {
+		return fmt.Errorf("build TLS update task: %w", err)
+	}
 
-	return s.Repos().Site().Update(ctx, site)
+	previousCertificates, err := s.Repos().Certificate().FindBySite(ctx, site.ID)
+	if err != nil {
+		return fmt.Errorf("load current certificates: %w", err)
+	}
+	activeCertificateIDs := make([]string, 0, len(previousCertificates))
+	for i := range previousCertificates {
+		if previousCertificates[i].IsActive {
+			activeCertificateIDs = append(activeCertificateIDs, previousCertificates[i].ID)
+		}
+	}
+
+	now := time.Now().UTC()
+	if replacementCertificate != nil {
+		replacementCertificate.SiteID = site.ID
+		replacementCertificate.TeamID = site.TeamID
+		replacementCertificate.Domains = append([]string{site.Address}, site.Aliases...)
+		replacementCertificate.UploadedAt = &now
+	}
+
+	if err := s.WithTransaction(ctx, func(tx *gorm.DB) error {
+		reservation := tx.Model(&models.Site{}).
+			Where(
+				"id = ? AND pending_php_version IS NULL "+
+					"AND pending_caddyfile_update_since IS NULL "+
+					"AND pending_tls_update_since IS NULL",
+				site.ID,
+			).
+			Updates(map[string]any{
+				"tls_setting":                            tlsSetting,
+				"pending_tls_update_since":               now,
+				"pending_tls_previous_setting":           site.TLSSetting,
+				"pending_tls_previous_certificate_ids":   dbtype.JSONStringSlice(activeCertificateIDs),
+				"pending_tls_replacement_certificate_id": nil,
+			})
+		if reservation.Error != nil {
+			return reservation.Error
+		}
+		if reservation.RowsAffected != 1 {
+			return fiberutil.Conflict("A site configuration update is already in progress")
+		}
+
+		if replacementCertificate == nil {
+			return nil
+		}
+		if err := tx.Model(&models.Certificate{}).
+			Where("site_id = ?", site.ID).
+			Update("is_active", false).Error; err != nil {
+			return err
+		}
+		if err := tx.Create(replacementCertificate).Error; err != nil {
+			return err
+		}
+		return tx.Model(&models.Site{}).
+			Where("id = ? AND pending_tls_update_since IS NOT NULL", site.ID).
+			Update("pending_tls_replacement_certificate_id", replacementCertificate.ID).
+			Error
+	}); err != nil {
+		return err
+	}
+
+	if _, err := s.Queue.EnqueueDefault(task); err != nil {
+		rollbackErr := s.rollbackTLSReservation(
+			ctx,
+			site,
+			tlsSetting,
+			replacementCertificate,
+			activeCertificateIDs,
+		)
+		if rollbackErr != nil {
+			return fmt.Errorf(
+				"enqueue TLS update: %w (rollback failed: %v)",
+				err,
+				rollbackErr,
+			)
+		}
+		return fmt.Errorf("enqueue TLS update: %w", err)
+	}
+
+	return nil
+}
+
+func (s *SSLService) rollbackTLSReservation(
+	ctx context.Context,
+	site *models.Site,
+	targetTLSSetting sitetypes.TLSSetting,
+	replacementCertificate *models.Certificate,
+	activeCertificateIDs []string,
+) error {
+	rollbackCtx, cancelRollback := context.WithTimeout(context.WithoutCancel(ctx), 15*time.Second)
+	defer cancelRollback()
+
+	return s.WithTransaction(rollbackCtx, func(tx *gorm.DB) error {
+		reservation := tx.Model(&models.Site{}).
+			Where(
+				"id = ? AND tls_setting = ? "+
+					"AND pending_tls_update_since IS NOT NULL "+
+					"AND pending_caddyfile_update_since IS NULL "+
+					"AND pending_php_version IS NULL",
+				site.ID,
+				targetTLSSetting,
+			).
+			Updates(map[string]any{
+				"tls_setting":                            site.TLSSetting,
+				"pending_tls_update_since":               nil,
+				"pending_tls_previous_setting":           nil,
+				"pending_tls_previous_certificate_ids":   nil,
+				"pending_tls_replacement_certificate_id": nil,
+			})
+		if reservation.Error != nil {
+			return reservation.Error
+		}
+		if reservation.RowsAffected != 1 {
+			return errors.New("TLS update reservation was lost")
+		}
+
+		if replacementCertificate == nil {
+			return nil
+		}
+		if err := tx.Delete(&models.Certificate{}, "id = ?", replacementCertificate.ID).Error; err != nil {
+			return err
+		}
+		if err := tx.Model(&models.Certificate{}).
+			Where("site_id = ?", site.ID).
+			Update("is_active", false).Error; err != nil {
+			return err
+		}
+		if len(activeCertificateIDs) == 0 {
+			return nil
+		}
+		return tx.Model(&models.Certificate{}).
+			Where("site_id = ? AND id IN ?", site.ID, activeCertificateIDs).
+			Update("is_active", true).Error
+	})
 }
 
 // ListCertificates returns all certificates for a site. Signature

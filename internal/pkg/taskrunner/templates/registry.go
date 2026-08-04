@@ -2,7 +2,6 @@ package templates
 
 import (
 	"bytes"
-	"embed"
 	"fmt"
 	"io/fs"
 	"path/filepath"
@@ -33,7 +32,7 @@ var globalRegistry = &Registry{
 }
 
 // Register adds a module's templates to the registry
-func Register(module string, fsys embed.FS, opts *RegisterOptions) error {
+func Register(module string, fsys fs.FS, opts *RegisterOptions) error {
 	globalRegistry.mu.Lock()
 	defer globalRegistry.mu.Unlock()
 
@@ -68,7 +67,7 @@ func Register(module string, fsys embed.FS, opts *RegisterOptions) error {
 			return nil
 		}
 
-		content, err := fsys.ReadFile(path)
+		content, err := fs.ReadFile(fsys, path)
 		if err != nil {
 			return fmt.Errorf("reading %s: %w", path, err)
 		}

@@ -79,6 +79,9 @@ func (s *FeatureService) EnableFeature(ctx context.Context, siteID, serverID, te
 	if err != nil {
 		return err
 	}
+	if err := ensureSiteConfigurationIdle(site); err != nil {
+		return err
+	}
 
 	if !site.Type.IsLaravel() {
 		return ErrFeatureNotLaravel
@@ -193,6 +196,9 @@ func (s *FeatureService) DisableFeature(ctx context.Context, siteID, serverID, t
 
 	site, err := s.Repos().Site().FindByIDAndServerAndTeam(ctx, siteID, serverID, teamID)
 	if err != nil {
+		return err
+	}
+	if err := ensureSiteConfigurationIdle(site); err != nil {
 		return err
 	}
 

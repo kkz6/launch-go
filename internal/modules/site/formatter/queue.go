@@ -10,6 +10,15 @@ import (
 // QueueCommand builds the artisan queue command for a queue worker.
 // Example output: "php artisan queue:work redis --queue=default --tries=3"
 func QueueCommand(queue *models.Queue) string {
+	command := strings.TrimSpace(queue.Command)
+	if command != "" && !isLaravelQueueCommand(command) {
+		// Horizon, Octane, Inertia SSR, and other feature-managed
+		// Supervisor programs store their complete command on the queue
+		// record. Rebuilding every record as `php artisan queue:work`
+		// silently starts the wrong process.
+		return command
+	}
+
 	var parts []string
 
 	run := "work"
@@ -17,8 +26,13 @@ func QueueCommand(queue *models.Queue) string {
 		run = "listen"
 	}
 
-	parts = append(parts, fmt.Sprintf("php artisan queue:%s %s --queue=%s",
-		run, queue.QueueConnection, queue.QueueName))
+	if command == "" {
+		command = fmt.Sprintf("php artisan queue:%s", run)
+	} else {
+		command = normalizeQueueVerb(command, run)
+	}
+
+	parts = append(parts, command, queue.QueueConnection, fmt.Sprintf("--queue=%s", queue.QueueName))
 
 	if queue.MaxTries != nil && *queue.MaxTries > 0 {
 		parts = append(parts, fmt.Sprintf("--tries=%d", *queue.MaxTries))
@@ -49,4 +63,14 @@ func QueueCommand(queue *models.Queue) string {
 	}
 
 	return strings.Join(parts, " ")
+}
+
+func isLaravelQueueCommand(command string) bool {
+	return strings.Contains(command, "artisan queue:work") ||
+		strings.Contains(command, "artisan queue:listen")
+}
+
+func normalizeQueueVerb(command, run string) string {
+	command = strings.Replace(command, "artisan queue:work", "artisan queue:"+run, 1)
+	return strings.Replace(command, "artisan queue:listen", "artisan queue:"+run, 1)
 }

@@ -74,7 +74,7 @@ func (s *InstalledService) GetServiceName() string {
 	case types.ServiceTypeSupervisor:
 		return "supervisor"
 	case types.ServiceTypePhp:
-		return types.PhpFPMServiceFromVersion(s.Version)
+		return types.PhpFPMServiceFromVersion(s.PhpVersionSeries())
 	case types.ServiceTypeLaunchAgent:
 		return "launch-agent"
 	default:
@@ -85,4 +85,15 @@ func (s *InstalledService) GetServiceName() string {
 // GetSoftware returns the software enum for this service
 func (s *InstalledService) GetSoftware() types.Software {
 	return types.Software(s.Software)
+}
+
+// PhpVersionSeries returns the canonical major.minor PHP series. Software is
+// the stable identity; Version may contain a detected patch such as 8.3.6.
+func (s *InstalledService) PhpVersionSeries() string {
+	software := s.GetSoftware()
+	if software.IsPhp() {
+		return software.GetVersion()
+	}
+
+	return types.PhpVersionSeries(s.Version)
 }

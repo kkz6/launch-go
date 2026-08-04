@@ -61,3 +61,11 @@ func TestServiceType_Docker_Traefik(t *testing.T) {
 	assert.False(t, ServiceTypeDocker.IsDatabase())
 	assert.False(t, ServiceTypeTraefik.IsDatabase())
 }
+
+func TestServiceStatusUpdating(t *testing.T) {
+	t.Parallel()
+
+	assert.True(t, ServiceStatusUpdating.IsValid())
+	assert.False(t, ServiceStatusUpdating.IsActive())
+	assert.Equal(t, "Updating", ServiceStatusUpdating.Label())
+}

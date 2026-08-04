@@ -3,6 +3,7 @@ package types
 import (
 	"database/sql/driver"
 	"fmt"
+	"strings"
 
 	"github.com/kkz6/launch-go/internal/pkg/enumtypes"
 )
@@ -486,14 +487,7 @@ func PhpFPMServiceFromVersion(version string) string {
 		return ""
 	}
 
-	// Check if it's a software enum value like "php83"
-	software := Software(version)
-	if software.IsPhp() {
-		return software.FPMServiceName()
-	}
-
-	// Otherwise treat as version string like "8.3"
-	return "php" + version + "-fpm"
+	return "php" + PhpVersionSeries(version) + "-fpm"
 }
 
 // PhpBinaryFromVersion returns the PHP binary name from a version string or software name.
@@ -507,14 +501,7 @@ func PhpBinaryFromVersion(version string) string {
 		return "php"
 	}
 
-	// Check if it's a software enum value like "php83"
-	software := Software(version)
-	if software.IsPhp() {
-		return software.BinaryPath()
-	}
-
-	// Otherwise treat as version string like "8.3"
-	return "php" + version
+	return "php" + PhpVersionSeries(version)
 }
 
 // PhpSocketFromVersion returns the PHP-FPM socket path from a version string or software name.
@@ -526,19 +513,30 @@ func PhpSocketFromVersion(version string) string {
 		return ""
 	}
 
-	// Check if it's a software enum value like "php83"
+	return "/run/php/php" + PhpVersionSeries(version) + "-fpm.sock"
+}
+
+// PhpVersionSeries returns the major.minor package series for a PHP
+// software key or detected runtime version. Package names, binaries, FPM
+// units and sockets are tied to the series, not to the full patch version.
+func PhpVersionSeries(version string) string {
 	software := Software(version)
 	if software.IsPhp() {
-		return "/run/php/php" + software.GetVersion() + "-fpm.sock"
+		return software.GetVersion()
 	}
 
-	// Otherwise treat as version string like "8.3"
-	return "/run/php/php" + version + "-fpm.sock"
+	parts := strings.Split(version, ".")
+	if len(parts) >= 2 {
+		return strings.Join(parts[:2], ".")
+	}
+
+	return version
 }
 
 // SoftwareFromPhpVersion returns the Software enum for a PHP version string.
 // For example, "8.3" returns SoftwarePhp83.
 func SoftwareFromPhpVersion(version string) Software {
+	version = PhpVersionSeries(version)
 	versionMap := map[string]Software{
 		"5.6": SoftwarePhp56,
 		"7.0": SoftwarePhp70,

@@ -2,6 +2,7 @@ package jobs
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -23,8 +24,10 @@ const (
 
 // CaddyfilePayload holds data for Caddyfile operations
 type CaddyfilePayload struct {
-	SiteID string  `json:"site_id"`
-	UserID *string `json:"user_id,omitempty"`
+	SiteID             string  `json:"site_id"`
+	UserID             *string `json:"user_id,omitempty"`
+	ReservationClaimed bool    `json:"reservation_claimed,omitempty"`
+	TLSUpdate          bool    `json:"tls_update,omitempty"`
 }
 
 // InstallCaddyfileJob handles site Caddyfile installation
@@ -118,12 +121,14 @@ func (j *InstallCaddyfileJob) Handle(ctx context.Context) error {
 		return err
 	}
 
+	if result == nil {
+		return errors.New("caddyfile update returned no result")
+	}
 	exitCode := result.GetExitCode()
 	if exitCode != 0 {
 		j.Deps.Logger.Error().Str("site_id", site.ID).Int("exit_code", exitCode).Msg("Caddyfile installation failed")
 		return fmt.Errorf("caddyfile installation failed with exit code %d", exitCode)
 	}
-
 	// Update site imports
 	if err := j.updateSiteImports(ctx, server, site); err != nil {
 		j.Deps.Logger.Error().Err(err).Str("site_id", site.ID).Msg("Failed to update site imports")
@@ -539,6 +544,8 @@ type UpdateCaddyfileJob struct {
 	// Model fields for Failed() callback
 	site   *models.Site
 	server *servermodels.Server
+
+	tlsApplied bool
 }
 
 // NewUpdateCaddyfileJob creates a new UpdateCaddyfileJob
@@ -554,6 +561,44 @@ func (j *UpdateCaddyfileJob) Handle(ctx context.Context) error {
 		return fmt.Errorf("failed to find site: %w", err)
 	}
 	j.site = site
+
+	if site.PendingPhpVersion != nil {
+		return fmt.Errorf(
+			"site PHP update to %s already owns the Caddyfile",
+			site.PendingPhpVersion.String(),
+		)
+	}
+	if j.Payload.TLSUpdate && site.PendingTLSUpdateSince == nil {
+		return errors.New("TLS update reservation was lost")
+	}
+	if j.Payload.ReservationClaimed && site.PendingCaddyfileUpdateSince == nil {
+		return errors.New("caddyfile update reservation was lost")
+	}
+	if j.Payload.ReservationClaimed && site.PendingTLSUpdateSince != nil {
+		return errors.New("TLS update already owns the site configuration")
+	}
+	if !j.Payload.ReservationClaimed && j.Deps.DB != nil {
+		now := time.Now().UTC()
+		query := j.Deps.DB.WithContext(ctx).
+			Model(&models.Site{}).
+			Where(
+				"id = ? AND pending_caddyfile_update_since IS NULL AND pending_php_version IS NULL",
+				site.ID,
+			)
+		if !j.Payload.TLSUpdate {
+			query = query.Where("pending_tls_update_since IS NULL")
+		} else {
+			query = query.Where("pending_tls_update_since IS NOT NULL")
+		}
+		reservation := query.Update("pending_caddyfile_update_since", now)
+		if reservation.Error != nil {
+			return fmt.Errorf("reserve Caddyfile update: %w", reservation.Error)
+		}
+		if reservation.RowsAffected != 1 {
+			return errors.New("another site configuration update is in progress")
+		}
+		site.PendingCaddyfileUpdateSince = &now
+	}
 
 	// Get server
 	server, err := j.Deps.ServerRepos.Server().FindByID(ctx, site.ServerID)
@@ -614,16 +659,22 @@ func (j *UpdateCaddyfileJob) Handle(ctx context.Context) error {
 		return err
 	}
 
+	if result == nil {
+		return errors.New("caddyfile update returned no result")
+	}
 	exitCode := result.GetExitCode()
 	if exitCode != 0 {
 		j.Deps.Logger.Error().Str("site_id", site.ID).Int("exit_code", exitCode).Msg("Caddyfile update failed")
 		return fmt.Errorf("caddyfile update failed with exit code %d", exitCode)
 	}
+	if j.Payload.TLSUpdate {
+		j.tlsApplied = true
+	}
 
-	// Clear pending Caddyfile update flag
-	site.PendingCaddyfileUpdateSince = nil
-	if err := j.Deps.Repos.Site().Update(ctx, site); err != nil {
-		j.Deps.Logger.Error().Err(err).Msg("Failed to clear pending Caddyfile update flag")
+	cleanupCtx, cancelCleanup := context.WithTimeout(context.WithoutCancel(ctx), 15*time.Second)
+	defer cancelCleanup()
+	if err := j.clearPendingState(cleanupCtx); err != nil {
+		return fmt.Errorf("clear pending Caddyfile update state: %w", err)
 	}
 
 	// Mark pending redirects as installed
@@ -638,7 +689,41 @@ func (j *UpdateCaddyfileJob) Handle(ctx context.Context) error {
 
 // Failed handles job failure
 func (j *UpdateCaddyfileJob) Failed(ctx context.Context, err error) {
+	cleanupCtx, cancelCleanup := context.WithTimeout(context.WithoutCancel(ctx), 15*time.Second)
+	defer cancelCleanup()
+	var clearErr error
+	if j.Payload.TLSUpdate {
+		if j.tlsApplied {
+			clearErr = completeTLSReservation(cleanupCtx, j.Deps.DB, j.Payload.SiteID)
+		} else {
+			clearErr = rollbackTLSReservation(cleanupCtx, j.Deps.DB, j.Payload.SiteID)
+		}
+	} else {
+		clearErr = j.clearPendingState(cleanupCtx)
+	}
+	if clearErr != nil {
+		j.Deps.Logger.Error().
+			Err(clearErr).
+			Str("site_id", j.Payload.SiteID).
+			Msg("Failed to restore Caddyfile update reservation")
+	}
 	j.Deps.Logger.Error().Err(err).Str("site_id", j.Payload.SiteID).Msg("Update Caddyfile job failed")
+}
+
+func (j *UpdateCaddyfileJob) clearPendingState(ctx context.Context) error {
+	if j.Deps.DB == nil {
+		return nil
+	}
+	if j.Payload.TLSUpdate {
+		return completeTLSReservation(ctx, j.Deps.DB, j.Payload.SiteID)
+	}
+	fields := map[string]any{
+		"pending_caddyfile_update_since": nil,
+	}
+	query := j.Deps.DB.WithContext(ctx).
+		Model(&models.Site{}).
+		Where("id = ? AND pending_php_version IS NULL", j.Payload.SiteID)
+	return query.Updates(fields).Error
 }
 
 // generateCaddyfileContent generates the Caddyfile content for a site.
@@ -781,6 +866,26 @@ func NewUpdateCaddyfileTask(siteID string, userID *string) (*asynq.Task, error) 
 	return pkgjobs.Task(TypeUpdateCaddyfile, CaddyfilePayload{
 		SiteID: siteID,
 		UserID: userID,
+	}, asynq.TaskID(pkgjobs.Dedup("update_caddyfile", siteID)))
+}
+
+// NewReservedUpdateCaddyfileTask creates an update job for a reservation that
+// was atomically claimed by the API before enqueueing.
+func NewReservedUpdateCaddyfileTask(siteID string, userID *string) (*asynq.Task, error) {
+	return pkgjobs.Task(TypeUpdateCaddyfile, CaddyfilePayload{
+		SiteID:             siteID,
+		UserID:             userID,
+		ReservationClaimed: true,
+	}, asynq.TaskID(pkgjobs.Dedup("update_caddyfile", siteID)))
+}
+
+// NewTLSUpdateCaddyfileTask marks the Caddy reload as the terminal step of a
+// TLS setting change so only that operation clears the TLS pending flag.
+func NewTLSUpdateCaddyfileTask(siteID string, userID *string) (*asynq.Task, error) {
+	return pkgjobs.Task(TypeUpdateCaddyfile, CaddyfilePayload{
+		SiteID:    siteID,
+		UserID:    userID,
+		TLSUpdate: true,
 	}, asynq.TaskID(pkgjobs.Dedup("update_caddyfile", siteID)))
 }
 

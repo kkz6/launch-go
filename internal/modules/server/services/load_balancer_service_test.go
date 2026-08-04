@@ -224,6 +224,13 @@ func (m *fullMockSiteReader) IsLoadBalanced(_ context.Context, _ string) (bool, 
 	return false, nil
 }
 
+func (m *fullMockSiteReader) HasPendingConfigurationForServer(
+	_ context.Context,
+	_ string,
+) (bool, error) {
+	return false, nil
+}
+
 func (m *fullMockSiteReader) UpdateLoadBalancedUpstreamID(_ context.Context, siteID string, upstreamID *string) error {
 	m.updatedSiteIDs = append(m.updatedSiteIDs, siteID)
 	m.updatedUpstreamIDs = append(m.updatedUpstreamIDs, upstreamID)

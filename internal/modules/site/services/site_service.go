@@ -7,10 +7,13 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/hibiken/asynq"
+
 	databasedto "github.com/kkz6/launch-go/internal/modules/database/dto"
 	dnscontracts "github.com/kkz6/launch-go/internal/modules/dns/contracts"
 	gitcontracts "github.com/kkz6/launch-go/internal/modules/git/contracts"
 	serverdto "github.com/kkz6/launch-go/internal/modules/server/dto"
+	servermodels "github.com/kkz6/launch-go/internal/modules/server/models"
 	servertypes "github.com/kkz6/launch-go/internal/modules/server/types"
 	"github.com/kkz6/launch-go/internal/modules/site/contracts"
 	"github.com/kkz6/launch-go/internal/modules/site/dto"
@@ -20,6 +23,7 @@ import (
 	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/launch/activity"
 	"github.com/kkz6/launch-go/internal/pkg/security"
+	pkgservice "github.com/kkz6/launch-go/internal/pkg/service"
 )
 
 const (
@@ -163,27 +167,8 @@ func (s *SiteService) createSite(ctx context.Context, serverID, teamID, userID s
 
 	username := server.GetUsername()
 
-	// Validate PHP version is a valid enum and installed on server
-	phpSoftware, err := servertypes.ParseSoftware(req.PhpVersion)
-	if err != nil || !phpSoftware.IsPhp() {
-		return nil, fiberutil.NewValidationError(map[string][]string{
-			"php_version": {fmt.Sprintf("Invalid PHP version: %s", req.PhpVersion)},
-		})
-	}
-
-	// Check if PHP version is installed on the server
-	phpInstalled := false
-	expectedVersion := phpSoftware.GetVersion() // e.g., "8.3"
-	for _, svc := range server.Services {
-		if svc.Type == servertypes.ServiceTypePhp && svc.Version == expectedVersion {
-			phpInstalled = true
-			break
-		}
-	}
-	if !phpInstalled {
-		return nil, fiberutil.NewValidationError(map[string][]string{
-			"php_version": {fmt.Sprintf("PHP %s is not installed on this server", req.PhpVersion)},
-		})
+	if err := validateActiveServerPHP(server, req.PhpVersion); err != nil {
+		return nil, err
 	}
 
 	// Check if site with same address exists
@@ -774,9 +759,40 @@ func (s *SiteService) updateSite(ctx context.Context, id, serverID, teamID, user
 	// Build updates map for changed fields
 	updates := make(map[string]any)
 	updateCaddyfile := false
+	phpVersionChanged := req.PhpVersion != nil &&
+		(site.PhpVersion == nil || *req.PhpVersion != site.PhpVersion.String())
+	previousPHPVersionWasNull := site.PhpVersion == nil
+	previousPHPVersion := ""
+	if site.PhpVersion != nil {
+		previousPHPVersion = site.PhpVersion.String()
+	}
+
+	if phpVersionChanged {
+		if site.PendingCaddyfileUpdateSince != nil || site.PendingTLSUpdateSince != nil {
+			return nil, fiberutil.Conflict("A site configuration update is already in progress")
+		}
+		if s.serverReader == nil {
+			return nil, errors.New("server reader not configured")
+		}
+		server, findErr := s.serverReader.FindServerByID(ctx, serverID)
+		if findErr != nil {
+			return nil, fmt.Errorf("failed to fetch server: %w", findErr)
+		}
+		if err := validateActiveServerPHP(server, *req.PhpVersion); err != nil {
+			return nil, err
+		}
+		if previousPHPVersionWasNull {
+			previousPHPVersion, err = resolveServerPHPVersion(server)
+			if err != nil {
+				return nil, err
+			}
+		}
+		if !s.HasQueue() {
+			return nil, pkgservice.ErrQueueRequired
+		}
+	}
 
 	// Simple pointer fields
-	addIfSet(updates, "php_version", req.PhpVersion)
 	addIfSet(updates, "web_folder", req.WebFolder)
 	addIfSet(updates, "deployment_releases_retention", req.DeploymentReleasesRetention)
 	addIfSet(updates, "queue_deployments", req.QueueDeployments)
@@ -797,47 +813,107 @@ func (s *SiteService) updateSite(ctx context.Context, id, serverID, teamID, user
 	addSliceIfSet(updates, "shared_files", req.SharedFiles)
 	addSliceIfSet(updates, "writeable_directories", req.WriteableDirectories)
 
-	// Check if Caddyfile needs update (PHP version or web folder changed)
-	if req.PhpVersion != nil && (site.PhpVersion == nil || *req.PhpVersion != site.PhpVersion.String()) {
-		updateCaddyfile = true
-	}
+	// PHP changes use a dedicated lifecycle job that applies Caddy, queue,
+	// scheduler, and daemon configuration before committing the database
+	// version. A web-folder-only change can keep using the lighter Caddy job.
 	if req.WebFolder != nil && *req.WebFolder != site.WebFolder {
 		updateCaddyfile = true
 	}
+	if phpVersionChanged {
+		updateCaddyfile = false
+	}
 
-	// Apply updates if any
-	if len(updates) > 0 {
+	siteFieldsUpdated := len(updates) > 0
+
+	if phpVersionChanged {
+		if s.ServiceDeps().DB == nil {
+			return nil, errors.New("database not configured")
+		}
+
+		userIDPtr := userID
+		task, taskErr := jobs.NewUpdateSitePHPVersionTask(
+			site.ID,
+			previousPHPVersion,
+			*req.PhpVersion,
+			previousPHPVersionWasNull,
+			&userIDPtr,
+		)
+		if taskErr != nil {
+			return nil, taskErr
+		}
+
+		now, reserveErr := s.reserveSiteConfigurationUpdate(
+			ctx,
+			site,
+			updates,
+			*req.PhpVersion,
+			previousPHPVersionWasNull,
+		)
+		if reserveErr != nil {
+			return nil, reserveErr
+		}
+		if enqueueErr := s.enqueueTaskStrict(task); enqueueErr != nil {
+			s.rollbackSiteConfigurationUpdate(ctx, site, updates, *req.PhpVersion)
+			return nil, enqueueErr
+		}
+
+		site.PendingCaddyfileUpdateSince = &now
+		pendingPhpVersion := sitetypes.PhpVersion(*req.PhpVersion)
+		site.PendingPhpVersion = &pendingPhpVersion
+		activity.RecordEventWithProps(
+			ctx,
+			"php_version_update_requested",
+			userID,
+			site,
+			fmt.Sprintf("PHP update to %s was requested for %s", *req.PhpVersion, site.Address),
+			map[string]any{
+				"previous_version": previousPHPVersion,
+				"version":          *req.PhpVersion,
+			},
+		)
+		s.BroadcastToTeam(teamID, "site.php_version_update_requested", map[string]any{
+			"team_id":          teamID,
+			"server_id":        serverID,
+			"site_id":          site.ID,
+			"address":          site.Address,
+			"previous_version": previousPHPVersion,
+			"php_version":      *req.PhpVersion,
+		})
+	} else if updateCaddyfile {
+		if !s.HasQueue() {
+			return nil, pkgservice.ErrQueueRequired
+		}
+		userIDPtr := userID
+		task, taskErr := jobs.NewReservedUpdateCaddyfileTask(site.ID, &userIDPtr)
+		if taskErr != nil {
+			s.LogError(taskErr, "Failed to create Caddyfile update task", "site_id", site.ID)
+			return nil, taskErr
+		}
+
+		now, reserveErr := s.reserveSiteConfigurationUpdate(ctx, site, updates, "", false)
+		if reserveErr != nil {
+			return nil, reserveErr
+		}
+		if enqueueErr := s.enqueueTaskStrict(task); enqueueErr != nil {
+			s.rollbackSiteConfigurationUpdate(ctx, site, updates, "")
+			s.LogError(enqueueErr, "Failed to enqueue Caddyfile update task", "site_id", site.ID)
+			return nil, enqueueErr
+		}
+		site.PendingCaddyfileUpdateSince = &now
+	} else if len(updates) > 0 {
 		if err := s.Repos().Site().UpdateFields(ctx, site.ID, updates); err != nil {
 			return nil, err
 		}
 	}
 
-	// Reload site to get updated values
+	// Reload the committed values, including pending operation state.
 	site, err = s.Repos().Site().FindByIDAndServerAndTeam(ctx, id, serverID, teamID)
 	if err != nil {
 		return nil, err
 	}
 
-	activity.RecordUpdated(ctx, userID, site, "Site was updated")
-
-	// If PHP version or web folder changed, update Caddyfile and deploy
-	if updateCaddyfile {
-		now := time.Now()
-		site.PendingCaddyfileUpdateSince = &now
-		if err := s.Repos().Site().Update(ctx, site); err != nil {
-			s.LogError(err, "Failed to update site pending caddyfile timestamp", "site_id", site.ID)
-			return nil, err
-		}
-		userIDPtr := userID
-		task, err := jobs.NewUpdateCaddyfileTask(site.ID, &userIDPtr)
-		if err != nil {
-			s.LogError(err, "Failed to create Caddyfile update task", "site_id", site.ID)
-			return nil, err
-		}
-		if err := s.EnqueueTask(task); err != nil {
-			s.LogError(err, "Failed to enqueue Caddyfile update task", "site_id", site.ID)
-			return nil, err
-		}
+	if siteFieldsUpdated {
+		activity.RecordUpdated(ctx, userID, site, "Site was updated")
 	}
 
 	// Load latest deployment
@@ -852,6 +928,200 @@ func (s *SiteService) updateSite(ctx context.Context, id, serverID, teamID, user
 	s.broadcastSiteUpdate(ctx, serverID, site)
 
 	return site, nil
+}
+
+func validateActiveServerPHP(server *servermodels.Server, phpVersion string) error {
+	software, err := servertypes.ParseSoftware(phpVersion)
+	if err != nil || !software.IsPhp() {
+		return fiberutil.NewValidationError(map[string][]string{
+			"php_version": {fmt.Sprintf("Invalid PHP version: %s", phpVersion)},
+		})
+	}
+
+	for i := range server.Services {
+		service := &server.Services[i]
+		if service.Type != servertypes.ServiceTypePhp ||
+			service.Software != software.String() {
+			continue
+		}
+		if !service.Status.IsActive() {
+			return fiberutil.NewValidationError(map[string][]string{
+				"php_version": {
+					fmt.Sprintf(
+						"PHP %s is installed but not active (status: %s)",
+						software.GetVersion(),
+						service.Status,
+					),
+				},
+			})
+		}
+		return nil
+	}
+
+	return fiberutil.NewValidationError(map[string][]string{
+		"php_version": {
+			fmt.Sprintf("PHP %s is not installed on this server", software.GetVersion()),
+		},
+	})
+}
+
+func resolveServerPHPVersion(server *servermodels.Server) (string, error) {
+	var fallback string
+	for i := range server.Services {
+		service := &server.Services[i]
+		if service.Type != servertypes.ServiceTypePhp || !service.Status.IsActive() {
+			continue
+		}
+		software := service.GetSoftware()
+		if !software.IsPhp() {
+			continue
+		}
+		if service.IsDefault {
+			return software.String(), nil
+		}
+		if fallback == "" {
+			fallback = software.String()
+		}
+	}
+	if fallback != "" {
+		return fallback, nil
+	}
+	return "", fiberutil.BadRequest(
+		"The site's current PHP version is unknown and the server has no active PHP default",
+	)
+}
+
+func (s *SiteService) reserveSiteConfigurationUpdate(
+	ctx context.Context,
+	site *models.Site,
+	updates map[string]any,
+	pendingPHPVersion string,
+	previousPHPVersionWasNull bool,
+) (time.Time, error) {
+	if s.ServiceDeps().DB == nil {
+		return time.Time{}, errors.New("database not configured")
+	}
+
+	now := time.Now().UTC()
+	claim := make(map[string]any, len(updates)+2)
+	for field, value := range updates {
+		claim[field] = value
+	}
+	claim["pending_caddyfile_update_since"] = now
+	if pendingPHPVersion != "" {
+		claim["pending_php_version"] = pendingPHPVersion
+	}
+
+	query := s.ServiceDeps().DB.WithContext(ctx).
+		Model(&models.Site{}).
+		Where(
+			"id = ? AND pending_caddyfile_update_since IS NULL AND pending_php_version IS NULL AND pending_tls_update_since IS NULL",
+			site.ID,
+		)
+	if pendingPHPVersion != "" {
+		if previousPHPVersionWasNull {
+			query = query.Where("php_version IS NULL")
+		} else {
+			query = query.Where("php_version = ?", site.PhpVersion.String())
+		}
+	}
+
+	result := query.Updates(claim)
+	if result.Error != nil {
+		return time.Time{}, result.Error
+	}
+	if result.RowsAffected != 1 {
+		return time.Time{}, fiberutil.Conflict("A site configuration update is already in progress")
+	}
+	return now, nil
+}
+
+func (s *SiteService) rollbackSiteConfigurationUpdate(
+	ctx context.Context,
+	site *models.Site,
+	updates map[string]any,
+	pendingPHPVersion string,
+) {
+	if s.ServiceDeps().DB == nil {
+		return
+	}
+	cleanupCtx, cancelCleanup := context.WithTimeout(context.WithoutCancel(ctx), 15*time.Second)
+	defer cancelCleanup()
+
+	rollback := originalSiteUpdateFields(site, updates)
+	rollback["pending_caddyfile_update_since"] = nil
+	if pendingPHPVersion != "" {
+		rollback["pending_php_version"] = nil
+	}
+
+	query := s.ServiceDeps().DB.WithContext(cleanupCtx).
+		Model(&models.Site{}).
+		Where("id = ?", site.ID)
+	if pendingPHPVersion == "" {
+		query = query.Where("pending_php_version IS NULL")
+	} else {
+		query = query.Where("pending_php_version = ?", pendingPHPVersion)
+	}
+	result := query.Updates(rollback)
+	if result.Error != nil {
+		s.LogError(
+			result.Error,
+			"Failed to roll back site configuration reservation",
+			"site_id",
+			site.ID,
+		)
+		return
+	}
+	if result.RowsAffected != 1 {
+		s.LogError(
+			errors.New("site configuration reservation could not be released"),
+			"Failed to roll back site configuration reservation",
+			"site_id",
+			site.ID,
+		)
+	}
+}
+
+func (s *SiteService) enqueueTaskStrict(task *asynq.Task) error {
+	if !s.HasQueue() {
+		return pkgservice.ErrQueueRequired
+	}
+	_, err := s.Queue.EnqueueDefault(task)
+	if errors.Is(err, asynq.ErrDuplicateTask) || errors.Is(err, asynq.ErrTaskIDConflict) {
+		return fiberutil.Conflict("This site configuration update is already queued")
+	}
+	return err
+}
+
+func originalSiteUpdateFields(site *models.Site, updates map[string]any) map[string]any {
+	original := make(map[string]any, len(updates))
+	for field := range updates {
+		switch field {
+		case "web_folder":
+			original[field] = site.WebFolder
+		case "deployment_releases_retention":
+			original[field] = site.DeploymentReleasesRetention
+		case "queue_deployments":
+			original[field] = site.QueueDeployments
+		case "repository_branch":
+			original[field] = site.RepositoryBranch
+		case "hook_before_updating_repository":
+			original[field] = site.HookBeforeUpdatingRepository
+		case "hook_after_updating_repository":
+			original[field] = site.HookAfterUpdatingRepository
+		case "hook_before_making_current":
+			original[field] = site.HookBeforeMakingCurrent
+		case "hook_after_making_current":
+			original[field] = site.HookAfterMakingCurrent
+		case "shared_directories":
+			original[field] = site.SharedDirectories
+		case "shared_files":
+			original[field] = site.SharedFiles
+		case "writeable_directories":
+			original[field] = site.WriteableDirectories
+		}
+	}
+	return original
 }
 
 // Delete deletes a site

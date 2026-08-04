@@ -15,6 +15,7 @@ var (
 	ErrInvalidServerType    = fiberutil.BadRequest("Invalid server type")
 	ErrInvalidSoftware      = fiberutil.BadRequest("Invalid software")
 	ErrServiceAlreadyExists = fiberutil.Conflict("Service already installed")
+	ErrServiceBusy          = fiberutil.Conflict("Service operation already in progress")
 	ErrQueueNotConfigured   = fiberutil.Internal("Queue not configured")
 	ErrDaemonNotInstalled   = fiberutil.BadRequest("Daemon is not installed")
 )

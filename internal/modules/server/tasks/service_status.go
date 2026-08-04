@@ -3,6 +3,7 @@ package tasks
 import (
 	"fmt"
 
+	"github.com/kkz6/launch-go/internal/modules/server/types"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 )
 
@@ -163,9 +164,12 @@ which node 2>/dev/null || echo "Node not in PATH"`
 
 // GetServiceStatusTask returns the appropriate status check task based on software type.
 func GetServiceStatusTask(software string, version string) *taskrunner.BaseTask {
+	parsedSoftware := types.Software(software)
+	if parsedSoftware.IsPhp() {
+		return CheckPhpStatus(parsedSoftware.GetVersion())
+	}
+
 	switch software {
-	case "php74", "php80", "php81", "php82", "php83", "php84":
-		return CheckPhpStatus(version)
 	case "mysql80", "mysql":
 		return CheckMySQLStatus()
 	case "postgresql16", "postgresql":

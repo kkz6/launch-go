@@ -89,6 +89,89 @@ func (r *ServiceRepository) UpdateStatus(ctx context.Context, id string, status 
 	})
 }
 
+// ClaimPhpPatch atomically reserves the active state observed by the caller.
+// Requiring that exact prior state prevents a second lifecycle operation from
+// taking ownership of an existing patch reservation.
+func (r *ServiceRepository) ClaimPhpPatch(
+	ctx context.Context,
+	id string,
+	previousStatus types.ServiceStatus,
+) (bool, error) {
+	if !previousStatus.IsActive() {
+		return false, nil
+	}
+
+	result := r.DB.WithContext(ctx).
+		Model(&models.InstalledService{}).
+		Where("id = ? AND type = ? AND status = ?", id, types.ServiceTypePhp, previousStatus).
+		Update("status", types.ServiceStatusUpdating)
+	if result.Error != nil {
+		return false, result.Error
+	}
+
+	return result.RowsAffected == 1, nil
+}
+
+// RestorePhpPatchStatus releases a patch reservation back to its exact prior
+// active state. The conditional update cannot overwrite a completed patch.
+func (r *ServiceRepository) RestorePhpPatchStatus(
+	ctx context.Context,
+	id string,
+	status types.ServiceStatus,
+) (bool, error) {
+	if !status.IsActive() {
+		return false, nil
+	}
+
+	result := r.DB.WithContext(ctx).
+		Model(&models.InstalledService{}).
+		Where("id = ? AND status = ?", id, types.ServiceStatusUpdating).
+		Update("status", status)
+	if result.Error != nil {
+		return false, result.Error
+	}
+
+	return result.RowsAffected == 1, nil
+}
+
+// UpdateStatusFromProbe merges diagnostic output while protecting lifecycle
+// states. The final conditional write closes the race where a patch is claimed
+// after the probe reads the service but before it persists the result.
+func (r *ServiceRepository) UpdateStatusFromProbe(
+	ctx context.Context,
+	id string,
+	status types.ServiceStatus,
+	typeData map[string]any,
+) (bool, error) {
+	service, err := r.FindByID(ctx, id)
+	if err != nil {
+		return false, err
+	}
+	if service.Status == types.ServiceStatusUpdating {
+		return false, nil
+	}
+
+	if service.TypeData == nil {
+		service.TypeData = make(map[string]any)
+	}
+	for key, value := range typeData {
+		service.TypeData[key] = value
+	}
+
+	result := r.DB.WithContext(ctx).
+		Model(&models.InstalledService{}).
+		Where("id = ? AND status <> ?", id, types.ServiceStatusUpdating).
+		Updates(map[string]any{
+			"status":    status,
+			"type_data": service.TypeData,
+		})
+	if result.Error != nil {
+		return false, result.Error
+	}
+
+	return result.RowsAffected == 1, nil
+}
+
 // UpdateWithTypeData updates the service status and type data
 func (r *ServiceRepository) UpdateWithTypeData(ctx context.Context, id string, status types.ServiceStatus, typeData map[string]any) error {
 	service, err := r.FindByID(ctx, id)
@@ -165,8 +248,18 @@ func (r *ServiceRepository) MarkRemovalFailed(ctx context.Context, id string) er
 // FindPhpByServerAndVersion finds a PHP service by server ID and version (e.g., "8.4")
 func (r *ServiceRepository) FindPhpByServerAndVersion(ctx context.Context, serverID, version string) (*models.InstalledService, error) {
 	var service models.InstalledService
-	err := r.DB.WithContext(ctx).
-		First(&service, "server_id = ? AND type = ? AND version = ?", serverID, types.ServiceTypePhp, version).Error
+	query := r.DB.WithContext(ctx).
+		Where("server_id = ? AND type = ?", serverID, types.ServiceTypePhp)
+
+	software := types.SoftwareFromPhpVersion(version)
+	if software.IsPhp() {
+		series := software.GetVersion()
+		query = query.Where("software = ? OR version = ? OR version LIKE ?", software, series, series+".%")
+	} else {
+		query = query.Where("version = ?", version)
+	}
+
+	err := query.First(&service).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, fiberutil.NotFound()

@@ -479,6 +479,7 @@ type ServiceStatus string
 const (
 	ServiceStatusPending      ServiceStatus = "pending"
 	ServiceStatusInstalling   ServiceStatus = "installing"
+	ServiceStatusUpdating     ServiceStatus = "updating"
 	ServiceStatusUninstalling ServiceStatus = "uninstalling"
 	ServiceStatusFailed       ServiceStatus = "failed"
 	ServiceStatusInstalled    ServiceStatus = "installed"
@@ -487,13 +488,14 @@ const (
 )
 
 var allServiceStatuses = []ServiceStatus{
-	ServiceStatusPending, ServiceStatusInstalling, ServiceStatusUninstalling,
+	ServiceStatusPending, ServiceStatusInstalling, ServiceStatusUpdating, ServiceStatusUninstalling,
 	ServiceStatusFailed, ServiceStatusInstalled, ServiceStatusStopped, ServiceStatusRunning,
 }
 
 var serviceStatusLabels = map[ServiceStatus]string{
 	ServiceStatusPending:      "Pending",
 	ServiceStatusInstalling:   "Installing",
+	ServiceStatusUpdating:     "Updating",
 	ServiceStatusUninstalling: "Uninstalling",
 	ServiceStatusFailed:       "Failed",
 	ServiceStatusInstalled:    "Installed",

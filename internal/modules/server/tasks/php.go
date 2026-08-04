@@ -5,7 +5,9 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/kkz6/launch-go/internal/modules/server/types"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
+	"github.com/kkz6/launch-go/internal/pkg/taskrunner/templates"
 )
 
 // Task type constants for PHP operations
@@ -19,7 +21,60 @@ const (
 	ResetOpcacheTaskType          = "server:reset_opcache"
 	ClearOpcacheTaskType          = "server:clear_opcache"
 	ConfigureOpcacheTaskType      = "server:configure_opcache"
+	PatchPhpVersionTaskType       = "server:patch_php_version"
 )
+
+const phpPatchVersionMarker = "LAUNCH_PHP_PATCH_VERSION="
+const previousDefaultPhpVersionMarker = "LAUNCH_PREVIOUS_DEFAULT_PHP_VERSION="
+
+// PatchPHP upgrades only packages already installed for one PHP major.minor
+// series. It deliberately avoids a system-wide upgrade and preserves existing
+// package configuration and extension choices.
+func PatchPHP(software types.Software) *taskrunner.BaseTask {
+	version := ""
+	if software.IsPhp() {
+		version = software.GetVersion()
+	}
+
+	script := templates.MustRender("server", "software/patch_php.sh", struct {
+		Version string
+	}{
+		Version: version,
+	})
+
+	return taskrunner.NewBaseTask(
+		taskrunner.WithName(fmt.Sprintf("Patch PHP %s", version)),
+		taskrunner.WithScript(script),
+		taskrunner.WithTimeoutSeconds(900),
+	)
+}
+
+// ParsePatchedPHPVersion extracts the exact runtime version emitted after a
+// successful package upgrade and FPM health check.
+func ParsePatchedPHPVersion(output string) string {
+	for _, line := range strings.Split(output, "\n") {
+		if version, found := strings.CutPrefix(strings.TrimSpace(line), phpPatchVersionMarker); found {
+			return strings.TrimSpace(version)
+		}
+	}
+
+	return ""
+}
+
+// ParsePreviousDefaultPHPVersion extracts the major.minor runtime series that
+// was active immediately before UpdateAlternatives changed it.
+func ParsePreviousDefaultPHPVersion(output string) string {
+	for _, line := range strings.Split(output, "\n") {
+		if version, found := strings.CutPrefix(
+			strings.TrimSpace(line),
+			previousDefaultPhpVersionMarker,
+		); found {
+			return strings.TrimSpace(version)
+		}
+	}
+
+	return ""
+}
 
 // AddPhpVersion creates a task to install a PHP version on a server
 // that's already been provisioned. Reuses the same Ubuntu (ondrej PPA)
@@ -102,9 +157,87 @@ sudo service php%s-fpm restart`, version, extension, version)
 
 // UpdateAlternatives creates a task to update PHP alternatives
 func UpdateAlternatives(version string) *taskrunner.BaseTask {
-	script := fmt.Sprintf(`sudo update-alternatives --set php /usr/bin/php%s
-sudo update-alternatives --set php-config /usr/bin/php-config%s
-sudo update-alternatives --set phpize /usr/bin/phpize%s`, version, version, version)
+	script := fmt.Sprintf(`%[1]s
+previousVersion="$(php -r 'printf("%%d.%%d", PHP_MAJOR_VERSION, PHP_MINOR_VERSION);')"
+if [[ ! "${previousVersion}" =~ ^[0-9]+\.[0-9]+$ ]]; then
+    echo "Unable to determine the current default PHP runtime" >&2
+    exit 1
+fi
+printf '%[2]s%%s\n' "${previousVersion}"
+
+readAlternativeValue() {
+    local name="${1}"
+    sudo update-alternatives --query "${name}" \
+        | awk -F': ' '$1 == "Value" { print $2 }'
+}
+
+requireAlternativeTarget() {
+    local name="${1}"
+    local target="${2}"
+    if ! sudo update-alternatives --list "${name}" | grep -Fx "${target}" >/dev/null; then
+        printf 'PHP alternative %%s does not include target %%s\n' "${name}" "${target}" >&2
+        return 1
+    fi
+}
+
+if ! previousPhpAlternative="$(readAlternativeValue php)"; then
+    echo "Unable to determine the current php alternative" >&2
+    exit 1
+fi
+if ! previousPhpConfigAlternative="$(readAlternativeValue php-config)"; then
+    echo "Unable to determine the current php-config alternative" >&2
+    exit 1
+fi
+if ! previousPhpizeAlternative="$(readAlternativeValue phpize)"; then
+    echo "Unable to determine the current phpize alternative" >&2
+    exit 1
+fi
+if [[ -z "${previousPhpAlternative}" ||
+      -z "${previousPhpConfigAlternative}" ||
+      -z "${previousPhpizeAlternative}" ]]; then
+    echo "One or more current PHP alternatives are empty" >&2
+    exit 1
+fi
+
+targetPhpAlternative="/usr/bin/php%[3]s"
+targetPhpConfigAlternative="/usr/bin/php-config%[3]s"
+targetPhpizeAlternative="/usr/bin/phpize%[3]s"
+
+# Validate every target before changing any alternative. This avoids a
+# predictable missing registration leaving the alternatives out of sync.
+requireAlternativeTarget php "${targetPhpAlternative}"
+requireAlternativeTarget php-config "${targetPhpConfigAlternative}"
+requireAlternativeTarget phpize "${targetPhpizeAlternative}"
+
+rollbackAlternatives() {
+    local exitCode="${1}"
+    local rollbackFailed=0
+
+    trap - ERR INT TERM
+    set +e
+    sudo update-alternatives --set php "${previousPhpAlternative}" || rollbackFailed=1
+    sudo update-alternatives --set php-config "${previousPhpConfigAlternative}" || rollbackFailed=1
+    sudo update-alternatives --set phpize "${previousPhpizeAlternative}" || rollbackFailed=1
+
+    if (( rollbackFailed != 0 )); then
+        printf 'Failed to completely roll back PHP alternatives to %%s\n' "${previousVersion}" >&2
+    fi
+    exit "${exitCode}"
+}
+
+trap 'rollbackAlternatives $?' ERR
+trap 'rollbackAlternatives 130' INT
+trap 'rollbackAlternatives 143' TERM
+
+sudo update-alternatives --set php "${targetPhpAlternative}"
+sudo update-alternatives --set php-config "${targetPhpConfigAlternative}"
+sudo update-alternatives --set phpize "${targetPhpizeAlternative}"
+
+trap - ERR INT TERM`,
+		templates.ShellDefaults(),
+		previousDefaultPhpVersionMarker,
+		version,
+	)
 
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName("Update PHP Alternatives"),

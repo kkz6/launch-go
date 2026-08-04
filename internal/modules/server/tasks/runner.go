@@ -89,7 +89,7 @@ func NewTaskRunner(server *models.Server, task taskrunner.Task) *TaskRunner {
 }
 
 // OnTaskCreated registers a callback fired as soon as the tracked task
-// row is created (status "running") and BEFORE the SSH command runs.
+// row is created and before the SSH command runs.
 // Requires TrackInDB(). Use it to surface the task ID to the caller
 // mid-flight — e.g. persist it on a deployment/backup-run row and
 // broadcast so the UI can open the live log stream (ServerLogViewer
@@ -238,32 +238,42 @@ func (r *TaskRunner) OnTimeout(jobType string, payload any) *TaskRunner {
 
 // Run executes the task synchronously and returns the result.
 func (r *TaskRunner) Run(ctx context.Context) (*TaskRunnerResult, error) {
-	conn, err := r.getConnection()
-	if err != nil {
-		return nil, err
-	}
-
 	if r.dispatcher == nil {
 		return nil, fmt.Errorf("no dispatcher set: call WithDispatcher() first")
 	}
 
 	var taskModel *models.Task
+	var err error
 	if r.trackInDB && r.db != nil {
 		taskModel, err = r.createTaskModel()
 		if err != nil {
 			return nil, fmt.Errorf("failed to create task model: %w", err)
 		}
-		if err := r.db.Model(taskModel).Update("status", string(servertypes.TaskStatusRunning)).Error; err != nil {
-			return nil, fmt.Errorf("failed to mark task running: %w", err)
-		}
-		r.broadcastTaskRunning(taskModel)
-		// Surface the task ID to the caller now — the live log file
-		// (task-<id>.log) is being tee'd as the command runs, so a
-		// caller that persists this ID + broadcasts can open the live
-		// log stream WHILE the task executes, not only after.
 		if r.onTaskCreated != nil {
 			r.onTaskCreated(taskModel.ID)
 		}
+		if err := r.db.Model(taskModel).Update("status", string(servertypes.TaskStatusRunning)).Error; err != nil {
+			runErr := fmt.Errorf("failed to mark task running: %w", err)
+			r.failTrackedTask(ctx, taskModel, runErr)
+			return &TaskRunnerResult{
+				TaskModel: taskModel,
+				Error:     runErr,
+			}, runErr
+		}
+		r.broadcastTaskRunning(taskModel)
+	}
+
+	conn, err := r.getConnection()
+	if err != nil {
+		if taskModel == nil {
+			return nil, err
+		}
+
+		r.failTrackedTask(ctx, taskModel, err)
+		return &TaskRunnerResult{
+			TaskModel: taskModel,
+			Error:     err,
+		}, err
 	}
 
 	pendingTask := taskrunner.NewPendingTask(r.task)
@@ -330,11 +340,6 @@ func (r *TaskRunner) Dispatch(ctx context.Context) (*TaskRunnerResult, error) {
 func (r *TaskRunner) RunAsync(ctx context.Context) (*models.Task, error) {
 	r.trackInDB = true
 
-	conn, err := r.getConnection()
-	if err != nil {
-		return nil, err
-	}
-
 	if r.dispatcher == nil {
 		return nil, fmt.Errorf("no dispatcher set")
 	}
@@ -347,12 +352,26 @@ func (r *TaskRunner) RunAsync(ctx context.Context) (*models.Task, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to create task model: %w", err)
 	}
+	if r.onTaskCreated != nil {
+		r.onTaskCreated(taskModel.ID)
+	}
+
+	conn, err := r.getConnection()
+	if err != nil {
+		r.failTrackedTask(ctx, taskModel, err)
+		return taskModel, err
+	}
 
 	go func() {
 		if err := r.db.Model(taskModel).Update("status", string(servertypes.TaskStatusRunning)).Error; err != nil {
 			if r.logger != nil {
 				r.logger.Error().Err(err).Str("task_id", taskModel.ID).Msg("Failed to mark async task running")
 			}
+			r.failTrackedTask(
+				context.WithoutCancel(ctx),
+				taskModel,
+				fmt.Errorf("failed to mark async task running: %w", err),
+			)
 			return
 		}
 		r.broadcastTaskRunning(taskModel)
@@ -377,11 +396,8 @@ func (r *TaskRunner) RunAsync(ctx context.Context) (*models.Task, error) {
 				r.logger.Error().Err(err).Str("task_id", taskModel.ID).Msg("Failed to persist async task result")
 			}
 		} else if execErr != nil {
-			taskModel.Status = string(servertypes.TaskStatusFailed)
-			taskModel.Output = dbtype.EncryptedString(execErr.Error())
-			r.db.Save(taskModel)
-			// Broadcast failure
-			r.broadcastTaskEvent("task.updated", taskModel, execErr.Error())
+			r.failTrackedTask(bgCtx, taskModel, execErr)
+			return
 		}
 
 		// Always invoke task callbacks
@@ -408,14 +424,18 @@ func (r *TaskRunner) RunInBackground(ctx context.Context) (*models.Task, error) 
 }
 
 func (r *TaskRunner) runLongRunning(ctx context.Context) (*models.Task, error) {
-	conn, err := r.getConnection()
-	if err != nil {
-		return nil, err
-	}
-
 	taskModel, err := r.createTaskModel()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create task model: %w", err)
+	}
+	if r.onTaskCreated != nil {
+		r.onTaskCreated(taskModel.ID)
+	}
+
+	conn, err := r.getConnection()
+	if err != nil {
+		r.failTrackedTask(ctx, taskModel, err)
+		return taskModel, err
 	}
 
 	if r.logger != nil {
@@ -431,6 +451,11 @@ func (r *TaskRunner) runLongRunning(ctx context.Context) (*models.Task, error) {
 			if r.logger != nil {
 				r.logger.Error().Err(err).Str("task_id", taskModel.ID).Msg("Failed to mark background task running")
 			}
+			r.failTrackedTask(
+				context.WithoutCancel(ctx),
+				taskModel,
+				fmt.Errorf("failed to mark background task running: %w", err),
+			)
 			return
 		}
 		r.broadcastTaskRunning(taskModel)
@@ -478,17 +503,31 @@ func (r *TaskRunner) runLongRunning(ctx context.Context) (*models.Task, error) {
 					Str("task_name", taskModel.Name).
 					Msg("Failed to start background task")
 			}
-			taskModel.Status = string(servertypes.TaskStatusFailed)
-			taskModel.Output = dbtype.EncryptedString(execErr.Error())
-			r.db.Save(taskModel)
-			r.broadcastTaskEvent("task.updated", taskModel, execErr.Error())
-			r.handleTaskCompletion(bgCtx, taskModel, nil, execErr)
+			r.failTrackedTask(bgCtx, taskModel, execErr)
 			return
 		}
 
-		// Wait for the background monitor to complete.
-		// This blocks until the exit_code marker is detected or the monitor times out.
-		taskResult := <-completionChan
+		// Wait for the background monitor to complete without allowing a
+		// missing terminal marker to leave the persisted action running.
+		var taskResult *taskrunner.TaskResult
+		select {
+		case taskResult = <-completionChan:
+		case <-bgCtx.Done():
+			r.failTrackedTask(
+				context.WithoutCancel(bgCtx),
+				taskModel,
+				fmt.Errorf("background task monitor: %w", bgCtx.Err()),
+			)
+			return
+		}
+		if taskResult == nil {
+			r.failTrackedTask(
+				bgCtx,
+				taskModel,
+				fmt.Errorf("background task monitor returned no result"),
+			)
+			return
+		}
 
 		if r.logger != nil {
 			status := "unknown"
@@ -508,10 +547,8 @@ func (r *TaskRunner) runLongRunning(ctx context.Context) (*models.Task, error) {
 				Msg("Background task completed")
 		}
 
-		if taskResult != nil {
-			if err := r.updateTaskModel(taskModel, taskResult); err != nil && r.logger != nil {
-				r.logger.Error().Err(err).Str("task_id", taskModel.ID).Msg("Failed to persist background task result")
-			}
+		if err := r.updateTaskModel(taskModel, taskResult); err != nil && r.logger != nil {
+			r.logger.Error().Err(err).Str("task_id", taskModel.ID).Msg("Failed to persist background task result")
 		}
 
 		// Handle task completion - invokes callbacks and dispatches completion jobs
@@ -519,6 +556,23 @@ func (r *TaskRunner) runLongRunning(ctx context.Context) (*models.Task, error) {
 	}()
 
 	return taskModel, nil
+}
+
+func (r *TaskRunner) failTrackedTask(ctx context.Context, taskModel *models.Task, taskErr error) {
+	taskModel.Status = string(servertypes.TaskStatusFailed)
+	taskModel.Output = dbtype.EncryptedString(taskErr.Error())
+
+	if err := r.db.Save(taskModel).Error; err != nil {
+		if r.logger != nil {
+			r.logger.Error().Err(err).
+				Str("task_id", taskModel.ID).
+				Msg("Failed to persist task preflight error")
+		}
+	} else {
+		r.broadcastTaskEvent("task.updated", taskModel, taskErr.Error())
+	}
+
+	r.handleTaskCompletion(ctx, taskModel, nil, taskErr)
 }
 
 // handleTaskCompletion handles task completion.

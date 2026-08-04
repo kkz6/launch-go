@@ -49,7 +49,11 @@ type Site struct {
 	Path                         string                 `gorm:"type:varchar(255);not null" json:"path"`
 	WebFolder                    string                 `gorm:"column:web_folder;type:varchar(255);not null" json:"web_folder"`
 	PhpVersion                   *sitetypes.PhpVersion  `gorm:"column:php_version;type:varchar(255);index" json:"php_version,omitempty"`
+	PendingPhpVersion            *sitetypes.PhpVersion  `gorm:"column:pending_php_version;type:varchar(255)" json:"pending_php_version,omitempty"`
 	PendingTLSUpdateSince        *time.Time             `gorm:"column:pending_tls_update_since;type:timestamp null" json:"pending_tls_update_since,omitempty"`
+	PendingTLSPreviousSetting    *sitetypes.TLSSetting  `gorm:"column:pending_tls_previous_setting;type:varchar(255)" json:"-"`
+	PendingTLSPreviousCertIDs    dbtype.JSONStringSlice `gorm:"column:pending_tls_previous_certificate_ids;type:json;serializer:json" json:"-"`
+	PendingTLSReplacementCertID  *string                `gorm:"column:pending_tls_replacement_certificate_id;type:char(26)" json:"-"`
 	PendingCaddyfileUpdateSince  *time.Time             `gorm:"column:pending_caddyfile_update_since;type:timestamp null" json:"pending_caddyfile_update_since,omitempty"`
 	SharedDirectories            dbtype.JSONStringSlice `gorm:"column:shared_directories;type:json;serializer:json" json:"shared_directories"`
 	WriteableDirectories         dbtype.JSONStringSlice `gorm:"column:writeable_directories;type:json;serializer:json" json:"writeable_directories"`

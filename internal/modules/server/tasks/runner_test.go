@@ -3,15 +3,24 @@ package tasks
 import (
 	"context"
 	"encoding/json"
+	"io"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/kkz6/launch-go/internal/database/serializers"
 	"github.com/kkz6/launch-go/internal/modules/server/models"
 	servertypes "github.com/kkz6/launch-go/internal/modules/server/types"
 	"github.com/kkz6/launch-go/internal/pkg/dbtype"
 	basemodels "github.com/kkz6/launch-go/internal/pkg/models"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
+	"github.com/kkz6/launch-go/internal/pkg/taskrunner/markers"
+	"github.com/rs/zerolog"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
 )
 
 // =============================================================================
@@ -55,6 +64,7 @@ func (t *mockTask) OnTimeout(ctx context.Context, result *taskrunner.TaskResult)
 // mockCallbackTask implements both Task and CallbackPayload
 type mockCallbackTask struct {
 	*mockTask
+	mu              sync.RWMutex
 	state           mockCallbackState
 	onSuccessCalled bool
 	onFailureCalled bool
@@ -73,12 +83,16 @@ func (t *mockCallbackTask) MarshalPayload() ([]byte, error) {
 }
 
 func (t *mockCallbackTask) OnSuccess(ctx context.Context, cbCtx *taskrunner.CallbackContext, taskID string) error {
+	t.mu.Lock()
+	defer t.mu.Unlock()
 	t.onSuccessCalled = true
 	t.lastTaskID = taskID
 	return t.returnError
 }
 
 func (t *mockCallbackTask) OnFailure(ctx context.Context, cbCtx *taskrunner.CallbackContext, taskID string, exitCode int) error {
+	t.mu.Lock()
+	defer t.mu.Unlock()
 	t.onFailureCalled = true
 	t.lastTaskID = taskID
 	t.lastExitCode = exitCode
@@ -86,9 +100,29 @@ func (t *mockCallbackTask) OnFailure(ctx context.Context, cbCtx *taskrunner.Call
 }
 
 func (t *mockCallbackTask) OnExpired(ctx context.Context, cbCtx *taskrunner.CallbackContext, taskID string) error {
+	t.mu.Lock()
+	defer t.mu.Unlock()
 	t.onExpiredCalled = true
 	t.lastTaskID = taskID
 	return t.returnError
+}
+
+func (t *mockCallbackTask) successCalled() bool {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+	return t.onSuccessCalled
+}
+
+func (t *mockCallbackTask) failureCalled() bool {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+	return t.onFailureCalled
+}
+
+func (t *mockCallbackTask) expiredCalled() bool {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+	return t.onExpiredCalled
 }
 
 type mockCallbackState struct {
@@ -214,6 +248,129 @@ func TestTaskRunner_ThrowOnError(t *testing.T) {
 
 	if !runner.throwOnError {
 		t.Error("Expected throwOnError to be true")
+	}
+}
+
+func TestTaskRunner_BuilderOptions(t *testing.T) {
+	runner := NewTaskRunner(createTestServer(), createTestTask())
+	logger := zerolog.New(io.Discard)
+	marker := taskrunner.MarkerHandlerFunc(func(
+		context.Context,
+		string,
+		*markers.Marker,
+	) error {
+		return nil
+	})
+
+	returned := runner.
+		WithQueue(nil).
+		WithLogger(&logger).
+		WithBroadcaster(nil).
+		WithNotifier(nil).
+		WithMarkerHandler(marker).
+		WithoutTracking().
+		Throw()
+
+	assert.Same(t, runner, returned)
+	assert.Same(t, &logger, runner.logger)
+	assert.NotNil(t, runner.markerHandler)
+	assert.False(t, runner.trackInDB)
+	assert.True(t, runner.throwOnError)
+
+	runner.AsUser()
+	assert.Equal(t, runner.server.GetUsername(), runner.username)
+	runner.AsUser("")
+	assert.Equal(t, runner.server.GetUsername(), runner.username)
+	runner.AsRoot()
+	assert.Empty(t, runner.username)
+}
+
+func TestTaskRunner_CompletionBuilders(t *testing.T) {
+	runner := NewTaskRunner(createTestServer(), createTestTask()).
+		OnComplete("job:finished", map[string]string{"id": "1"}).
+		OnFailed("job:failed", map[string]string{"id": "2"}).
+		OnTimeout("job:timeout", map[string]string{"id": "3"})
+
+	require.NotNil(t, runner.completionConfig)
+	assert.Equal(t, "job:finished", runner.completionConfig.OnFinished.Type)
+	assert.Equal(t, "job:failed", runner.completionConfig.OnFailed.Type)
+	assert.Equal(t, "job:timeout", runner.completionConfig.OnTimeout.Type)
+
+	invalid := func() {}
+	runner.OnComplete("invalid", invalid).
+		OnFailed("invalid", invalid).
+		OnTimeout("invalid", invalid)
+	assert.Equal(t, "job:finished", runner.completionConfig.OnFinished.Type)
+	assert.Equal(t, "job:failed", runner.completionConfig.OnFailed.Type)
+	assert.Equal(t, "job:timeout", runner.completionConfig.OnTimeout.Type)
+}
+
+func TestTaskRunner_RunPersistsSuccessAndFailure(t *testing.T) {
+	require.NoError(t, serializers.SetEncryptionKey([]byte("0123456789abcdef0123456789abcdef")))
+
+	for _, test := range []struct {
+		name      string
+		result    *taskrunner.TaskResult
+		execErr   error
+		throw     bool
+		wantError bool
+		wantState string
+	}{
+		{
+			name:      "success",
+			result:    &taskrunner.TaskResult{ExitCode: 0, Output: "ok"},
+			wantState: string(servertypes.TaskStatusFinished),
+		},
+		{
+			name:      "failed result is returned when throwing",
+			result:    &taskrunner.TaskResult{ExitCode: 7, Output: "bad"},
+			throw:     true,
+			wantError: true,
+			wantState: string(servertypes.TaskStatusFailed),
+		},
+		{
+			name:      "dispatcher error is persisted",
+			execErr:   assert.AnError,
+			throw:     true,
+			wantError: true,
+			wantState: string(servertypes.TaskStatusFailed),
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared"), &gorm.Config{})
+			require.NoError(t, err)
+			require.NoError(t, db.AutoMigrate(&models.Task{}))
+
+			dispatcher := &mockDispatcher{runFunc: func(
+				context.Context,
+				*taskrunner.PendingTask,
+			) (*taskrunner.TaskResult, error) {
+				return test.result, test.execErr
+			}}
+			runner := NewTaskRunner(createTestServer(), createTestCallbackTask()).
+				WithDB(db).
+				WithDispatcher(dispatcher).
+				TrackInDB()
+			if test.throw {
+				runner.ThrowOnError()
+			}
+
+			result, runErr := runner.Dispatch(context.Background())
+			if test.wantError {
+				require.Error(t, runErr)
+			} else {
+				require.NoError(t, runErr)
+			}
+			require.NotNil(t, result)
+			require.NotNil(t, result.TaskModel)
+
+			var persisted models.Task
+			require.NoError(t, db.First(&persisted, "id = ?", result.TaskModel.ID).Error)
+			assert.Equal(t, test.wantState, persisted.Status)
+			if test.execErr != nil {
+				assert.Contains(t, persisted.Output.String(), test.execErr.Error())
+			}
+		})
 	}
 }
 
@@ -417,6 +574,144 @@ func TestTaskRunner_Run_NoPrivateKey(t *testing.T) {
 
 	if err == nil {
 		t.Fatal("Expected error when server has no private key")
+	}
+}
+
+func TestTaskRunner_Run_TracksConnectionPreflightFailure(t *testing.T) {
+	if err := serializers.SetEncryptionKey([]byte("0123456789abcdef0123456789abcdef")); err != nil {
+		t.Fatalf("set encryption key: %v", err)
+	}
+
+	db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared"), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open database: %v", err)
+	}
+	if err := db.AutoMigrate(&models.Task{}); err != nil {
+		t.Fatalf("migrate task: %v", err)
+	}
+
+	server := createTestServer()
+	server.PublicIPv4 = nil
+	callbackTask := createTestCallbackTask()
+	dispatcher := &mockDispatcher{}
+	var createdTaskID string
+
+	runner := NewTaskRunner(server, callbackTask).
+		WithDB(db).
+		WithDispatcher(dispatcher).
+		TrackInDB().
+		OnTaskCreated(func(taskID string) {
+			createdTaskID = taskID
+		})
+
+	result, runErr := runner.Run(context.Background())
+
+	if runErr == nil {
+		t.Fatal("Expected connection preflight error")
+	}
+	if result == nil || result.TaskModel == nil {
+		t.Fatal("Expected the failed task to be tracked")
+	}
+	if createdTaskID != result.TaskModel.ID {
+		t.Fatalf("OnTaskCreated() ID = %q, want %q", createdTaskID, result.TaskModel.ID)
+	}
+	if atomic.LoadInt32(&dispatcher.callCount) != 0 {
+		t.Fatal("Dispatcher must not run when connection preflight fails")
+	}
+
+	var stored models.Task
+	if err := db.First(&stored, "id = ?", result.TaskModel.ID).Error; err != nil {
+		t.Fatalf("find tracked task: %v", err)
+	}
+	if stored.Status != string(servertypes.TaskStatusFailed) {
+		t.Fatalf("task status = %q, want failed", stored.Status)
+	}
+	if stored.Output.String() != "server has no public IP address" {
+		t.Fatalf("task output = %q", stored.Output.String())
+	}
+	if !callbackTask.onFailureCalled {
+		t.Fatal("Expected failure callback for connection preflight error")
+	}
+}
+
+func TestTaskRunner_AsyncModesTrackConnectionPreflightFailure(t *testing.T) {
+	if err := serializers.SetEncryptionKey([]byte("0123456789abcdef0123456789abcdef")); err != nil {
+		t.Fatalf("set encryption key: %v", err)
+	}
+
+	tests := []struct {
+		name string
+		run  func(context.Context, *TaskRunner) (*models.Task, error)
+	}{
+		{
+			name: "async",
+			run: func(ctx context.Context, runner *TaskRunner) (*models.Task, error) {
+				return runner.RunAsync(ctx)
+			},
+		},
+		{
+			name: "background",
+			run: func(ctx context.Context, runner *TaskRunner) (*models.Task, error) {
+				return runner.RunInBackground(ctx)
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			db, err := gorm.Open(
+				sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared"),
+				&gorm.Config{},
+			)
+			if err != nil {
+				t.Fatalf("open database: %v", err)
+			}
+			if err := db.AutoMigrate(&models.Task{}); err != nil {
+				t.Fatalf("migrate task: %v", err)
+			}
+
+			server := createTestServer()
+			server.PublicIPv4 = nil
+			callbackTask := createTestCallbackTask()
+			dispatcher := &mockDispatcher{}
+			var createdTaskID string
+
+			runner := NewTaskRunner(server, callbackTask).
+				WithDB(db).
+				WithDispatcher(dispatcher).
+				OnTaskCreated(func(taskID string) {
+					createdTaskID = taskID
+				})
+
+			taskModel, runErr := tt.run(context.Background(), runner)
+
+			if runErr == nil {
+				t.Fatal("Expected connection preflight error")
+			}
+			if taskModel == nil {
+				t.Fatal("Expected the failed task to be tracked")
+			}
+			if createdTaskID != taskModel.ID {
+				t.Fatalf("OnTaskCreated() ID = %q, want %q", createdTaskID, taskModel.ID)
+			}
+			if atomic.LoadInt32(&dispatcher.callCount) != 0 {
+				t.Fatal("Dispatcher must not run when connection preflight fails")
+			}
+
+			var stored models.Task
+			if err := db.First(&stored, "id = ?", taskModel.ID).Error; err != nil {
+				t.Fatalf("find tracked task: %v", err)
+			}
+			if stored.Status != string(servertypes.TaskStatusFailed) {
+				t.Fatalf("task status = %q, want failed", stored.Status)
+			}
+			if stored.Output.String() != "server has no public IP address" {
+				t.Fatalf("task output = %q", stored.Output.String())
+			}
+			if !callbackTask.onFailureCalled {
+				t.Fatal("Expected failure callback for connection preflight error")
+			}
+		})
 	}
 }
 
