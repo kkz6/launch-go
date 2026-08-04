@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"time"
 
@@ -28,12 +29,37 @@ type TaskDispatcher interface {
 	Run(ctx context.Context, pt *PendingTask) (*TaskResult, error)
 }
 
+// dispatcherSSHClient captures the SSH operations used by Dispatcher. Keeping
+// this boundary small makes task dispatch failure paths deterministic to test
+// without changing the public SSH client API.
+type dispatcherSSHClient interface {
+	Run(ctx context.Context, command string) (*SSHCommandResult, error)
+	Upload(ctx context.Context, content []byte, remotePath string, mode os.FileMode) error
+	Download(ctx context.Context, remotePath string) ([]byte, error)
+	Close() error
+}
+
+type monitorBackgroundTaskFunc func(
+	ctx context.Context,
+	conn *Connection,
+	taskID string,
+	pid string,
+	taskMarkerHandler MarkerHandler,
+	onUpdate func(output string, status string),
+	onComplete func(result *StreamResult),
+) error
+
 // Dispatcher handles task execution
 type Dispatcher struct {
-	logger        *zerolog.Logger
-	taskLogger    *zerolog.Logger
-	ws            SimpleBroadcaster
-	streamMonitor *StreamMonitor
+	logger                *zerolog.Logger
+	taskLogger            *zerolog.Logger
+	ws                    SimpleBroadcaster
+	streamMonitor         *StreamMonitor
+	dial                  func(conn *Connection) (dispatcherSSHClient, error)
+	createTemp            func(dir, pattern string) (*os.File, error)
+	writeTempScript       func(file *os.File, script string) (int, error)
+	commandContext        func(ctx context.Context, name string, arg ...string) *exec.Cmd
+	monitorBackgroundTask monitorBackgroundTaskFunc
 }
 
 // DispatcherConfig holds configuration for the dispatcher
@@ -44,21 +70,17 @@ type DispatcherConfig struct {
 
 // NewDispatcher creates a new task dispatcher
 func NewDispatcher(logger *zerolog.Logger, ws SimpleBroadcaster) *Dispatcher {
-	return &Dispatcher{
-		logger:        logger,
-		ws:            ws,
-		streamMonitor: NewStreamMonitor(logger, ws, nil),
-	}
+	return newConfiguredDispatcher(logger, ws, nil, NewStreamMonitor(logger, ws, nil))
 }
 
 // NewDispatcherWithTaskLogger creates a new task dispatcher with a file logger for task output
 func NewDispatcherWithTaskLogger(logger *zerolog.Logger, ws SimpleBroadcaster, taskLogger *zerolog.Logger) *Dispatcher {
-	return &Dispatcher{
-		logger:        logger,
-		taskLogger:    taskLogger,
-		ws:            ws,
-		streamMonitor: NewStreamMonitor(logger, ws, &StreamMonitorConfig{TaskLogger: taskLogger}),
-	}
+	return newConfiguredDispatcher(
+		logger,
+		ws,
+		taskLogger,
+		NewStreamMonitor(logger, ws, &StreamMonitorConfig{TaskLogger: taskLogger}),
+	)
 }
 
 // NewDispatcherWithConfig creates a new dispatcher with configuration
@@ -71,15 +93,39 @@ func NewDispatcherWithConfig(logger *zerolog.Logger, ws SimpleBroadcaster, cfg *
 		taskLogger = cfg.TaskLogger
 	}
 
-	return &Dispatcher{
-		logger:     logger,
-		taskLogger: taskLogger,
-		ws:         ws,
-		streamMonitor: NewStreamMonitor(logger, ws, &StreamMonitorConfig{
+	return newConfiguredDispatcher(
+		logger,
+		ws,
+		taskLogger,
+		NewStreamMonitor(logger, ws, &StreamMonitorConfig{
 			BroadcastInterval: broadcastInterval,
 			TaskLogger:        taskLogger,
 		}),
+	)
+}
+
+func newConfiguredDispatcher(
+	logger *zerolog.Logger,
+	ws SimpleBroadcaster,
+	taskLogger *zerolog.Logger,
+	streamMonitor *StreamMonitor,
+) *Dispatcher {
+	dispatcher := &Dispatcher{
+		logger:          logger,
+		taskLogger:      taskLogger,
+		ws:              ws,
+		streamMonitor:   streamMonitor,
+		createTemp:      os.CreateTemp,
+		writeTempScript: func(file *os.File, script string) (int, error) { return file.WriteString(script) },
+		commandContext:  exec.CommandContext,
+		dial: func(conn *Connection) (dispatcherSSHClient, error) {
+			return conn.Dial()
+		},
 	}
+	if streamMonitor != nil {
+		dispatcher.monitorBackgroundTask = streamMonitor.MonitorBackgroundTask
+	}
+	return dispatcher
 }
 
 // GetStreamMonitor returns the stream monitor
@@ -106,13 +152,16 @@ func (d *Dispatcher) runLocal(ctx context.Context, pt *PendingTask) (*TaskResult
 	script := pt.Task.Script()
 
 	// Create temp script file
-	tmpFile, err := os.CreateTemp("", "task-*.sh")
+	tmpFile, err := d.createTemp("", "task-*.sh")
 	if err != nil {
 		return nil, fmt.Errorf("failed to create temp file: %w", err)
 	}
-	defer os.Remove(tmpFile.Name())
+	defer func() {
+		_ = tmpFile.Close()
+		_ = os.Remove(tmpFile.Name())
+	}()
 
-	if _, err := tmpFile.WriteString(script); err != nil {
+	if _, err := d.writeTempScript(tmpFile, script); err != nil {
 		return nil, fmt.Errorf("failed to write script: %w", err)
 	}
 	_ = tmpFile.Close()
@@ -124,7 +173,7 @@ func (d *Dispatcher) runLocal(ctx context.Context, pt *PendingTask) (*TaskResult
 
 	startTime := time.Now()
 
-	cmd := exec.CommandContext(ctx, "bash", tmpFile.Name())
+	cmd := d.commandContext(ctx, "bash", tmpFile.Name())
 	output, err := cmd.CombinedOutput()
 
 	result := &TaskResult{
@@ -173,7 +222,7 @@ func (d *Dispatcher) runRemote(ctx context.Context, pt *PendingTask) (*TaskResul
 		Msg("runRemote: connecting via SSH")
 
 	// Create SSH client
-	sshClient, err := conn.Dial()
+	sshClient, err := d.dial(conn)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect: %w", err)
 	}
@@ -225,7 +274,7 @@ func (d *Dispatcher) runRemote(ctx context.Context, pt *PendingTask) (*TaskResul
 
 func (d *Dispatcher) runRemoteForeground(
 	ctx context.Context,
-	client *SSHClient,
+	client dispatcherSSHClient,
 	pt *PendingTask,
 	taskPaths paths.TaskPaths,
 	startTime time.Time,
@@ -276,7 +325,7 @@ func (d *Dispatcher) runRemoteForeground(
 
 func (d *Dispatcher) runRemoteBackground(
 	ctx context.Context,
-	client *SSHClient,
+	client dispatcherSSHClient,
 	pt *PendingTask,
 	taskPaths paths.TaskPaths,
 	startTime time.Time,
@@ -315,8 +364,14 @@ func (d *Dispatcher) runRemoteBackground(
 	if err != nil {
 		return nil, fmt.Errorf("failed to start background task: %w", err)
 	}
+	if cmdResult == nil {
+		return nil, fmt.Errorf("failed to start background task: empty SSH response")
+	}
 
-	pid := strings.TrimSpace(cmdResult.Stdout)
+	pid, err := normalizePID(cmdResult.Stdout)
+	if err != nil {
+		return nil, fmt.Errorf("failed to start background task: %w", err)
+	}
 
 	d.logger.Info().
 		Str("task_id", pt.TaskID).
@@ -350,7 +405,7 @@ func (d *Dispatcher) runRemoteBackground(
 			Bool("has_OnOutput", pt.GetOnOutput() != nil).
 			Msg("runRemoteBackground: starting MonitorBackgroundTask goroutine")
 
-		err := d.streamMonitor.MonitorBackgroundTask(
+		err := d.monitorBackgroundTask(
 			streamCtx,
 			pt.Connection,
 			pt.TaskID,
@@ -411,7 +466,7 @@ func (d *Dispatcher) completeBackgroundTask(ctx context.Context, pt *PendingTask
 
 // GetTaskOutput fetches output from a remote task
 func (d *Dispatcher) GetTaskOutput(ctx context.Context, conn *Connection, taskID string) (string, error) {
-	sshClient, err := conn.Dial()
+	sshClient, err := d.dial(conn)
 	if err != nil {
 		return "", err
 	}
@@ -428,7 +483,12 @@ func (d *Dispatcher) GetTaskOutput(ctx context.Context, conn *Connection, taskID
 
 // CheckTaskStatus checks if a background task is still running
 func (d *Dispatcher) CheckTaskStatus(ctx context.Context, conn *Connection, pid string) (bool, int, error) {
-	sshClient, err := conn.Dial()
+	pid, err := normalizePID(pid)
+	if err != nil {
+		return false, 0, err
+	}
+
+	sshClient, err := d.dial(conn)
 	if err != nil {
 		return false, 0, err
 	}
@@ -448,6 +508,15 @@ func (d *Dispatcher) CheckTaskStatus(ctx context.Context, conn *Connection, pid 
 	// Process finished - try to get exit code from wait
 	// This is tricky for background processes, typically need to store in file
 	return false, 0, nil
+}
+
+func normalizePID(raw string) (string, error) {
+	pid := strings.TrimSpace(raw)
+	value, err := strconv.ParseUint(pid, 10, 64)
+	if err != nil || value == 0 {
+		return "", fmt.Errorf("invalid process ID %q", pid)
+	}
+	return pid, nil
 }
 
 // logTaskOutput writes task output lines to the file logger

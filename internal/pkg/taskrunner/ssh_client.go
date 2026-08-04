@@ -22,10 +22,103 @@ import (
 // SSHClient handles SSH connections and remote command execution
 type SSHClient struct {
 	config  *ssh.ClientConfig
-	conn    *ssh.Client
+	conn    sshConnection
 	host    string
 	port    int
 	timeout time.Duration
+	deps    sshClientDependencies
+}
+
+// sshConnection and sshSession keep the client coupled to the small portion of
+// x/crypto/ssh it actually uses. The adapters below are the production path;
+// the boundary also lets tests exercise transport failures that a concrete
+// ssh.Session cannot otherwise produce deterministically.
+type sshConnection interface {
+	Close() error
+	NewSession() (sshSession, error)
+	SendRequest(name string, wantReply bool, payload []byte) (bool, []byte, error)
+}
+
+type sshSession interface {
+	Close() error
+	Run(command string) error
+	Signal(signal ssh.Signal) error
+	StdinPipe() (io.WriteCloser, error)
+	StdoutPipe() (io.Reader, error)
+	StderrPipe() (io.Reader, error)
+	Start(command string) error
+	Wait() error
+	SetStdout(writer io.Writer)
+	SetStderr(writer io.Writer)
+}
+
+type cryptoSSHConnection struct {
+	client *ssh.Client
+}
+
+func (c *cryptoSSHConnection) Close() error {
+	return c.client.Close()
+}
+
+func (c *cryptoSSHConnection) NewSession() (sshSession, error) {
+	session, err := c.client.NewSession()
+	if err != nil {
+		return nil, err
+	}
+	return &cryptoSSHSession{session: session}, nil
+}
+
+func (c *cryptoSSHConnection) SendRequest(name string, wantReply bool, payload []byte) (bool, []byte, error) {
+	return c.client.SendRequest(name, wantReply, payload)
+}
+
+type cryptoSSHSession struct {
+	session *ssh.Session
+}
+
+func (s *cryptoSSHSession) Close() error                       { return s.session.Close() }
+func (s *cryptoSSHSession) Run(command string) error           { return s.session.Run(command) }
+func (s *cryptoSSHSession) Signal(signal ssh.Signal) error     { return s.session.Signal(signal) }
+func (s *cryptoSSHSession) StdinPipe() (io.WriteCloser, error) { return s.session.StdinPipe() }
+func (s *cryptoSSHSession) StdoutPipe() (io.Reader, error)     { return s.session.StdoutPipe() }
+func (s *cryptoSSHSession) StderrPipe() (io.Reader, error)     { return s.session.StderrPipe() }
+func (s *cryptoSSHSession) Start(command string) error         { return s.session.Start(command) }
+func (s *cryptoSSHSession) Wait() error                        { return s.session.Wait() }
+func (s *cryptoSSHSession) SetStdout(writer io.Writer)         { s.session.Stdout = writer }
+func (s *cryptoSSHSession) SetStderr(writer io.Writer)         { s.session.Stderr = writer }
+
+type sshRetryTimer interface {
+	C() <-chan time.Time
+	Stop() bool
+}
+
+type realSSHRetryTimer struct {
+	timer *time.Timer
+}
+
+func (t *realSSHRetryTimer) C() <-chan time.Time { return t.timer.C }
+func (t *realSSHRetryTimer) Stop() bool          { return t.timer.Stop() }
+
+type sshClientDependencies struct {
+	dialSSH  func(network, address string, config *ssh.ClientConfig) (sshConnection, error)
+	dialTCP  func(network, address string, timeout time.Duration) (net.Conn, error)
+	newTimer func(duration time.Duration) sshRetryTimer
+}
+
+func defaultSSHClientDependencies() sshClientDependencies {
+	return sshClientDependencies{
+		dialSSH: func(network, address string, config *ssh.ClientConfig) (sshConnection, error) {
+			client, err := ssh.Dial(network, address, config)
+			if err != nil {
+				return nil, err
+			}
+			return &cryptoSSHConnection{client: client}, nil
+		},
+		dialTCP: net.DialTimeout,
+		newTimer: func(duration time.Duration) sshRetryTimer {
+			return &realSSHRetryTimer{timer: time.NewTimer(duration)}
+		},
+	}
 }
 
 // SSHConfig holds SSH connection configuration
@@ -185,6 +278,7 @@ func NewSSHClient(cfg SSHConfig) (*SSHClient, error) {
 		host:    cfg.Host,
 		port:    port,
 		timeout: t,
+		deps:    defaultSSHClientDependencies(),
 	}, nil
 }
 
@@ -192,7 +286,7 @@ func NewSSHClient(cfg SSHConfig) (*SSHClient, error) {
 func (c *SSHClient) Connect() error {
 	addr := fmt.Sprintf("%s:%d", c.host, c.port)
 
-	conn, err := ssh.Dial("tcp", addr, c.config)
+	conn, err := c.deps.dialSSH("tcp", addr, c.config)
 	if err != nil {
 		return fmt.Errorf("failed to connect to %s: %w", addr, err)
 	}
@@ -216,7 +310,15 @@ func (c *SSHClient) NewSession() (*ssh.Session, error) {
 			return nil, err
 		}
 	}
-	return c.conn.NewSession()
+	session, err := c.conn.NewSession()
+	if err != nil {
+		return nil, err
+	}
+	cryptoSession, ok := session.(*cryptoSSHSession)
+	if !ok {
+		return nil, fmt.Errorf("unexpected SSH session implementation %T", session)
+	}
+	return cryptoSession.session, nil
 }
 
 // SendRequest sends a global SSH request on the established connection.
@@ -247,8 +349,8 @@ func (c *SSHClient) Run(ctx context.Context, command string) (*SSHCommandResult,
 	defer session.Close()
 
 	var stdout, stderr bytes.Buffer
-	session.Stdout = &stdout
-	session.Stderr = &stderr
+	session.SetStdout(&stdout)
+	session.SetStderr(&stderr)
 
 	// Handle context cancellation
 	done := make(chan error, 1)
@@ -258,7 +360,7 @@ func (c *SSHClient) Run(ctx context.Context, command string) (*SSHCommandResult,
 
 	select {
 	case <-ctx.Done():
-		session.Signal(ssh.SIGTERM)
+		_ = session.Signal(ssh.SIGTERM)
 		return nil, ctx.Err()
 	case err := <-done:
 		result := &SSHCommandResult{
@@ -318,8 +420,8 @@ func (c *SSHClient) RunWithOutput(ctx context.Context, command string, output io
 	}
 	defer session.Close()
 
-	session.Stdout = output
-	session.Stderr = output
+	session.SetStdout(output)
+	session.SetStderr(output)
 
 	done := make(chan error, 1)
 	go func() {
@@ -328,7 +430,7 @@ func (c *SSHClient) RunWithOutput(ctx context.Context, command string, output io
 
 	select {
 	case <-ctx.Done():
-		session.Signal(ssh.SIGTERM)
+		_ = session.Signal(ssh.SIGTERM)
 		return ctx.Err()
 	case err := <-done:
 		return err
@@ -490,50 +592,78 @@ func (c *SSHClient) StreamOutput(ctx context.Context, command string, callback f
 		return fmt.Errorf("failed to start command: %w", err)
 	}
 
-	// Create a combined reader
-	combined := io.MultiReader(stdout, stderr)
-	reader := newLineReader(combined)
-
-	// Read lines in a goroutine
-	lineChan := make(chan string, 100)
-	errChan := make(chan error, 1)
-
-	go func() {
-		for {
-			line, err := reader.readLine()
-			if err != nil {
-				if err != io.EOF {
-					errChan <- err
-				}
-				close(lineChan)
-				return
-			}
-			select {
-			case lineChan <- line:
-			case <-ctx.Done():
-				return
-			}
-		}
-	}()
+	readCtx, cancelReaders := context.WithCancel(ctx)
+	defer cancelReaders()
+	events := make(chan streamReadEvent, 100)
+	go readStreamLines(readCtx, newLineReader(stdout), events)
+	go readStreamLines(readCtx, newLineReader(stderr), events)
 
 	// Process lines until context is cancelled or stream ends
-	for {
+	readers := 2
+	for readers > 0 {
 		select {
 		case <-ctx.Done():
-			session.Signal(ssh.SIGTERM)
+			_ = session.Signal(ssh.SIGTERM)
 			return ctx.Err()
-		case err := <-errChan:
-			return err
-		case line, ok := <-lineChan:
-			if !ok {
-				// Stream ended
-				return session.Wait()
+		case event := <-events:
+			if event.err != nil {
+				_ = session.Signal(ssh.SIGTERM)
+				return event.err
 			}
-			if err := callback(line); err != nil {
-				session.Signal(ssh.SIGTERM)
+			if event.done {
+				readers--
+				continue
+			}
+			if err := callback(event.line); err != nil {
+				_ = session.Signal(ssh.SIGTERM)
 				return err
 			}
 		}
+	}
+
+	waitDone := make(chan error, 1)
+	go func() {
+		waitDone <- session.Wait()
+	}()
+	select {
+	case err := <-waitDone:
+		return err
+	case <-ctx.Done():
+		_ = session.Signal(ssh.SIGTERM)
+		return ctx.Err()
+	}
+}
+
+type streamReadEvent struct {
+	line string
+	err  error
+	done bool
+}
+
+func readStreamLines(ctx context.Context, reader *lineReader, events chan<- streamReadEvent) {
+	defer sendStreamEvent(ctx, events, streamReadEvent{done: true})
+	for {
+		line, err := reader.readLine()
+		if line != "" || err == nil {
+			if !sendStreamEvent(ctx, events, streamReadEvent{line: line}) {
+				return
+			}
+		}
+		if err != nil {
+			if err != io.EOF {
+				_ = sendStreamEvent(ctx, events, streamReadEvent{err: err})
+			}
+			return
+		}
+	}
+}
+
+func sendStreamEvent(ctx context.Context, events chan<- streamReadEvent, event streamReadEvent) bool {
+	select {
+	case events <- event:
+		return true
+	case <-ctx.Done():
+		return false
 	}
 }
 
@@ -548,21 +678,19 @@ func (c *SSHClient) WaitForConnection(ctx context.Context, maxRetries int) error
 		default:
 		}
 
-		conn, err := net.DialTimeout("tcp", fmt.Sprintf("%s:%d", c.host, c.port), config.NetworkDial)
+		conn, err := c.deps.dialTCP("tcp", fmt.Sprintf("%s:%d", c.host, c.port), config.NetworkDial)
 		if err == nil {
 			_ = conn.Close()
 			return c.Connect()
 		}
 
 		lastErr = err
-		timer := time.NewTimer(config.RetryDelay)
+		timer := c.deps.newTimer(config.RetryDelay)
 		select {
 		case <-ctx.Done():
-			if !timer.Stop() {
-				<-timer.C
-			}
+			_ = timer.Stop()
 			return ctx.Err()
-		case <-timer.C:
+		case <-timer.C():
 		}
 	}
 	if lastErr == nil {
@@ -584,10 +712,7 @@ func newLineReader(r io.Reader) *lineReader {
 // readLine reads a single line
 func (r *lineReader) readLine() (string, error) {
 	line, err := r.reader.ReadString('\n')
-	if err != nil {
-		return line, err
-	}
-	return strings.TrimSuffix(line, "\n"), nil
+	return strings.TrimSuffix(line, "\n"), err
 }
 
 func expandPath(path string) string {

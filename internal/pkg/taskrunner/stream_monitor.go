@@ -33,6 +33,17 @@ func (f MarkerHandlerFunc) OnMarker(ctx context.Context, taskID string, marker *
 	return f(ctx, taskID, marker)
 }
 
+// streamClient captures the SSH operations used while monitoring task output.
+// Keeping this boundary narrow lets the monitor be exercised independently of
+// the network while the production path continues to use SSHClient.
+type streamClient interface {
+	Run(ctx context.Context, command string) (*SSHCommandResult, error)
+	StreamOutput(ctx context.Context, command string, callback func(line string) error) error
+	Close() error
+}
+
+type streamDialer func(conn *Connection) (streamClient, error)
+
 // StreamMonitor monitors task output via persistent SSH connection
 type StreamMonitor struct {
 	logger            *zerolog.Logger
@@ -41,6 +52,7 @@ type StreamMonitor struct {
 	broadcastInterval time.Duration
 	activeStreams     map[string]context.CancelFunc
 	markerHandler     MarkerHandler
+	dial              streamDialer
 	mu                sync.RWMutex
 }
 
@@ -72,6 +84,9 @@ func NewStreamMonitor(logger *zerolog.Logger, wsHub SimpleBroadcaster, cfg *Stre
 		broadcastInterval: interval,
 		activeStreams:     make(map[string]context.CancelFunc),
 		markerHandler:     markerHandler,
+		dial: func(conn *Connection) (streamClient, error) {
+			return conn.Dial()
+		},
 	}
 }
 
@@ -138,7 +153,7 @@ func (m *StreamMonitor) StreamTaskOutput(
 	}()
 
 	// Create SSH client
-	sshClient, err := conn.Dial()
+	sshClient, err := m.dial(conn)
 	if err != nil {
 		return fmt.Errorf("failed to connect: %w", err)
 	}
@@ -389,7 +404,7 @@ func (m *StreamMonitor) MonitorBackgroundTask(
 	}()
 
 	// Create SSH client for streaming
-	sshClient, err := conn.Dial()
+	sshClient, err := m.dial(conn)
 	if err != nil {
 		m.logger.Error().Err(err).
 			Str("task_id", taskID).
