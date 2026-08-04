@@ -30,19 +30,19 @@ func TestTaskRunnerRunAsyncPersistsTerminalResults(t *testing.T) {
 			name:       "success",
 			result:     &taskrunner.TaskResult{ExitCode: 0, Output: "finished"},
 			wantStatus: string(servertypes.TaskStatusFinished),
-			callback:   func(task *mockCallbackTask) bool { return task.onSuccessCalled },
+			callback:   func(task *mockCallbackTask) bool { return task.successCalled() },
 		},
 		{
 			name:       "failure",
 			result:     &taskrunner.TaskResult{ExitCode: 9, Output: "failed"},
 			wantStatus: string(servertypes.TaskStatusFailed),
-			callback:   func(task *mockCallbackTask) bool { return task.onFailureCalled },
+			callback:   func(task *mockCallbackTask) bool { return task.failureCalled() },
 		},
 		{
 			name:       "timeout",
 			result:     &taskrunner.TaskResult{ExitCode: 124, Output: "timeout", TimedOut: true},
 			wantStatus: string(servertypes.TaskStatusTimeout),
-			callback:   func(task *mockCallbackTask) bool { return task.onExpiredCalled },
+			callback:   func(task *mockCallbackTask) bool { return task.expiredCalled() },
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -58,13 +58,11 @@ func TestTaskRunnerRunAsyncPersistsTerminalResults(t *testing.T) {
 			require.NoError(t, err)
 			require.NotNil(t, tracked)
 			require.Eventually(t, func() bool {
-				var persisted models.Task
-				if err := db.First(&persisted, "id = ?", tracked.ID).Error; err != nil {
-					return false
-				}
-				return persisted.Status == test.wantStatus
-			}, time.Second, 10*time.Millisecond)
-			assert.True(t, test.callback(callbackTask))
+				return test.callback(callbackTask)
+			}, 5*time.Second, 10*time.Millisecond)
+			var persisted models.Task
+			require.NoError(t, db.First(&persisted, "id = ?", tracked.ID).Error)
+			assert.Equal(t, test.wantStatus, persisted.Status)
 		})
 	}
 }
@@ -80,15 +78,11 @@ func TestTaskRunnerRunAsyncPersistsDispatcherError(t *testing.T) {
 
 	tracked, err := runner.RunAsync(context.Background())
 	require.NoError(t, err)
-	require.Eventually(t, func() bool {
-		var persisted models.Task
-		if err := db.First(&persisted, "id = ?", tracked.ID).Error; err != nil {
-			return false
-		}
-		return persisted.Status == string(servertypes.TaskStatusFailed) &&
-			strings.Contains(persisted.Output.String(), assert.AnError.Error())
-	}, time.Second, 10*time.Millisecond)
-	assert.True(t, callbackTask.onFailureCalled)
+	require.Eventually(t, callbackTask.failureCalled, 5*time.Second, 10*time.Millisecond)
+	var persisted models.Task
+	require.NoError(t, db.First(&persisted, "id = ?", tracked.ID).Error)
+	assert.Equal(t, string(servertypes.TaskStatusFailed), persisted.Status)
+	assert.Contains(t, persisted.Output.String(), assert.AnError.Error())
 }
 
 func TestTaskRunnerRunInBackgroundPersistsCompletion(t *testing.T) {
@@ -117,19 +111,26 @@ func TestTaskRunnerRunInBackgroundPersistsCompletion(t *testing.T) {
 			db := asyncRunnerDatabase(t)
 			dispatcher := taskrunner.NewFakeDispatcher()
 			dispatcher.DefaultResult = test.result
-			runner := NewTaskRunner(createTestServer(), createTestCallbackTask()).
+			callbackTask := createTestCallbackTask()
+			runner := NewTaskRunner(createTestServer(), callbackTask).
 				WithDB(db).
 				WithDispatcher(dispatcher)
 
 			tracked, err := runner.RunInBackground(context.Background())
 			require.NoError(t, err)
-			require.Eventually(t, func() bool {
-				var persisted models.Task
-				if err := db.First(&persisted, "id = ?", tracked.ID).Error; err != nil {
-					return false
-				}
-				return persisted.Status == test.wantStatus
-			}, time.Second, 10*time.Millisecond)
+			var callback func() bool
+			switch test.wantStatus {
+			case string(servertypes.TaskStatusFinished):
+				callback = callbackTask.successCalled
+			case string(servertypes.TaskStatusTimeout):
+				callback = callbackTask.expiredCalled
+			default:
+				callback = callbackTask.failureCalled
+			}
+			require.Eventually(t, callback, 5*time.Second, 10*time.Millisecond)
+			var persisted models.Task
+			require.NoError(t, db.First(&persisted, "id = ?", tracked.ID).Error)
+			assert.Equal(t, test.wantStatus, persisted.Status)
 			assert.True(t, dispatcher.LastExecution().Background)
 		})
 	}

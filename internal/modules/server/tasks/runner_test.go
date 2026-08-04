@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -63,6 +64,7 @@ func (t *mockTask) OnTimeout(ctx context.Context, result *taskrunner.TaskResult)
 // mockCallbackTask implements both Task and CallbackPayload
 type mockCallbackTask struct {
 	*mockTask
+	mu              sync.RWMutex
 	state           mockCallbackState
 	onSuccessCalled bool
 	onFailureCalled bool
@@ -81,12 +83,16 @@ func (t *mockCallbackTask) MarshalPayload() ([]byte, error) {
 }
 
 func (t *mockCallbackTask) OnSuccess(ctx context.Context, cbCtx *taskrunner.CallbackContext, taskID string) error {
+	t.mu.Lock()
+	defer t.mu.Unlock()
 	t.onSuccessCalled = true
 	t.lastTaskID = taskID
 	return t.returnError
 }
 
 func (t *mockCallbackTask) OnFailure(ctx context.Context, cbCtx *taskrunner.CallbackContext, taskID string, exitCode int) error {
+	t.mu.Lock()
+	defer t.mu.Unlock()
 	t.onFailureCalled = true
 	t.lastTaskID = taskID
 	t.lastExitCode = exitCode
@@ -94,9 +100,29 @@ func (t *mockCallbackTask) OnFailure(ctx context.Context, cbCtx *taskrunner.Call
 }
 
 func (t *mockCallbackTask) OnExpired(ctx context.Context, cbCtx *taskrunner.CallbackContext, taskID string) error {
+	t.mu.Lock()
+	defer t.mu.Unlock()
 	t.onExpiredCalled = true
 	t.lastTaskID = taskID
 	return t.returnError
+}
+
+func (t *mockCallbackTask) successCalled() bool {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+	return t.onSuccessCalled
+}
+
+func (t *mockCallbackTask) failureCalled() bool {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+	return t.onFailureCalled
+}
+
+func (t *mockCallbackTask) expiredCalled() bool {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+	return t.onExpiredCalled
 }
 
 type mockCallbackState struct {
