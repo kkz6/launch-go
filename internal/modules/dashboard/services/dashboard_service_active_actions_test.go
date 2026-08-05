@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
@@ -38,8 +39,8 @@ func TestActiveActionsIncludesDeploymentsCommandsAndServerTasks(t *testing.T) {
 			status TEXT, created_at DATETIME
 		)`,
 		`CREATE TABLE tasks (
-			id TEXT PRIMARY KEY, server_id TEXT, name TEXT, status TEXT,
-			created_at DATETIME
+			id TEXT PRIMARY KEY, server_id TEXT, site_id TEXT, name TEXT,
+			status TEXT, created_at DATETIME, updated_at DATETIME
 		)`,
 		`INSERT INTO servers (id, team_id, name)
 			VALUES
@@ -65,12 +66,12 @@ func TestActiveActionsIncludesDeploymentsCommandsAndServerTasks(t *testing.T) {
 			VALUES
 			('command-running', 'team-1', 'site-1', 'php artisan migrate --force', 'running', '2026-07-27 10:02:00'),
 			('command-finished', 'team-1', 'site-1', 'php artisan about', 'finished', '2026-07-27 10:03:00')`,
-		`INSERT INTO tasks (id, server_id, name, status, created_at)
+		`INSERT INTO tasks (id, server_id, site_id, name, status, created_at, updated_at)
 			VALUES
-			('agent-update', 'server-1', 'Update Launch Agent', 'running', '2026-07-27 10:04:00'),
-			('task-3', 'server-1', 'Deploy database', 'running', '2026-07-27 10:01:00'),
-			('finished-task', 'server-1', 'Install Redis', 'finished', '2026-07-27 10:05:00'),
-			('other-team-task', 'server-2', 'Update Launch Agent', 'running', '2026-07-27 10:06:00')`,
+			('agent-update', 'server-1', NULL, 'Update Launch Agent', 'running', '2026-07-27 10:04:00', '2026-07-27 10:04:00'),
+			('task-3', 'server-1', NULL, 'Deploy database', 'running', '2026-07-27 10:01:00', '2026-07-27 10:01:00'),
+			('finished-task', 'server-1', NULL, 'Install Redis', 'finished', '2026-07-27 10:05:00', '2026-07-27 10:05:00'),
+			('other-team-task', 'server-2', NULL, 'Update Launch Agent', 'running', '2026-07-27 10:06:00', '2026-07-27 10:06:00')`,
 	} {
 		require.NoError(t, db.Exec(statement).Error)
 	}
@@ -108,4 +109,103 @@ func TestActiveActionsIncludesDeploymentsCommandsAndServerTasks(t *testing.T) {
 	require.Equal(t, "site-deploying", actions[3].ID)
 	require.Equal(t, "example.com", actions[3].Label)
 	require.Equal(t, "deploying", actions[3].Status)
+}
+
+// activeActionsTaskFixture builds the minimum schema the tasks branch of
+// ActiveActions touches, so these cases stay readable next to the broader
+// fixture above.
+func activeActionsTaskFixture(t *testing.T, taskRows string) *DashboardService {
+	t.Helper()
+
+	db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared"), &gorm.Config{})
+	require.NoError(t, err)
+
+	for _, statement := range []string{
+		`CREATE TABLE servers (id TEXT PRIMARY KEY, team_id TEXT, name TEXT)`,
+		`CREATE TABLE sites (id TEXT PRIMARY KEY, address TEXT, server_id TEXT)`,
+		`CREATE TABLE deployments (
+			id TEXT PRIMARY KEY, team_id TEXT, status TEXT, site_id TEXT,
+			task_id TEXT, created_at DATETIME
+		)`,
+		`CREATE TABLE docker_deployments (
+			id TEXT PRIMARY KEY, team_id TEXT, status TEXT, target_type TEXT,
+			target_id TEXT, server_id TEXT, task_id TEXT, started_at DATETIME,
+			created_at DATETIME
+		)`,
+		`CREATE TABLE docker_applications (id TEXT PRIMARY KEY, name TEXT, project_id TEXT)`,
+		`CREATE TABLE docker_composes (id TEXT PRIMARY KEY, name TEXT, project_id TEXT)`,
+		`CREATE TABLE docker_databases (id TEXT PRIMARY KEY, name TEXT, project_id TEXT)`,
+		`CREATE TABLE commands (
+			id TEXT PRIMARY KEY, team_id TEXT, site_id TEXT, command TEXT,
+			status TEXT, created_at DATETIME
+		)`,
+		`CREATE TABLE tasks (
+			id TEXT PRIMARY KEY, server_id TEXT, site_id TEXT, name TEXT,
+			status TEXT, created_at DATETIME, updated_at DATETIME
+		)`,
+		`INSERT INTO servers (id, team_id, name) VALUES ('server-1', 'team-1', 'Production')`,
+		`INSERT INTO sites (id, address, server_id) VALUES ('site-1', 'example.com', 'server-1')`,
+		taskRows,
+	} {
+		require.NoError(t, db.Exec(statement).Error)
+	}
+
+	logger := zerolog.Nop()
+	return NewDashboardService(db, &logger, nil)
+}
+
+// A site PHP switch is server work that belongs to a site. Reporting it as a
+// bare server action left the UI unable to link to the site — the domain was
+// only readable inside the task name.
+func TestActiveActionsTargetsTheSiteForSiteScopedTasks(t *testing.T) {
+	t.Parallel()
+
+	service := activeActionsTaskFixture(t, `INSERT INTO tasks
+		(id, server_id, site_id, name, status, created_at, updated_at) VALUES
+		('php-switch', 'server-1', 'site-1', 'Switch example.com to PHP 8.3', 'running',
+		 '2026-07-27 10:00:00', '2026-07-27 10:00:00')`)
+
+	actions, err := service.ActiveActions(context.Background(), "team-1")
+	require.NoError(t, err)
+	require.Len(t, actions, 1)
+
+	require.Equal(t, "task", actions[0].Kind)
+	require.Equal(t, "Switch example.com to PHP 8.3", actions[0].Label)
+	require.Equal(t, "site", actions[0].TargetType)
+	require.Equal(t, "site-1", actions[0].TargetID)
+	require.Equal(t, "example.com", actions[0].Description)
+	require.Equal(t, "server-1", actions[0].ServerID, "the server is still reported for routing")
+}
+
+// A failed patch or switch used to drop out of the list the moment it
+// finished — exactly when the user wants to open its log.
+func TestActiveActionsKeepsRecentlyFailedTasks(t *testing.T) {
+	t.Parallel()
+
+	recent := time.Now().Add(-time.Minute).Format("2006-01-02 15:04:05")
+	stale := time.Now().Add(-2 * failedActionRetention).Format("2006-01-02 15:04:05")
+
+	service := activeActionsTaskFixture(t, `INSERT INTO tasks
+		(id, server_id, site_id, name, status, created_at, updated_at) VALUES
+		('patch-failed', 'server-1', NULL, 'Patch PHP 8.3', 'failed', '`+recent+`', '`+recent+`'),
+		('patch-timeout', 'server-1', NULL, 'Patch PHP 8.2', 'timeout', '`+recent+`', '`+recent+`'),
+		('patch-old-failure', 'server-1', NULL, 'Patch PHP 8.1', 'failed', '`+stale+`', '`+stale+`'),
+		('install-finished', 'server-1', NULL, 'Install Redis', 'finished', '`+recent+`', '`+recent+`')`)
+
+	actions, err := service.ActiveActions(context.Background(), "team-1")
+	require.NoError(t, err)
+
+	ids := make(map[string]string, len(actions))
+	for _, action := range actions {
+		ids[action.ID] = action.Status
+	}
+
+	require.Contains(t, ids, "patch-failed")
+	require.Equal(t, "failed", ids["patch-failed"])
+	require.Contains(t, ids, "patch-timeout")
+
+	require.NotContains(t, ids, "patch-old-failure",
+		"a failure past the retention window is history, not current work")
+	require.NotContains(t, ids, "install-finished",
+		"successes still drop out immediately; only failures are retained")
 }

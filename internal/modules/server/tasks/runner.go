@@ -74,6 +74,7 @@ type TaskRunner struct {
 	asRoot           bool
 	username         string
 	trackInDB        bool
+	siteID           *string
 	throwOnError     bool
 	completionConfig *taskrunner.CompletionConfig
 	markerHandler    taskrunner.MarkerHandler
@@ -149,6 +150,15 @@ func (r *TaskRunner) AsUser(username ...string) *TaskRunner {
 		r.username = username[0]
 	} else {
 		r.username = r.server.GetUsername()
+	}
+	return r
+}
+
+// ForSite scopes the tracked task to a site as well as its server. Active
+// Actions uses this to target the site rather than the server.
+func (r *TaskRunner) ForSite(siteID string) *TaskRunner {
+	if siteID != "" {
+		r.siteID = &siteID
 	}
 	return r
 }
@@ -715,6 +725,7 @@ func (r *TaskRunner) createTaskModel() (*models.Task, error) {
 		Script:       dbtype.EncryptedString(script),
 		Timeout:      int(r.task.Timeout().Seconds()),
 		Status:       string(servertypes.TaskStatusPending),
+		SiteID:       r.siteID,
 	}
 
 	completionConfig := r.completionConfig
