@@ -25,6 +25,11 @@ type Task struct {
 	Output   dbtype.EncryptedString `gorm:"type:longtext" json:"-"`
 	ExitCode *int                   `gorm:"column:exit_code;type:int" json:"exit_code,omitempty"`
 
+	// SiteID scopes a task to a site on top of its server, so site-scoped
+	// work (a PHP runtime switch, say) can be routed to the site in the UI
+	// instead of showing as a bare server action.
+	SiteID *string `gorm:"column:site_id;type:char(26);index" json:"site_id,omitempty"`
+
 	// Relations
 	Server *Server `gorm:"foreignKey:ServerID;references:ID" json:"server,omitempty"`
 }

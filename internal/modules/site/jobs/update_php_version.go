@@ -115,7 +115,7 @@ func (j *UpdateSitePHPVersionJob) Handle(ctx context.Context) error {
 	}
 
 	updateTask := tasks.UpdatePHPVersion(transition.UpdateConfig)
-	result, err := j.Deps.RunTask(server, updateTask).AsRoot().Dispatch(ctx)
+	result, err := j.Deps.RunTask(server, updateTask).AsRoot().ForSite(site.ID).Dispatch(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to update site PHP runtime: %w", err)
 	}
@@ -475,7 +475,7 @@ func (j *UpdateSitePHPVersionJob) rollbackRuntime(
 ) error {
 	rollbackTask := tasks.UpdatePHPVersion(config)
 	rollbackTask.SetName(fmt.Sprintf("Rollback %s PHP update", j.site.Address))
-	result, err := j.Deps.RunTask(server, rollbackTask).AsRoot().Dispatch(ctx)
+	result, err := j.Deps.RunTask(server, rollbackTask).AsRoot().ForSite(j.site.ID).Dispatch(ctx)
 	if err != nil {
 		return err
 	}

@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"sort"
+	"time"
 
 	"github.com/rs/zerolog"
 	"golang.org/x/sync/errgroup"
@@ -70,6 +71,12 @@ func (s *DashboardService) GetDashboard(ctx context.Context, teamID string) (*dt
 	}, nil
 }
 
+// failedActionRetention is how long a failed task stays in Active Actions
+// after finishing. Long enough that a failure is still on screen when the
+// user comes back to it, short enough that the list stays a view of current
+// work rather than a history.
+const failedActionRetention = 30 * time.Minute
+
 // ActiveActions combines active deployments, SSH commands, and tracked server
 // tasks. They remain separate queries because their status vocabularies and
 // target relationships differ.
@@ -78,6 +85,7 @@ func (s *DashboardService) ActiveActions(ctx context.Context, teamID string) ([]
 	dockerStatuses := []string{"pending", "building", "deploying", "running"}
 	commandStatuses := []string{"pending", "running"}
 	taskStatuses := []string{"pending", "running"}
+	failedTaskStatuses := []string{"failed", "timeout"}
 
 	var actions []dto.ActiveAction
 	if err := s.db.WithContext(ctx).Raw(`
@@ -126,22 +134,37 @@ func (s *DashboardService) ActiveActions(ctx context.Context, teamID string) ([]
 	}
 	actions = append(actions, commandActions...)
 
+	// A task that carries a site_id is site-scoped work (a PHP runtime
+	// switch, for example) and targets the site so the UI can link to it;
+	// everything else targets its server.
+	//
+	// Terminal tasks are included for a short window rather than dropped at
+	// completion: a patch or switch that fails would otherwise vanish from
+	// the list at the exact moment the user needs to open its log.
 	var taskActions []dto.ActiveAction
 	if err := s.db.WithContext(ctx).Raw(`
 		SELECT tasks.id, 'task' AS kind, tasks.status, tasks.name AS label,
-		       servers.name AS description, tasks.server_id, '' AS project_id,
-		       'server' AS target_type, tasks.server_id AS target_id,
+		       COALESCE(sites.address, servers.name) AS description,
+		       tasks.server_id, '' AS project_id,
+		       CASE WHEN sites.id IS NULL THEN 'server' ELSE 'site' END AS target_type,
+		       COALESCE(sites.id, tasks.server_id) AS target_id,
 		       tasks.id AS task_id, tasks.created_at AS started_at, tasks.created_at
 		FROM tasks
 		JOIN servers ON servers.id = tasks.server_id
-		WHERE servers.team_id = ? AND tasks.status IN ?
+		LEFT JOIN sites ON sites.id = tasks.site_id
+		WHERE servers.team_id = ?
+		  AND (
+		      tasks.status IN ?
+		      OR (tasks.status IN ? AND tasks.updated_at >= ?)
+		  )
 		  AND NOT EXISTS (
 		      SELECT 1 FROM deployments WHERE deployments.task_id = tasks.id
 		  )
 		  AND NOT EXISTS (
 		      SELECT 1 FROM docker_deployments WHERE docker_deployments.task_id = tasks.id
 		  )
-	`, teamID, taskStatuses).Scan(&taskActions).Error; err != nil {
+	`, teamID, taskStatuses, failedTaskStatuses, time.Now().Add(-failedActionRetention)).
+		Scan(&taskActions).Error; err != nil {
 		return nil, err
 	}
 	actions = append(actions, taskActions...)
