@@ -98,26 +98,57 @@ function httpPostRawSilently() {
 //     unattended-upgrades for the duration of provisioning, then re-enable
 //     it at the end. We mirror that pattern here.
 func AptFunctions() string {
-	return `# Wait for any apt/dpkg/unattended-upgrade process to exit and for all
-# the package-manager lock files to be released. Loop indefinitely — we'd
-# rather hang the provision (visible in logs) than race the lock and
-# surface a confusing failure to the customer.
-#
-# Note on process matching: unattended-upgrades runs as a python script
-# named "unattended-upgr" (truncated to 15 chars in /proc/comm), so we
-# use pgrep -f to match the full command line and catch it.
+	return `# Matched against full command lines by pgrep -f, because unattended-upgrades
+# runs as a python script whose /proc/comm is truncated to "unattended-upgr".
+# Anchored at both ends so it can't also match unattended-upgrade-shutdown —
+# the helper unattended-upgrades.service keeps running permanently, which
+# wedged every wait below until its task timed out.
+APT_PROCESS_PATTERN='(^|/)(apt|apt-get|aptitude|apt\.systemd\.daily|dpkg|dpkg-deb|unattended-upgrades?)( |$)'
+
+# Covers cloud-init's first-boot apt run without burning a whole task timeout.
+APT_WAIT_TIMEOUT_SECONDS=600
+
+function aptLockHolders() {
+    pgrep -af "${APT_PROCESS_PATTERN}" 2>/dev/null || true
+    sudo fuser -v /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend \
+                  /var/lib/apt/lists/lock /var/cache/apt/archives/lock 2>&1 || true
+}
+
+# Non-zero once the timeout is exhausted, so under set -e the script aborts
+# naming the culprit instead of hanging until the task timeout kills it.
 function waitForAptUnlock() {
-    while pgrep -f '(^|/)(apt|apt-get|dpkg|unattended-upgrade)' >/dev/null 2>&1; do
-        echo "apt, apt-get, dpkg, or unattended-upgrade is running..."
+    local waited=0
+    local reason=""
+
+    while [ "${waited}" -lt "${APT_WAIT_TIMEOUT_SECONDS}" ]; do
+        if pgrep -f "${APT_PROCESS_PATTERN}" >/dev/null 2>&1; then
+            reason="apt, apt-get, dpkg, or unattended-upgrade is running"
+        elif sudo fuser /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend \
+                        /var/lib/apt/lists/lock /var/cache/apt/archives/lock \
+                        >/dev/null 2>&1; then
+            reason="apt lock files are still held"
+        else
+            if [ -n "${reason}" ]; then
+                echo "apt is available after ${waited}s, continuing..."
+            fi
+            return 0
+        fi
+
+        if [ "${waited}" -eq 0 ]; then
+            echo "Waiting for apt: ${reason}. Currently holding apt:"
+            aptLockHolders
+        elif [ "$((waited % 60))" -eq 0 ]; then
+            echo "Still waiting for apt after ${waited}s: ${reason}"
+        fi
+
         sleep 5
+        waited=$((waited + 5))
     done
 
-    while sudo fuser /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend \
-                     /var/lib/apt/lists/lock /var/cache/apt/archives/lock \
-                     >/dev/null 2>&1; do
-        echo "Waiting: apt is locked..."
-        sleep 5
-    done
+    echo "ERROR: Giving up after ${APT_WAIT_TIMEOUT_SECONDS}s waiting for apt: ${reason}." >&2
+    echo "Still holding apt:" >&2
+    aptLockHolders >&2
+    return 1
 }
 
 # Bring the box into a state where apt-get cannot be hijacked by cloud-init
@@ -184,12 +215,21 @@ function restoreUnattendedUpgrades() {
     done
 }
 
-# Belt-and-suspenders for apt commands: noninteractive frontend + a
-# server-side dpkg lock wait so apt will retry the lock for up to 120s
-# instead of failing immediately if anything still races us.
 export DEBIAN_FRONTEND=noninteractive
 export APT_LISTCHANGES_FRONTEND=none
-export APT_LOCK_WAIT_OPTS='-o DPkg::Lock::Timeout=120'`
+
+# Array, not an exported string: an exported string has to be expanded
+# unquoted to word-split into two arguments, which silently degrades to a
+# single "-o" the moment anyone quotes it.
+APT_LOCK_WAIT_OPTS=(-o DPkg::Lock::Timeout=120)
+
+# Every apt-get call in every template goes through this. waitForAptUnlock
+# only closes the window before we start; the lock timeout covers a timer
+# firing mid-run, which otherwise fails the task outright with "Could not
+# get lock /var/lib/dpkg/lock-frontend".
+function aptGet() {
+    sudo DEBIAN_FRONTEND=noninteractive apt-get "${APT_LOCK_WAIT_OPTS[@]}" "$@"
+}`
 }
 
 // PhpPpaFunctions returns the function that ensures the upstream PHP
@@ -213,23 +253,23 @@ func PhpPpaFunctions() string {
             if ! grep -q "ondrej/php" /etc/apt/sources.list.d/*.list 2>/dev/null && ! grep -q "ondrej/php" /etc/apt/sources.list.d/*.sources 2>/dev/null; then
                 echo "Adding ondrej/php PPA (Ubuntu)..."
                 waitForAptUnlock
-                sudo DEBIAN_FRONTEND=noninteractive apt-get install -y software-properties-common
+                aptGet install -y software-properties-common
                 waitForAptUnlock
                 sudo DEBIAN_FRONTEND=noninteractive add-apt-repository ppa:ondrej/php -y
                 waitForAptUnlock
-                sudo DEBIAN_FRONTEND=noninteractive apt-get update -y
+                aptGet update -y
                 echo "ondrej/php PPA installed successfully"
             else
                 echo "ondrej/php PPA already installed, refreshing package lists..."
                 waitForAptUnlock
-                sudo DEBIAN_FRONTEND=noninteractive apt-get update -y
+                aptGet update -y
             fi
             ;;
         debian)
             if [ ! -f /etc/apt/sources.list.d/sury-php.list ]; then
                 echo "Adding sury.org PHP repo (Debian)..."
                 waitForAptUnlock
-                sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
+                aptGet install -y \
                     apt-transport-https lsb-release ca-certificates curl gnupg
                 sudo install -m 0755 -d /etc/apt/keyrings
                 if [ ! -f /etc/apt/keyrings/sury-php.gpg ]; then
@@ -240,12 +280,12 @@ func PhpPpaFunctions() string {
                 echo "deb [signed-by=/etc/apt/keyrings/sury-php.gpg] https://packages.sury.org/php/ ${VERSION_CODENAME} main" \
                     | sudo tee /etc/apt/sources.list.d/sury-php.list >/dev/null
                 waitForAptUnlock
-                sudo DEBIAN_FRONTEND=noninteractive apt-get update -y
+                aptGet update -y
                 echo "sury.org PHP repo installed successfully"
             else
                 echo "sury.org PHP repo already installed, refreshing package lists..."
                 waitForAptUnlock
-                sudo DEBIAN_FRONTEND=noninteractive apt-get update -y
+                aptGet update -y
             fi
             ;;
         *)

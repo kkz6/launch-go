@@ -1,2 +1,141 @@
-sudo apt-get purge -y php8.2-imagick
+#!/bin/bash
+set -euo pipefail
+trap '' PIPE
+export DEBIAN_FRONTEND=noninteractive
+
+# Matched against full command lines by pgrep -f, because unattended-upgrades
+# runs as a python script whose /proc/comm is truncated to "unattended-upgr".
+# Anchored at both ends so it can't also match unattended-upgrade-shutdown —
+# the helper unattended-upgrades.service keeps running permanently, which
+# wedged every wait below until its task timed out.
+APT_PROCESS_PATTERN='(^|/)(apt|apt-get|aptitude|apt\.systemd\.daily|dpkg|dpkg-deb|unattended-upgrades?)( |$)'
+
+# Covers cloud-init's first-boot apt run without burning a whole task timeout.
+APT_WAIT_TIMEOUT_SECONDS=600
+
+function aptLockHolders() {
+    pgrep -af "${APT_PROCESS_PATTERN}" 2>/dev/null || true
+    sudo fuser -v /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend \
+                  /var/lib/apt/lists/lock /var/cache/apt/archives/lock 2>&1 || true
+}
+
+# Non-zero once the timeout is exhausted, so under set -e the script aborts
+# naming the culprit instead of hanging until the task timeout kills it.
+function waitForAptUnlock() {
+    local waited=0
+    local reason=""
+
+    while [ "${waited}" -lt "${APT_WAIT_TIMEOUT_SECONDS}" ]; do
+        if pgrep -f "${APT_PROCESS_PATTERN}" >/dev/null 2>&1; then
+            reason="apt, apt-get, dpkg, or unattended-upgrade is running"
+        elif sudo fuser /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend \
+                        /var/lib/apt/lists/lock /var/cache/apt/archives/lock \
+                        >/dev/null 2>&1; then
+            reason="apt lock files are still held"
+        else
+            if [ -n "${reason}" ]; then
+                echo "apt is available after ${waited}s, continuing..."
+            fi
+            return 0
+        fi
+
+        if [ "${waited}" -eq 0 ]; then
+            echo "Waiting for apt: ${reason}. Currently holding apt:"
+            aptLockHolders
+        elif [ "$((waited % 60))" -eq 0 ]; then
+            echo "Still waiting for apt after ${waited}s: ${reason}"
+        fi
+
+        sleep 5
+        waited=$((waited + 5))
+    done
+
+    echo "ERROR: Giving up after ${APT_WAIT_TIMEOUT_SECONDS}s waiting for apt: ${reason}." >&2
+    echo "Still holding apt:" >&2
+    aptLockHolders >&2
+    return 1
+}
+
+# Bring the box into a state where apt-get cannot be hijacked by cloud-init
+# or the unattended-upgrades systemd timer during provisioning. Called once
+# at the very top of every provision script.
+#
+# Background:
+#   - On a fresh DigitalOcean/Hetzner/Vultr Ubuntu image, cloud-init runs
+#     apt update + apt upgrade as part of its first-boot work. This holds
+#     the dpkg lock for several minutes.
+#   - Even after cloud-init finishes, the apt-daily.timer and
+#     unattended-upgrades.timer systemd units can fire at any time and
+#     grab the lock mid-provision.
+#
+# We removed the historical "apt update + upgrade" provision step (it
+# slowed every provision by 5-15 minutes and broke build reproducibility);
+# the side-effect was that subsequent provision steps now hit apt-install
+# much earlier in the box's lifecycle, exposing the race. This function
+# is the proper fix: wait for cloud-init, then disable the timers for the
+# duration of provisioning. restoreUnattendedUpgrades() puts them back
+# at the end.
+function quiesceAptForProvisioning() {
+    # 1. Wait for cloud-init's first-boot run to finish. Silent on images
+    #    that don't ship cloud-init (e.g. some Contabo minimal images).
+    if command -v cloud-init >/dev/null 2>&1; then
+        echo "Waiting for cloud-init to finish..."
+        sudo cloud-init status --wait >/dev/null 2>&1 || true
+    fi
+
+    # 2. Stop and mask the timer-triggered apt jobs so they can't fire
+    #    while we provision. We do not kill running apt processes —
+    #    interrupting an in-flight unattended-upgrade can leave dpkg in
+    #    an inconsistent state. waitForAptUnlock below handles that case.
+    for unit in unattended-upgrades.service unattended-upgrades.timer \
+                apt-daily.service apt-daily.timer \
+                apt-daily-upgrade.service apt-daily-upgrade.timer; do
+        sudo systemctl stop "${unit}" 2>/dev/null || true
+        sudo systemctl mask "${unit}" 2>/dev/null || true
+    done
+
+    # 3. Wait for any lock-holding process that was already running to
+    #    finish gracefully.
+    waitForAptUnlock
+}
+
+# Re-enable the apt timer units that quiesceAptForProvisioning masked.
+# Critical: only start the TIMER units, never the service units.
+# Starting unattended-upgrades.service directly runs the full upgrade
+# synchronously and adds 3-10 minutes to provisioning. The timer fires
+# the service on its normal schedule (within 24h) — that is what we want.
+function restoreUnattendedUpgrades() {
+    # Unmask everything so the timers can launch their services later.
+    for unit in unattended-upgrades.service unattended-upgrades.timer \
+                apt-daily.service apt-daily.timer \
+                apt-daily-upgrade.service apt-daily-upgrade.timer; do
+        sudo systemctl unmask "${unit}" 2>/dev/null || true
+    done
+
+    # Enable + start the timers only. Each timer knows when to trigger
+    # its corresponding service.
+    for timer in unattended-upgrades.timer apt-daily.timer apt-daily-upgrade.timer; do
+        sudo systemctl enable "${timer}" 2>/dev/null || true
+        sudo systemctl start  "${timer}" 2>/dev/null || true
+    done
+}
+
+export DEBIAN_FRONTEND=noninteractive
+export APT_LISTCHANGES_FRONTEND=none
+
+# Array, not an exported string: an exported string has to be expanded
+# unquoted to word-split into two arguments, which silently degrades to a
+# single "-o" the moment anyone quotes it.
+APT_LOCK_WAIT_OPTS=(-o DPkg::Lock::Timeout=120)
+
+# Every apt-get call in every template goes through this. waitForAptUnlock
+# only closes the window before we start; the lock timeout covers a timer
+# firing mid-run, which otherwise fails the task outright with "Could not
+# get lock /var/lib/dpkg/lock-frontend".
+function aptGet() {
+    sudo DEBIAN_FRONTEND=noninteractive apt-get "${APT_LOCK_WAIT_OPTS[@]}" "$@"
+}
+
+waitForAptUnlock
+aptGet purge -y php8.2-imagick
 sudo service php8.2-fpm restart

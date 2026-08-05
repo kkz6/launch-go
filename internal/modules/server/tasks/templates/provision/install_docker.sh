@@ -36,10 +36,10 @@ else
     fi
 
     waitForAptUnlock
-    sudo apt-get update -qq
+    aptGet update -qq
 
     waitForAptUnlock
-    sudo apt-get install -y -qq ca-certificates curl gnupg
+    aptGet install -y -qq ca-certificates curl gnupg
 
     sudo install -m 0755 -d /etc/apt/keyrings
     if [ ! -f /etc/apt/keyrings/docker.gpg ]; then
@@ -53,10 +53,10 @@ else
         | sudo tee /etc/apt/sources.list.d/docker.list >/dev/null
 
     waitForAptUnlock
-    sudo apt-get update -qq
+    aptGet update -qq
 
     waitForAptUnlock
-    sudo apt-get install -y -qq \
+    aptGet install -y -qq \
         docker-ce \
         docker-ce-cli \
         containerd.io \

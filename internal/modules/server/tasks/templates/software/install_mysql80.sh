@@ -20,7 +20,7 @@ if sudo gpg --batch --yes --keyserver keyserver.ubuntu.com --recv-keys B7B3B788A
     sudo gpg --batch --yes --export B7B3B788A8D3785C | sudo tee /usr/share/keyrings/mysql-archive-keyring.gpg > /dev/null
     echo "deb [signed-by=/usr/share/keyrings/mysql-archive-keyring.gpg] http://repo.mysql.com/apt/ubuntu $(lsb_release -cs) mysql-8.0" | sudo tee /etc/apt/sources.list.d/mysql.list
     waitForAptUnlock
-    if sudo apt-get update 2>/dev/null; then
+    if aptGet update 2>/dev/null; then
         MYSQL_REPO_SETUP_SUCCESS=true
     fi
 fi
@@ -29,7 +29,7 @@ if [ "$MYSQL_REPO_SETUP_SUCCESS" = false ]; then
     echo "MySQL official repo setup failed, falling back to Ubuntu's mysql-server package"
     sudo rm -f /etc/apt/sources.list.d/mysql.list
     waitForAptUnlock
-    sudo apt-get update
+    aptGet update
 fi
 
 ROOT_PASSWORD="{{ .RootPassword }}"
@@ -42,11 +42,11 @@ if [ "$MYSQL_REPO_SETUP_SUCCESS" = true ]; then
     sudo debconf-set-selections <<< "mysql-community-server mysql-community-server/data-dir select ''"
     sudo debconf-set-selections <<< "mysql-community-server mysql-community-server/root-pass password ${ROOT_PASSWORD}"
     sudo debconf-set-selections <<< "mysql-community-server mysql-community-server/re-root-pass password ${ROOT_PASSWORD}"
-    sudo apt-get install -y mysql-community-server
+    aptGet install -y mysql-community-server
 else
     sudo debconf-set-selections <<< "mysql-server mysql-server/root_password password ${ROOT_PASSWORD}"
     sudo debconf-set-selections <<< "mysql-server mysql-server/root_password_again password ${ROOT_PASSWORD}"
-    sudo apt-get install -y mysql-server
+    aptGet install -y mysql-server
 fi
 
 # Configure MySQL settings (idempotent - only add if not present)

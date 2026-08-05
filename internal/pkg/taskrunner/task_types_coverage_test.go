@@ -73,30 +73,13 @@ func TestBaseTaskCompleteBehavior(t *testing.T) {
 	}
 }
 
-func TestTaskConstructorsAndScriptHelpers(t *testing.T) {
+// The script-preamble helpers this used to cover (WrapScript, ShellDefaults,
+// CommonFunctions, AptFunctions) were unreferenced duplicates of the ones in
+// taskrunner/templates and have been removed; templates owns them now.
+func TestNewScriptTask(t *testing.T) {
 	task := NewScriptTask("script task", "echo hello", 12*time.Second)
 	if task.Name() != "script task" || task.Script() != "echo hello" || task.Timeout() != 12*time.Second {
 		t.Fatalf("NewScriptTask() = (%q, %q, %v)", task.Name(), task.Script(), task.Timeout())
-	}
-
-	wrapped := WrapScript("echo hello")
-	for _, fragment := range []string{"#!/bin/bash", "set -euo pipefail", "DEBIAN_FRONTEND=noninteractive", "echo hello"} {
-		if !strings.Contains(wrapped, fragment) {
-			t.Fatalf("WrapScript() missing %q: %s", fragment, wrapped)
-		}
-	}
-	if !strings.Contains(ShellDefaults(), "set -euo pipefail") {
-		t.Fatalf("ShellDefaults() = %q", ShellDefaults())
-	}
-	for _, fragment := range []string{"httpPostSilently", "httpPostRawSilently", "curl -X POST"} {
-		if !strings.Contains(CommonFunctions(), fragment) {
-			t.Fatalf("CommonFunctions() missing %q", fragment)
-		}
-	}
-	for _, fragment := range []string{"waitForAptUnlock", "apt-get", "unattended-upgrades"} {
-		if !strings.Contains(AptFunctions(), fragment) {
-			t.Fatalf("AptFunctions() missing %q", fragment)
-		}
 	}
 }
 

@@ -8,7 +8,7 @@ echo "Install Bun"
 waitForAptUnlock
 
 # Install dependencies
-sudo apt-get install -y curl unzip
+aptGet install -y curl unzip
 
 # Install Bun system-wide to /usr/local so it's available in non-login shells (e.g. deployments)
 curl -fsSL https://bun.sh/install | sudo BUN_INSTALL="/usr/local" bash

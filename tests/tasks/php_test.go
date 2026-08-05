@@ -13,7 +13,7 @@ func TestAddPhpVersion(t *testing.T) {
 	testutil.AssertTask(t, task).
 		HasName("Install PHP 8.2").
 		ScriptContains("add-apt-repository ppa:ondrej/php").
-		ScriptContains("apt-get install").
+		ScriptContains("aptGet install").
 		ScriptContains("php8.2").
 		ScriptContains("php8.2-fpm").
 		ScriptContains("php8.2-cli").
@@ -26,7 +26,7 @@ func TestRemovePhpVersion(t *testing.T) {
 
 	testutil.AssertTask(t, task).
 		HasName("Remove PHP 8.1").
-		ScriptContains("apt-get purge").
+		ScriptContains("aptGet purge").
 		ScriptContains("php8.1").
 		ScriptContains("autoremove").
 		ScriptMatches("tasks/php_remove_version")
@@ -37,7 +37,7 @@ func TestInstallPhpExtension(t *testing.T) {
 
 	testutil.AssertTask(t, task).
 		HasName("Install PHP Extension redis").
-		ScriptContains("apt-get install").
+		ScriptContains("aptGet install").
 		ScriptContains("php8.2-redis").
 		ScriptContains("php8.2-fpm restart").
 		ScriptMatches("tasks/php_install_extension")
@@ -48,7 +48,7 @@ func TestUninstallPhpExtension(t *testing.T) {
 
 	testutil.AssertTask(t, task).
 		HasName("Uninstall PHP Extension imagick").
-		ScriptContains("apt-get purge").
+		ScriptContains("aptGet purge").
 		ScriptContains("php8.2-imagick").
 		ScriptContains("php8.2-fpm restart").
 		ScriptMatches("tasks/php_uninstall_extension")
