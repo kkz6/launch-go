@@ -7,6 +7,7 @@ import (
 
 	"github.com/kkz6/launch-go/internal/modules/server/types"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
+	"github.com/kkz6/launch-go/internal/pkg/taskrunner/templates"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -366,10 +367,10 @@ func TestInstallSoftwareSizesFromMemory(t *testing.T) {
 	assert.Contains(t, unsizedDB.Script(), "100")
 }
 
-// RemoveSoftware renders through MustRender, so a template name that does
-// not resolve panics inside RemoveServiceJob rather than failing the job.
-// MySQL and PostgreSQL used to do exactly that: their install templates are
-// versioned (install_mysql80.sh) but their remove templates are not.
+// MySQL and PostgreSQL name their install templates with the version
+// (install_mysql80.sh) but their remove templates without it
+// (remove_mysql.sh), so deriving the remove name from the enum alone
+// resolved to files that were never written.
 func TestRemoveSoftwareByEnum(t *testing.T) {
 	for _, software := range []types.Software{
 		types.SoftwarePhp83,
@@ -380,12 +381,57 @@ func TestRemoveSoftwareByEnum(t *testing.T) {
 		types.SoftwareLaunchAgent,
 	} {
 		t.Run(string(software), func(t *testing.T) {
-			task := RemoveSoftware(software)
+			assert.True(t, software.SupportsRemove())
+
+			task, err := RemoveSoftware(software)
+			require.NoError(t, err)
 			require.NotNil(t, task)
 
 			assert.Equal(t, "Remove "+software.Label(), task.Name())
 			assert.Equal(t, 300*time.Second, task.Timeout())
 			assert.NotEmpty(t, task.Script())
+		})
+	}
+}
+
+// No removal script ships for these. RemoveSoftware runs inside
+// RemoveServiceJob, and a panic there unwinds past the job wrapper so
+// Failed() never runs — the service would sit in "uninstalling" while asynq
+// recovered the panic and retried until the task was archived. Failing
+// cleanly lets Failed() restore the previous status.
+func TestRemoveSoftwareWithoutARemovalScript(t *testing.T) {
+	for _, software := range []types.Software{
+		types.SoftwareCaddy2,
+		types.SoftwareCaddy2LB,
+		types.SoftwareComposer2,
+		types.SoftwareNode21,
+		types.SoftwareBun,
+		types.SoftwareDocker,
+		types.SoftwareTraefik,
+	} {
+		t.Run(string(software), func(t *testing.T) {
+			assert.False(t, software.SupportsRemove())
+
+			task, err := RemoveSoftware(software)
+			require.Error(t, err)
+			assert.Nil(t, task)
+			assert.Contains(t, err.Error(), "cannot be uninstalled")
+		})
+	}
+}
+
+// Software.SupportsRemove is a static list, so it can drift from the scripts
+// that actually ship. This is the guard: for every software the enum knows
+// about, the answer must match whether its removal template is registered.
+// Adding a remove_*.sh without updating SupportsRemove — or the reverse —
+// fails here rather than in production.
+func TestSupportsRemoveMatchesShippedTemplates(t *testing.T) {
+	for _, software := range types.AllSoftware() {
+		t.Run(string(software), func(t *testing.T) {
+			registered := templates.Has("server", software.RemoveTemplateName())
+			assert.Equal(t, registered, software.SupportsRemove(),
+				"SupportsRemove says %v but template %q registered=%v",
+				software.SupportsRemove(), software.RemoveTemplateName(), registered)
 		})
 	}
 }
