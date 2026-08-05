@@ -170,6 +170,14 @@ func (s *Service) dispatchServiceRemoveJob(
 	server *models.Server,
 	svc *models.InstalledService,
 ) error {
+	// Reject before reserving the lifecycle or queueing anything. Some
+	// software ships no removal script — dispatching a job for it would
+	// park the service in "uninstalling" until the job exhausted its
+	// retries, and the caller would see a 202 for work that cannot happen.
+	if !svc.GetSoftware().SupportsRemove() {
+		return fiberutil.BadRequest(fmt.Sprintf("%s cannot be uninstalled", svc.GetSoftware().Label()))
+	}
+
 	previousStatus, reserved, err := s.reservePHPServiceLifecycle(ctx, svc)
 	if err != nil {
 		return err

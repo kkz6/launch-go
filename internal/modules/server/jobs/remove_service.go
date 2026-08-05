@@ -82,7 +82,10 @@ func (j *RemoveServiceJob) Handle(ctx context.Context) error {
 	})
 
 	// Create remove task using the software's remove template
-	task := tasks.RemoveSoftware(j.service.GetSoftware())
+	task, err := tasks.RemoveSoftware(j.service.GetSoftware())
+	if err != nil {
+		return err
+	}
 
 	result, err := j.Deps.RunTask(j.server, task).
 		AsRoot().

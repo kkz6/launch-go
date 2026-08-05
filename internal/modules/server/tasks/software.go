@@ -1,6 +1,8 @@
 package tasks
 
 import (
+	"fmt"
+
 	"github.com/kkz6/launch-go/internal/modules/server/types"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner/templates"
@@ -299,16 +301,29 @@ func InstallSoftware(software types.Software, config SoftwareInstallConfig) *tas
 	)
 }
 
-// RemoveSoftware creates a task to remove software based on the software enum
-func RemoveSoftware(software types.Software) *taskrunner.BaseTask {
-	templateName := software.RemoveTemplateName()
-	data := map[string]interface{}{
-		"Version": software.GetVersion(),
+// RemoveSoftware creates a task to remove software based on the software enum.
+//
+// Returns an error rather than panicking when no removal script exists. This
+// runs inside RemoveServiceJob: a panic there unwinds past the job wrapper so
+// Failed() never runs, leaving the service stuck in "uninstalling" while asynq
+// recovers and retries the task until it is archived.
+func RemoveSoftware(software types.Software) (*taskrunner.BaseTask, error) {
+	if !software.SupportsRemove() {
+		return nil, fmt.Errorf("%s cannot be uninstalled: no removal script", software.Label())
 	}
-	script := templates.MustRender("server", templateName, data)
+
+	templateName := software.RemoveTemplateName()
+
+	script, err := templates.Render("server", templateName, map[string]interface{}{
+		"Version": software.GetVersion(),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("render removal script for %s: %w", software.Label(), err)
+	}
+
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName("Remove "+software.Label()),
 		taskrunner.WithScript(script),
 		taskrunner.WithTimeoutSeconds(300),
-	)
+	), nil
 }

@@ -87,6 +87,20 @@ func Register(module string, fsys fs.FS, opts *RegisterOptions) error {
 	return nil
 }
 
+// Has reports whether a module has a template registered under name.
+// Callers use this to fail cleanly on a missing script instead of letting
+// MustRender panic deep inside a worker job.
+func Has(module, name string) bool {
+	globalRegistry.mu.RLock()
+	mod, exists := globalRegistry.modules[module]
+	globalRegistry.mu.RUnlock()
+
+	if !exists {
+		return false
+	}
+	return mod.templates.Lookup(name) != nil
+}
+
 // Render renders a template from a registered module
 func Render(module, name string, data any) (string, error) {
 	globalRegistry.mu.RLock()
