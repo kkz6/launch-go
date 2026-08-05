@@ -53,10 +53,10 @@ echo "Patching installed PHP ${PHP_SERIES} packages:"
 printf ' - %s\n' "${phpPackages[@]}"
 
 waitForAptUnlock
-sudo DEBIAN_FRONTEND=noninteractive apt-get update
+aptGet update
 
 waitForAptUnlock
-sudo DEBIAN_FRONTEND=noninteractive apt-get install \
+aptGet install \
     -o Dpkg::Options::="--force-confdef" \
     -o Dpkg::Options::="--force-confold" \
     --only-upgrade \

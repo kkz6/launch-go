@@ -6,4 +6,4 @@
 echo "Install Supervisor"
 
 waitForAptUnlock
-sudo apt-get install -y supervisor
+aptGet install -y supervisor

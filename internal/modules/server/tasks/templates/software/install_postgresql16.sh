@@ -12,7 +12,7 @@ DATABASE_NAME="{{ .DatabaseName }}"
 LAUNCH_USER="{{ .DatabaseName }}"
 
 # Add PostgreSQL official repository
-sudo apt-get install -y wget gnupg2 lsb-release
+aptGet install -y wget gnupg2 lsb-release
 
 # Import PostgreSQL repository signing key (remove existing if present)
 sudo rm -f /usr/share/keyrings/postgresql-archive-keyring.gpg
@@ -22,10 +22,10 @@ wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo gpg 
 echo "deb [signed-by=/usr/share/keyrings/postgresql-archive-keyring.gpg] http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
 
 waitForAptUnlock
-sudo apt-get update
+aptGet update
 
 waitForAptUnlock
-sudo apt-get install -y postgresql-16 postgresql-contrib-16
+aptGet install -y postgresql-16 postgresql-contrib-16
 
 # Wait for PostgreSQL to start
 sleep 2

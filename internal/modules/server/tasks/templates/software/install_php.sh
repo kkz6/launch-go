@@ -11,7 +11,7 @@ ensurePhpPpaInstalled
 
 waitForAptUnlock
 
-sudo DEBIAN_FRONTEND=noninteractive apt-get install -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" -y --allow-downgrades --allow-remove-essential --allow-change-held-packages \
+aptGet install -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" -y --allow-downgrades --allow-remove-essential --allow-change-held-packages \
     php{{ .Version }}-bcmath \
     php{{ .Version }}-cli \
     php{{ .Version }}-curl \
@@ -30,17 +30,17 @@ sudo DEBIAN_FRONTEND=noninteractive apt-get install -o Dpkg::Options::="--force-
 echo "Install Redis for PHP {{ .Version }}"
 
 waitForAptUnlock
-yes '' | sudo DEBIAN_FRONTEND=noninteractive apt-get -y install php{{ .Version }}-redis || echo "php{{ .Version }}-redis not available, skipping..."
+yes '' | aptGet -y install php{{ .Version }}-redis || echo "php{{ .Version }}-redis not available, skipping..."
 
 echo "Install Memcached for PHP {{ .Version }}"
 
 waitForAptUnlock
-yes '' | sudo DEBIAN_FRONTEND=noninteractive apt-get -y install php{{ .Version }}-memcached || echo "php{{ .Version }}-memcached not available, skipping..."
+yes '' | aptGet -y install php{{ .Version }}-memcached || echo "php{{ .Version }}-memcached not available, skipping..."
 
 echo "Install Swoole for PHP {{ .Version }}"
 
 waitForAptUnlock
-yes '' | sudo DEBIAN_FRONTEND=noninteractive apt-get -y install php{{ .Version }}-swoole || echo "php{{ .Version }}-swoole not available, skipping..."
+yes '' | aptGet -y install php{{ .Version }}-swoole || echo "php{{ .Version }}-swoole not available, skipping..."
 
 echo "Update PHP CLI config"
 

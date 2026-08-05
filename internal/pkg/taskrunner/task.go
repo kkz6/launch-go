@@ -148,52 +148,5 @@ func NewScriptTask(name string, script string, timeout time.Duration) *BaseTask 
 	)
 }
 
-// WrapScript wraps a script with shell defaults
-func WrapScript(script string) string {
-	return "#!/bin/bash\nset -euo pipefail\nexport DEBIAN_FRONTEND=noninteractive\n\n" + script
-}
-
-// ShellDefaults returns the standard shell script header
-func ShellDefaults() string {
-	return `set -euo pipefail
-export DEBIAN_FRONTEND=noninteractive`
-}
-
-// CommonFunctions returns common bash helper functions
-func CommonFunctions() string {
-	return `# Send a POST request to the given URL, ignoring the response and errors
-function httpPostSilently() {
-    if [ -z "${2:-}" ]; then
-        (curl -X POST --silent --max-time 15 --output /dev/null $1 || true)
-    else
-        (curl -X POST --silent --max-time 15 --output /dev/null $1 -H 'Content-Type: application/json' --data "$2" || true)
-    fi
-}
-
-function httpPostRawSilently() {
-    (curl -X POST --silent --max-time 15 --output /dev/null $1 --data "$2" || true)
-}`
-}
-
-// AptFunctions returns apt-related bash functions
-func AptFunctions() string {
-	return `# Wait for apt to be unlocked
-function waitForAptUnlock() {
-    while ps -C apt,apt-get,dpkg >/dev/null 2>&1; do
-        echo "apt, apt-get or dpkg is running..."
-        sleep 5
-    done
-
-    while fuser /var/{lib/{dpkg,apt/lists},cache/apt/archives}/{lock,lock-frontend} >/dev/null 2>&1; do
-        echo "Waiting: apt is locked..."
-        sleep 5
-    done
-
-    if [ -f /var/log/unattended-upgrades/unattended-upgrades.log ]; then
-        while fuser /var/log/unattended-upgrades/unattended-upgrades.log >/dev/null 2>&1; do
-            echo "Waiting: unattended-upgrades is locked..."
-            sleep 5
-        done
-    fi
-}`
-}
+// Script preamble helpers live in taskrunner/templates — ShellDefaults,
+// CommonFunctions and AptFunctions there are the single source of truth.
