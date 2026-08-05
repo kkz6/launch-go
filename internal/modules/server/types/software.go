@@ -415,6 +415,27 @@ func (s Software) RemoveTemplateName() string {
 	return "software/remove_" + string(s) + ".sh"
 }
 
+// SupportsRemove reports whether a removal script ships for this software.
+//
+// Deliberately a static switch rather than a lookup against the template
+// registry: the registry is populated at boot, so a lookup would make the
+// answer depend on initialisation order and silently report "not removable"
+// anywhere templates had not been registered yet.
+// TestSupportsRemoveMatchesShippedTemplates keeps this list honest against
+// the files that actually exist.
+func (s Software) SupportsRemove() bool {
+	if s.IsPhp() {
+		return true
+	}
+
+	switch s {
+	case SoftwareRedis, SoftwareSupervisor, SoftwareMySQL80, SoftwarePostgreSQL16, SoftwareLaunchAgent:
+		return true
+	default:
+		return false
+	}
+}
+
 // ConnectionName returns the database driver name for use in application configuration.
 // Returns "mysql" for MySQL and "pgsql" for PostgreSQL.
 func (s Software) ConnectionName() string {

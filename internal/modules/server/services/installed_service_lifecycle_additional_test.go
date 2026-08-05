@@ -632,3 +632,59 @@ func attachClosedLifecycleTestQueue(t *testing.T, service *Service) {
 	require.NoError(t, client.Close())
 	service.Queue = client
 }
+
+// Software with no removal script is rejected at the API boundary. Dispatching
+// the job instead would answer 202, park the service in "uninstalling", and
+// leave it there while the job burned its retries on a script that does not
+// exist.
+func TestRemoveRejectsSoftwareThatCannotBeUninstalled(t *testing.T) {
+	for _, software := range []types.Software{
+		types.SoftwareCaddy2,
+		types.SoftwareNode21,
+		types.SoftwareBun,
+		types.SoftwareComposer2,
+		types.SoftwareDocker,
+		types.SoftwareTraefik,
+	} {
+		t.Run(string(software), func(t *testing.T) {
+			service, installed, _ := newInstalledServiceLifecycleHarness()
+			installed.Software = software.String()
+			// Non-PHP, so the PHP lifecycle reservation is skipped and the
+			// removal guard is what decides the outcome.
+			installed.Type = types.ServiceTypeRedis
+			attachLifecycleTestQueue(t, service)
+
+			err := service.HandleServiceOperation(
+				context.Background(), "server-a", "team-a", installed.ID, types.ServiceOptionRemove,
+			)
+
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "cannot be uninstalled")
+			assert.Equal(t, types.ServiceStatusRunning, installed.Status,
+				"a rejected removal must not move the service out of running")
+		})
+	}
+}
+
+func TestRemoveAcceptsSoftwareWithARemovalScript(t *testing.T) {
+	for _, software := range []types.Software{
+		types.SoftwareRedis,
+		types.SoftwareSupervisor,
+		types.SoftwareMySQL80,
+		types.SoftwarePostgreSQL16,
+	} {
+		t.Run(string(software), func(t *testing.T) {
+			service, installed, _ := newInstalledServiceLifecycleHarness()
+			installed.Software = software.String()
+			// Non-PHP, so the PHP lifecycle reservation is skipped and the
+			// removal guard is what decides the outcome.
+			installed.Type = types.ServiceTypeRedis
+			attachLifecycleTestQueue(t, service)
+
+			err := service.HandleServiceOperation(
+				context.Background(), "server-a", "team-a", installed.ID, types.ServiceOptionRemove,
+			)
+			assert.NoError(t, err)
+		})
+	}
+}
