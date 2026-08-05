@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
+	gormlogger "gorm.io/gorm/logger"
 )
 
 func TestActiveActionsIncludesDeploymentsCommandsAndServerTasks(t *testing.T) {
@@ -208,4 +209,48 @@ func TestActiveActionsKeepsRecentlyFailedTasks(t *testing.T) {
 		"a failure past the retention window is history, not current work")
 	require.NotContains(t, ids, "install-finished",
 		"successes still drop out immediately; only failures are retained")
+}
+
+// ActiveActions runs four independent queries and returns on the first
+// failure. Dropping one table at a time reaches each error path in turn,
+// because a query only runs once the ones before it have succeeded.
+func TestActiveActionsSurfacesQueryFailures(t *testing.T) {
+	t.Parallel()
+
+	schema := map[string]string{
+		"servers":             `CREATE TABLE servers (id TEXT PRIMARY KEY, team_id TEXT, name TEXT)`,
+		"sites":               `CREATE TABLE sites (id TEXT PRIMARY KEY, address TEXT, server_id TEXT)`,
+		"deployments":         `CREATE TABLE deployments (id TEXT PRIMARY KEY, team_id TEXT, status TEXT, site_id TEXT, task_id TEXT, created_at DATETIME)`,
+		"docker_deployments":  `CREATE TABLE docker_deployments (id TEXT PRIMARY KEY, team_id TEXT, status TEXT, target_type TEXT, target_id TEXT, server_id TEXT, task_id TEXT, started_at DATETIME, created_at DATETIME)`,
+		"docker_applications": `CREATE TABLE docker_applications (id TEXT PRIMARY KEY, name TEXT, project_id TEXT)`,
+		"docker_composes":     `CREATE TABLE docker_composes (id TEXT PRIMARY KEY, name TEXT, project_id TEXT)`,
+		"docker_databases":    `CREATE TABLE docker_databases (id TEXT PRIMARY KEY, name TEXT, project_id TEXT)`,
+		"commands":            `CREATE TABLE commands (id TEXT PRIMARY KEY, team_id TEXT, site_id TEXT, command TEXT, status TEXT, created_at DATETIME)`,
+		"tasks":               `CREATE TABLE tasks (id TEXT PRIMARY KEY, server_id TEXT, site_id TEXT, name TEXT, status TEXT, created_at DATETIME, updated_at DATETIME)`,
+	}
+
+	// Each entry omits the one table whose absence fails that query first.
+	for _, omit := range []string{"deployments", "docker_deployments", "commands", "tasks"} {
+		t.Run("missing "+omit, func(t *testing.T) {
+			db, err := gorm.Open(
+				sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared"),
+				&gorm.Config{Logger: gormlogger.Default.LogMode(gormlogger.Silent)},
+			)
+			require.NoError(t, err)
+
+			for name, statement := range schema {
+				if name == omit {
+					continue
+				}
+				require.NoError(t, db.Exec(statement).Error)
+			}
+
+			logger := zerolog.Nop()
+			service := NewDashboardService(db, &logger, nil)
+
+			actions, err := service.ActiveActions(context.Background(), "team-1")
+			require.Error(t, err, "a broken %s query must surface, not return a partial list", omit)
+			require.Nil(t, actions)
+		})
+	}
 }

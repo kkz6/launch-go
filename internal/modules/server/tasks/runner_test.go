@@ -861,3 +861,50 @@ func TestTaskRunner_invokeTaskCallbacks_NonCallbackTask(t *testing.T) {
 func intPtr(i int) *int {
 	return &i
 }
+
+func TestTaskRunner_ForSite(t *testing.T) {
+	runner := NewTaskRunner(createTestServer(), createTestTask()).ForSite("site-1")
+
+	if runner.siteID == nil {
+		t.Fatal("Expected siteID to be set")
+	}
+	if *runner.siteID != "site-1" {
+		t.Errorf("Expected siteID 'site-1', got '%s'", *runner.siteID)
+	}
+}
+
+// Most tasks are server-scoped, so callers pass through with no site. An
+// empty ID must leave the task unscoped rather than storing "".
+func TestTaskRunner_ForSiteIgnoresEmptyID(t *testing.T) {
+	runner := NewTaskRunner(createTestServer(), createTestTask()).ForSite("")
+
+	if runner.siteID != nil {
+		t.Errorf("Expected siteID to stay nil, got '%s'", *runner.siteID)
+	}
+}
+
+// The scope has to reach the persisted row — that column is what Active
+// Actions joins on to target the site.
+func TestTaskRunner_ForSiteReachesTheTaskModel(t *testing.T) {
+	db := asyncRunnerDatabase(t)
+	server := createTestServer()
+
+	scoped, err := NewTaskRunner(server, createTestTask()).
+		WithDB(db).
+		ForSite("site-1").
+		createTaskModel()
+	if err != nil {
+		t.Fatalf("createTaskModel() = %v", err)
+	}
+	if scoped.SiteID == nil || *scoped.SiteID != "site-1" {
+		t.Errorf("Expected task model SiteID 'site-1', got %v", scoped.SiteID)
+	}
+
+	unscoped, err := NewTaskRunner(server, createTestTask()).WithDB(db).createTaskModel()
+	if err != nil {
+		t.Fatalf("createTaskModel() = %v", err)
+	}
+	if unscoped.SiteID != nil {
+		t.Errorf("Expected server-scoped task to have no SiteID, got %v", *unscoped.SiteID)
+	}
+}
