@@ -401,6 +401,17 @@ func (s Software) RemoveTemplateName() string {
 		return "software/remove_php.sh"
 	}
 
+	// Install templates carry the version (install_mysql80.sh) but remove
+	// templates don't (remove_mysql.sh), so deriving the remove name from
+	// the enum alone pointed at files that were never written and panicked
+	// MustRender inside RemoveServiceJob.
+	switch s {
+	case SoftwareMySQL80:
+		return "software/remove_mysql.sh"
+	case SoftwarePostgreSQL16:
+		return "software/remove_postgresql.sh"
+	}
+
 	return "software/remove_" + string(s) + ".sh"
 }
 
