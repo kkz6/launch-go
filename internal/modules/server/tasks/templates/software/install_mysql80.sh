@@ -11,17 +11,50 @@ waitForAptUnlock
 sudo rm -f /etc/apt/sources.list.d/mysql.list
 sudo rm -f /etc/apt/sources.list.d/mysql-apt-config.list
 
-# Set up MySQL GPG key from Ubuntu's keyserver (most reliable method)
-# Falls back to Ubuntu's mysql-server package if MySQL repo setup fails
-sudo rm -f /usr/share/keyrings/mysql-archive-keyring.gpg
+MYSQL_KEYRING=/usr/share/keyrings/mysql-archive-keyring.gpg
 MYSQL_REPO_SETUP_SUCCESS=false
 
-if sudo gpg --batch --yes --keyserver keyserver.ubuntu.com --recv-keys B7B3B788A8D3785C 2>/dev/null; then
-    sudo gpg --batch --yes --export B7B3B788A8D3785C | sudo tee /usr/share/keyrings/mysql-archive-keyring.gpg > /dev/null
-    echo "deb [signed-by=/usr/share/keyrings/mysql-archive-keyring.gpg] http://repo.mysql.com/apt/ubuntu $(lsb_release -cs) mysql-8.0" | sudo tee /etc/apt/sources.list.d/mysql.list
+# MySQL signs its repo with one long-lived key whose expiry is extended in
+# place rather than rotated. Public keyservers serve a stale copy of that
+# self-signature — keyserver.ubuntu.com hands back a *lapsed* version of the
+# very same key ID — so apt rejects the repo with EXPKEYSIG and silently
+# falls back to whatever index it already had. Fetch from MySQL's own
+# published key file, which carries the current expiry.
+#
+# Those files are year-suffixed and MySQL adds a new one periodically, so try
+# newest first and verify the key is actually valid before accepting it.
+sudo rm -f "${MYSQL_KEYRING}"
+for keyUrl in \
+    https://repo.mysql.com/RPM-GPG-KEY-mysql-2025 \
+    https://repo.mysql.com/RPM-GPG-KEY-mysql-2023 \
+    https://repo.mysql.com/RPM-GPG-KEY-mysql-2022; do
+    if ! curl -fsSL "${keyUrl}" | sudo gpg --batch --yes --dearmor -o "${MYSQL_KEYRING}" 2>/dev/null; then
+        sudo rm -f "${MYSQL_KEYRING}"
+        continue
+    fi
+    if sudo gpg --show-keys "${MYSQL_KEYRING}" 2>/dev/null | grep -q "expired:"; then
+        echo "MySQL signing key at ${keyUrl} has expired, trying an older key file..."
+        sudo rm -f "${MYSQL_KEYRING}"
+        continue
+    fi
+    echo "Installed MySQL signing key from ${keyUrl}"
+    break
+done
+
+if [ -s "${MYSQL_KEYRING}" ]; then
+    echo "deb [signed-by=${MYSQL_KEYRING}] http://repo.mysql.com/apt/ubuntu $(lsb_release -cs) mysql-8.0" | sudo tee /etc/apt/sources.list.d/mysql.list
     waitForAptUnlock
-    if aptGet update 2>/dev/null; then
+    aptGet update || true
+
+    # apt-get update exits 0 even when a repository fails signature
+    # verification — it only warns and reuses the previous index. Ask apt
+    # whether the package is actually resolvable from repo.mysql.com rather
+    # than trusting that exit code, which is how a broken repo previously
+    # got this far and then failed at install time.
+    if apt-cache policy mysql-community-server 2>/dev/null | grep -q "repo.mysql.com"; then
         MYSQL_REPO_SETUP_SUCCESS=true
+    else
+        echo "MySQL repo did not yield an installable mysql-community-server"
     fi
 fi
 

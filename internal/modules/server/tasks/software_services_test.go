@@ -435,3 +435,41 @@ func TestSupportsRemoveMatchesShippedTemplates(t *testing.T) {
 		})
 	}
 }
+
+// MySQL's repo key is one long-lived key whose expiry is extended in place.
+// Public keyservers serve stale copies of that self-signature — a server
+// provisioned via keyserver.ubuntu.com ended up rejecting the repo with
+// EXPKEYSIG against the very same key ID that MySQL publishes as valid.
+func TestInstallMySQLFetchesItsKeyFromMySQL(t *testing.T) {
+	script := InstallMySQL80(MySQLInstallConfig{
+		RootPassword: "secret",
+		DatabaseName: "launch",
+		PublicIPv4:   "203.0.113.1",
+	}).Script()
+
+	assert.Contains(t, script, "https://repo.mysql.com/RPM-GPG-KEY-mysql-2025",
+		"the key must come from MySQL's own published file")
+	// Checks the flags, not the word — the comment in the script explains
+	// why keyserver.ubuntu.com is avoided and should keep saying so.
+	assert.NotContains(t, script, "--recv-keys",
+		"keyservers serve lapsed self-signatures for this key")
+	assert.NotContains(t, script, "--keyserver ")
+
+	// The published key files are year-suffixed and rotate, so a single
+	// hardcoded URL would break the same way the hardcoded keyserver did.
+	assert.Contains(t, script, "RPM-GPG-KEY-mysql-2023", "needs a fallback key file")
+	assert.Contains(t, script, "expired:", "an expired key must be rejected, not installed")
+}
+
+// apt-get update exits 0 when a repository fails signature verification — it
+// warns and reuses the previous index. Trusting that exit code is how a
+// broken repo previously reached the install step and failed there instead.
+func TestInstallMySQLVerifiesTheRepoResolves(t *testing.T) {
+	script := InstallMySQL80(MySQLInstallConfig{RootPassword: "secret", DatabaseName: "launch"}).Script()
+
+	assert.Contains(t, script, "apt-cache policy mysql-community-server")
+	assert.Contains(t, script, "repo.mysql.com")
+	assert.Contains(t, script, "MYSQL_REPO_SETUP_SUCCESS=true")
+	assert.Contains(t, script, "falling back to Ubuntu's mysql-server package",
+		"a failed repo must still yield a working MySQL")
+}
