@@ -482,6 +482,41 @@ func GetCreateSiteOptions() CreateSiteOptionsResponse {
 	}
 }
 
+// SiteHookDefaultsResponse carries the deployment hooks a site of this type
+// would get if the create request left them unset. For Laravel and static
+// sites these are not placeholders — one of them IS the actual build script
+// (composer install, artisan caching, npm build). The create dialog shows
+// them so a custom hook can be layered onto the real default instead of
+// silently replacing it.
+type SiteHookDefaultsResponse struct {
+	HookBeforeUpdatingRepository string `json:"hook_before_updating_repository"`
+	HookAfterUpdatingRepository  string `json:"hook_after_updating_repository"`
+	HookBeforeMakingCurrent      string `json:"hook_before_making_current"`
+	HookAfterMakingCurrent       string `json:"hook_after_making_current"`
+}
+
+// GetSiteHookDefaults returns the hook defaults GetDefaultAttributes would
+// apply for this site type and zero-downtime setting. Reads the same map
+// SiteService.Create reads from, so this can never drift from what an
+// actual create request would produce.
+func GetSiteHookDefaults(siteType sitetypes.SiteType, zeroDowntime bool) SiteHookDefaultsResponse {
+	defaults := siteType.GetDefaultAttributes(zeroDowntime)
+
+	asString := func(key string) string {
+		if value, ok := defaults[key].(string); ok {
+			return value
+		}
+		return ""
+	}
+
+	return SiteHookDefaultsResponse{
+		HookBeforeUpdatingRepository: asString("hook_before_updating_repository"),
+		HookAfterUpdatingRepository:  asString("hook_after_updating_repository"),
+		HookBeforeMakingCurrent:      asString("hook_before_making_current"),
+		HookAfterMakingCurrent:       asString("hook_after_making_current"),
+	}
+}
+
 // VerifyDomainResponse represents the domain verification result
 type VerifyDomainResponse struct {
 	Verified          bool    `json:"verified"`
