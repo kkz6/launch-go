@@ -28,6 +28,16 @@ type CreateSiteRequest struct {
 	DatabaseUserPassword        *string            `json:"database_user_password" validate:"omitempty,max=255"`
 	CreateScheduler             bool               `json:"create_scheduler"`
 	CreateQueue                 bool               `json:"create_queue"`
+
+	// Deployment hooks, settable at creation so the very first deployment
+	// runs with them. A repository needing something the defaults don't
+	// cover — submodules being the usual case — could otherwise never be
+	// deployed: the first attempt fails, and the hook that would fix it was
+	// only editable once a deployment had succeeded.
+	HookBeforeUpdatingRepository *string `json:"hook_before_updating_repository" validate:"omitempty"`
+	HookAfterUpdatingRepository  *string `json:"hook_after_updating_repository" validate:"omitempty"`
+	HookBeforeMakingCurrent      *string `json:"hook_before_making_current" validate:"omitempty"`
+	HookAfterMakingCurrent       *string `json:"hook_after_making_current" validate:"omitempty"`
 }
 
 // Normalize normalizes the request by converting empty string pointers to nil.

@@ -287,6 +287,15 @@ func (s *SiteService) createSite(ctx context.Context, serverID, teamID, userID s
 		site.HookAfterMakingCurrent = &hook
 	}
 
+	// Hooks supplied on the request win over the type defaults above, and
+	// are set before the first deployment is dispatched so it uses them.
+	// An explicit empty string clears the default rather than being ignored,
+	// which is the only way to opt out of one.
+	applyRequestedHook(&site.HookBeforeUpdatingRepository, req.HookBeforeUpdatingRepository)
+	applyRequestedHook(&site.HookAfterUpdatingRepository, req.HookAfterUpdatingRepository)
+	applyRequestedHook(&site.HookBeforeMakingCurrent, req.HookBeforeMakingCurrent)
+	applyRequestedHook(&site.HookAfterMakingCurrent, req.HookAfterMakingCurrent)
+
 	// Create site with activity logging in a transaction
 	var envVars map[string]string
 	s.Logger.Debug().
@@ -1312,4 +1321,19 @@ func (s *SiteService) GetSourceControlInfo(ctx context.Context, teamID, sourceCo
 	}
 
 	return sourceControl, repository
+}
+
+// applyRequestedHook overrides a hook already populated from the site type's
+// defaults with one supplied on the create request. A nil request value keeps
+// the default; an empty string deliberately clears it.
+func applyRequestedHook(target **string, requested *string) {
+	if requested == nil {
+		return
+	}
+	if *requested == "" {
+		*target = nil
+		return
+	}
+	value := *requested
+	*target = &value
 }
