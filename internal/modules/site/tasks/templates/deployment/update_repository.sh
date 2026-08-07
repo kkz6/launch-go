@@ -20,11 +20,13 @@ CREDENTIALS_FILE="/tmp/git-credentials-${DEPLOYMENT_ID}"
 USE_APP_AUTH=false
 USE_SSH_AUTH=false
 
-# Cleanup function to ensure credentials are always removed
+# Cleanup function to ensure credentials are always removed. Silent by
+# design — which auth path was used and how it was torn down is internal
+# plumbing, not something a site owner watching the deploy log needs to
+# see. Genuine failures below still print.
 cleanup_credentials() {
     if [ -f "$CREDENTIALS_FILE" ]; then
         rm -f "$CREDENTIALS_FILE"
-        echo "🧹 Cleaned up deployment credentials"
     fi
     # Reset git config to system defaults
     git config --global --unset credential.helper 2>/dev/null || true
@@ -35,8 +37,6 @@ trap cleanup_credentials EXIT
 
 # Try to configure app-based authentication first
 {{ if and .HasAppAuth .TempToken .AuthURL }}
-    echo "🔐 Setting up app-based authentication for deployment ${DEPLOYMENT_ID}..."
-
     # Set up HTTPS authentication with temporary installation token using deployment-specific file
     git config --global credential.helper "store --file=$CREDENTIALS_FILE"
     echo "{{ .AuthURL }}" > "$CREDENTIALS_FILE"
@@ -46,12 +46,9 @@ trap cleanup_credentials EXIT
     git config --global user.name "{{ .AppName }} Deployment"
 
     USE_APP_AUTH=true
-    echo "✅ App-based authentication configured successfully"
 {{ else }}
     # Check if site has SSH deploy keys as fallback
     {{ if .DeployKeyPrivate }}
-        echo "🔑 App-based authentication not available, falling back to SSH deployment keys..."
-
         # Set up SSH authentication using deploy keys
         DEPLOY_KEY_PATH="{{ .SitePath }}/deploy_key"
 
@@ -67,7 +64,6 @@ EOF
         export GIT_SSH_COMMAND="ssh -i $DEPLOY_KEY_PATH -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
 
         USE_SSH_AUTH=true
-        echo "✅ SSH authentication configured successfully"
     {{ else }}
         echo "❌ No authentication method available"
         echo "This site requires either:"
@@ -123,13 +119,6 @@ echo "🔄 Fetching latest changes..."
         exit 1
     fi
 {{ end }}
-
-# Success message with authentication method used
-if [ "$USE_APP_AUTH" = true ]; then
-    echo "✅ Repository updated successfully with app-based authentication"
-elif [ "$USE_SSH_AUTH" = true ]; then
-    echo "✅ Repository updated successfully with SSH deploy keys"
-fi
 
 {{ if .ZeroDowntimeDeployment }}
     # Clone the repository into the release directory

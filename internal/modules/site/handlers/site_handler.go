@@ -153,6 +153,21 @@ func (h *SiteHandler) GetCreateOptions(c *fiber.Ctx) error {
 	return fiberctx.OK(c, "Create options retrieved", dto.GetCreateSiteOptions())
 }
 
+// GetHookDefaults returns the deployment hooks a site of this type and
+// zero-downtime setting would receive if created without specifying any.
+// The create dialog uses this to pre-fill its hook editors with the real
+// default script rather than leaving them blank, since for Laravel and
+// static sites one of these "defaults" is the actual build.
+func (h *SiteHandler) GetHookDefaults(c *fiber.Ctx) error {
+	siteType := sitetypes.SiteType(c.Query("type"))
+	if !siteType.IsValid() {
+		return fiberctx.RespondBadRequest(c, "Invalid or missing site type")
+	}
+	zeroDowntime := c.QueryBool("zero_downtime", false)
+
+	return fiberctx.OK(c, "Hook defaults retrieved", dto.GetSiteHookDefaults(siteType, zeroDowntime))
+}
+
 // VerifyDomain checks if a domain is connected to the user's team. Has
 // a query-string `domain` parameter so it does not fit any helper.
 func (h *SiteHandler) VerifyDomain(c *fiber.Ctx) error {
