@@ -20,13 +20,30 @@ import (
 // Lives alongside ApplicationService rather than as a separate module
 // because every mutation needs to reach into the application's container
 // name + internal port to render the Traefik file.
+// dnsLookuper abstracts net.Resolver.LookupIPAddr so DNS validation is
+// testable without hitting real DNS. *net.Resolver already satisfies this
+// (LookupIPAddr has the exact same signature), so NewDomainService wires
+// net.DefaultResolver in with no adapter needed.
+type dnsLookuper interface {
+	LookupIPAddr(ctx context.Context, host string) ([]net.IPAddr, error)
+}
+
 type DomainService struct {
 	*BaseService
+	dnsLookuper dnsLookuper
 }
 
 // NewDomainService wires the service.
 func NewDomainService(deps *ServiceDeps) *DomainService {
-	return &DomainService{BaseService: NewBaseService(deps)}
+	return &DomainService{BaseService: NewBaseService(deps), dnsLookuper: net.DefaultResolver}
+}
+
+// SetDNSLookuper overrides the resolver ValidateDNS / ValidateComposeDNS
+// use. Tests supply canned answers instead of hitting real DNS; production
+// wiring never calls this since NewDomainService already defaults to
+// net.DefaultResolver.
+func (s *DomainService) SetDNSLookuper(lookuper dnsLookuper) {
+	s.dnsLookuper = lookuper
 }
 
 // validateStoredCert enforces the one cross-field rule the struct tags
@@ -312,7 +329,7 @@ func (s *DomainService) validateDNSAgainstServer(
 	// thread; 5s is generous for public A records.
 	lookupCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	ips, err := net.DefaultResolver.LookupIPAddr(lookupCtx, host)
+	ips, err := s.dnsLookuper.LookupIPAddr(lookupCtx, host)
 	if err != nil {
 		resp.OK = false
 		resp.Message = fmt.Sprintf("DNS lookup failed: %v", err)
