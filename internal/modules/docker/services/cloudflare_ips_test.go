@@ -7,11 +7,6 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// A domain proxied through Cloudflare resolves to Cloudflare's edge, not the
-// origin — isCloudflareIP is what tells that state apart from a domain that
-// genuinely points somewhere wrong. Values below are real addresses inside
-// each published range, not just range boundaries, so the test fails if the
-// list is ever pasted in shifted or truncated.
 func TestIsCloudflareIP(t *testing.T) {
 	tests := []struct {
 		name string

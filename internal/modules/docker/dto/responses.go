@@ -642,11 +642,8 @@ type ValidateDNSResponse struct {
 	Host     string `json:"host"`
 	OK       bool   `json:"ok"`
 	Wildcard bool   `json:"wildcard"`
-	// Proxied is true when the resolved IP belongs to Cloudflare's proxy
-	// edge rather than the origin server. OK stays false in this case —
-	// the origin IP behind the proxy is deliberately hidden from public
-	// DNS, so we genuinely cannot confirm it points here — but the
-	// frontend renders this distinctly from a real misconfiguration.
+	// Proxied means the resolved IP is Cloudflare's edge, not the origin.
+	// OK stays false — the origin is hidden, not confirmed.
 	Proxied     bool     `json:"proxied"`
 	ExpectedIP  string   `json:"expected_ip,omitempty"`
 	ResolvedIPs []string `json:"resolved_ips,omitempty"`

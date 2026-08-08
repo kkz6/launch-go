@@ -20,17 +20,15 @@ import (
 // Lives alongside ApplicationService rather than as a separate module
 // because every mutation needs to reach into the application's container
 // name + internal port to render the Traefik file.
-// dnsLookuper abstracts net.Resolver.LookupIPAddr so DNS validation is
-// testable without hitting real DNS. *net.Resolver already satisfies this
-// (LookupIPAddr has the exact same signature), so NewDomainService wires
-// net.DefaultResolver in with no adapter needed.
-type dnsLookuper interface {
-	LookupIPAddr(ctx context.Context, host string) ([]net.IPAddr, error)
-}
-
 type DomainService struct {
 	*BaseService
 	dnsLookuper dnsLookuper
+}
+
+// dnsLookuper lets tests swap in a fake resolver. *net.Resolver already
+// satisfies it.
+type dnsLookuper interface {
+	LookupIPAddr(ctx context.Context, host string) ([]net.IPAddr, error)
 }
 
 // NewDomainService wires the service.
@@ -38,10 +36,7 @@ func NewDomainService(deps *ServiceDeps) *DomainService {
 	return &DomainService{BaseService: NewBaseService(deps), dnsLookuper: net.DefaultResolver}
 }
 
-// SetDNSLookuper overrides the resolver ValidateDNS / ValidateComposeDNS
-// use. Tests supply canned answers instead of hitting real DNS; production
-// wiring never calls this since NewDomainService already defaults to
-// net.DefaultResolver.
+// SetDNSLookuper overrides the DNS resolver, for tests.
 func (s *DomainService) SetDNSLookuper(lookuper dnsLookuper) {
 	s.dnsLookuper = lookuper
 }
@@ -268,16 +263,8 @@ func (s *DomainService) DeleteDomain(
 	return nil
 }
 
-// ValidateDNS resolves the domain's hostname against public DNS and
-// compares the result with the docker server's public IP. The
-// frontend's "Validate DNS" button shows the user whether the
-// hostname is pointing at the right server before the deploy / cert
-// issuance bites them.
-//
-// Wildcard-DNS hostnames (*.traefik.me, *.sslip.io, *.nip.io) skip
-// the lookup and report ok=true — those resolvers always answer
-// with the IP encoded in the label by definition, no provisioning
-// required.
+// ValidateDNS checks whether the domain's hostname resolves to the
+// docker server's public IP, for the frontend's "Validate DNS" button.
 func (s *DomainService) ValidateDNS(
 	ctx context.Context, domainID, applicationID, projectID, serverID, teamID string,
 ) (dto.ValidateDNSResponse, error) {
@@ -295,10 +282,8 @@ func (s *DomainService) ValidateDNS(
 	return s.validateDNSAgainstServer(ctx, d.Host, app.ServerID)
 }
 
-// validateDNSAgainstServer is the shared DNS-lookup core used by
-// ValidateDNS (app-scoped) and ValidateComposeDNS (compose-scoped).
-// Wrappers handle the scope check + domain-ownership check; this only
-// runs the wildcard-suffix short-circuit and the public-IP comparison.
+// validateDNSAgainstServer is the shared core behind ValidateDNS and
+// ValidateComposeDNS.
 func (s *DomainService) validateDNSAgainstServer(
 	ctx context.Context, rawHost, serverID string,
 ) (dto.ValidateDNSResponse, error) {
