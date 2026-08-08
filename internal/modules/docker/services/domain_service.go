@@ -326,11 +326,22 @@ func (s *DomainService) validateDNSAgainstServer(
 		resp.ResolvedIPs = append(resp.ResolvedIPs, v4.String())
 		if expectedIP != "" && v4.String() == expectedIP {
 			resp.OK = true
+		} else if isCloudflareIP(v4) {
+			resp.Proxied = true
 		}
 	}
 	switch {
 	case resp.OK:
 		resp.Message = fmt.Sprintf("Resolves to %s ✓", expectedIP)
+	case resp.Proxied:
+		resp.Message = fmt.Sprintf(
+			"Proxied through Cloudflare (resolves to %s). The origin IP is "+
+				"hidden behind Cloudflare's proxy, so this can't be checked "+
+				"directly — confirm in your Cloudflare DNS settings that the "+
+				"record points at %s.",
+			strings.Join(resp.ResolvedIPs, ", "),
+			expectedIP,
+		)
 	case len(resp.ResolvedIPs) == 0:
 		resp.Message = "Hostname doesn't resolve to any A record yet."
 	default:
