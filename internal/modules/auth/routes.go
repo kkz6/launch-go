@@ -1,6 +1,8 @@
 package auth
 
 import (
+	"fmt"
+	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -32,7 +34,7 @@ func (m *Module) RegisterPublicRoutes(router fiber.Router) {
 	auth := router.Group("/auth")
 
 	// Public routes (no authentication required)
-	m.setupPublicRoutes(auth, handler, passkeyHandler)
+	m.setupPublicRoutes(auth, handler, passkeyHandler, deps.Config.App.Frontend())
 
 	// Protected routes (authentication required)
 	protected := auth.Group("", authMiddleware)
@@ -58,7 +60,7 @@ func (m *Module) authRateLimit(maxReqs int, window time.Duration) fiber.Handler 
 }
 
 // setupPublicRoutes registers routes that don't require authentication
-func (m *Module) setupPublicRoutes(router fiber.Router, handler *handlers.Handler, passkeyHandler *handlers.PasskeyHandler) {
+func (m *Module) setupPublicRoutes(router fiber.Router, handler *handlers.Handler, passkeyHandler *handlers.PasskeyHandler, frontendURL string) {
 	// Rate limiters for sensitive endpoints
 	authRL := m.authRateLimit(10, time.Minute)     // 10 req/min for login/register
 	resetRL := m.authRateLimit(5, time.Minute)     // 5 req/min for password reset
@@ -88,6 +90,10 @@ func (m *Module) setupPublicRoutes(router fiber.Router, handler *handlers.Handle
 	// Team Invitations (public — for accepting invitations and getting invitation details)
 	router.Get("/invitations/:invitationId", handler.TeamMember.GetInvitationDetails)
 	router.Post("/invitations/accept", fiberutil.Validate(handler.TeamMember.AcceptInvitationWithRegistration))
+	router.Get("/team-invitations/:invitationId/accept", signedurl.RequireSignedURL(nil), func(c *fiber.Ctx) error {
+		invitationURL := fmt.Sprintf("%s/invite/%s", strings.TrimRight(frontendURL, "/"), c.Params("invitationId"))
+		return c.Redirect(invitationURL, fiber.StatusSeeOther)
+	})
 
 	// Passkey Authentication (guest)
 	router.Post("/passkey/login/options", passkeyRL, passkeyHandler.BeginLogin)

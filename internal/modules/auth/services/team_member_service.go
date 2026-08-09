@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
 	"strings"
 	"time"
 
@@ -364,7 +365,14 @@ func (s *TeamMemberService) InvitationUserExists(ctx context.Context, email stri
 // Team invitations don't expire - they remain valid until cancelled
 func (s *TeamMemberService) GenerateInvitationURL(invitationID string) string {
 	path := fmt.Sprintf("/auth/team-invitations/%s/accept", invitationID)
-	return signedurl.PermanentSign(path, nil)
+	signedURL := signedurl.PermanentSign(path, nil)
+	parsedURL, err := url.Parse(signedURL)
+	if err != nil {
+		return signedURL
+	}
+
+	frontend := strings.TrimRight(s.config.App.Frontend(), "/")
+	return fmt.Sprintf("%s/api%s", frontend, parsedURL.RequestURI())
 }
 
 // sendInvitationEmail sends an invitation email to the invitee
@@ -379,9 +387,6 @@ func (s *TeamMemberService) sendInvitationEmail(ctx context.Context, invitation 
 	registerURL := fmt.Sprintf("%s/invite/%s", frontend, invitation.ID)
 
 	acceptURL := s.GenerateInvitationURL(invitation.ID)
-	if frontend != "" {
-		acceptURL = fmt.Sprintf("%s%s", frontend, acceptURL)
-	}
 
 	htmlContent, _, err := templates.TeamInvitationEmail(teamName, acceptURL, registerURL, !hasAccount)
 	if err != nil {

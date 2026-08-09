@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"errors"
+	"net/url"
 	"os"
 	"testing"
 	"time"
@@ -11,11 +12,13 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/kkz6/launch-go/internal/config"
 	"github.com/kkz6/launch-go/internal/modules/auth/contracts"
 	"github.com/kkz6/launch-go/internal/modules/auth/dto"
 	"github.com/kkz6/launch-go/internal/modules/auth/models"
 	basecache "github.com/kkz6/launch-go/internal/pkg/cache"
 	launchcache "github.com/kkz6/launch-go/internal/pkg/launch/cache"
+	"github.com/kkz6/launch-go/internal/pkg/signedurl"
 )
 
 // =============================================================================
@@ -272,6 +275,26 @@ func attachMembershipCache(svc *TeamMemberService) *recordingCache {
 // =============================================================================
 // Tests: InviteTeamMember
 // =============================================================================
+
+func TestGenerateInvitationURLUsesFrontendAPIProxy(t *testing.T) {
+	signer := signedurl.NewSigner("test-secret").WithBaseURL("https://api.launchctl.io")
+	signedurl.SetDefaultSigner(signer)
+
+	svc := &TeamMemberService{
+		config: &config.Config{
+			App: config.AppConfig{FrontendURL: "https://launchctl.io/"},
+		},
+	}
+
+	invitationURL := svc.GenerateInvitationURL("invitation_001")
+	parsedURL, err := url.Parse(invitationURL)
+	require.NoError(t, err)
+
+	assert.Equal(t, "https", parsedURL.Scheme)
+	assert.Equal(t, "launchctl.io", parsedURL.Host)
+	assert.Equal(t, "/api/auth/team-invitations/invitation_001/accept", parsedURL.Path)
+	assert.True(t, signer.Verify("/auth/team-invitations/invitation_001/accept", parsedURL.Query()))
+}
 
 func TestInviteTeamMember_OwnerCanInvite(t *testing.T) {
 	reg, svc := newTestRegistry()
