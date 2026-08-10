@@ -21,6 +21,13 @@ func TestActiveActionsIncludesAndMapsBackupRuns(t *testing.T) {
 
 	activeActionsInsertBaseTargets(t, db)
 	activeActionsExec(t, db, `
+		INSERT INTO tasks
+			(id, server_id, site_id, name, status, created_at, updated_at)
+		VALUES
+			('server-task-1', 'server-1', NULL, 'Server backup', 'running', ?, ?),
+			('database-task-1', 'server-1', NULL, 'Database backup', 'running', ?, ?)
+	`, now.Add(-3*time.Minute), now.Add(-3*time.Minute), now.Add(-time.Minute), now.Add(-time.Minute))
+	activeActionsExec(t, db, `
 		INSERT INTO backup_jobs
 			(id, team_id, backup_id, status, task_id, error, created_at, updated_at)
 		VALUES
@@ -85,6 +92,9 @@ func TestActiveActionsIncludesAndMapsBackupRuns(t *testing.T) {
 	serverPending := activeActionByID(t, actions, "server-pending")
 	require.Equal(t, "pending", serverPending.Status)
 	require.Nil(t, serverPending.TaskID)
+	for _, action := range actions {
+		require.NotEqual(t, "task", action.Kind, "backup tasks must use the backup-specific action")
+	}
 }
 
 func TestActiveActionsRetainsRecentBackupFailuresWithinTeam(t *testing.T) {
@@ -98,10 +108,17 @@ func TestActiveActionsRetainsRecentBackupFailuresWithinTeam(t *testing.T) {
 
 	activeActionsInsertBaseTargets(t, db)
 	activeActionsExec(t, db, `
+		INSERT INTO tasks
+			(id, server_id, site_id, name, status, created_at, updated_at)
+		VALUES
+			('server-failed-task', 'server-1', NULL, 'Server backup', 'failed', ?, ?),
+			('database-failed-task', 'server-1', NULL, 'Database backup', 'failed', ?, ?)
+	`, recentServerFailure, recentServerFailure, recentDatabaseFailure, recentDatabaseFailure)
+	activeActionsExec(t, db, `
 		INSERT INTO backup_jobs
 			(id, team_id, backup_id, status, task_id, error, created_at, updated_at)
 		VALUES
-			('server-recent-failure', 'team-1', 'server-backup-1', 'failed', NULL, 'server credentials are invalid', ?, ?),
+			('server-recent-failure', 'team-1', 'server-backup-1', 'failed', 'server-failed-task', 'server credentials are invalid', ?, ?),
 			('server-stale-failure', 'team-1', 'server-backup-1', 'failed', NULL, 'old server failure', ?, ?),
 			('server-finished', 'team-1', 'server-backup-1', 'finished', 'finished-task', NULL, ?, ?),
 			('server-other-team', 'team-2', 'server-backup-2', 'running', NULL, NULL, ?, ?),
@@ -119,7 +136,7 @@ func TestActiveActionsRetainsRecentBackupFailuresWithinTeam(t *testing.T) {
 		INSERT INTO docker_database_backup_runs
 			(id, backup_id, status, task_id, error, started_at, finished_at, created_at, updated_at)
 		VALUES
-			('database-recent-failure', 'database-backup-1', 'failed', NULL, 'database upload failed', ?, ?, ?, ?),
+			('database-recent-failure', 'database-backup-1', 'failed', 'database-failed-task', 'database upload failed', ?, ?, ?, ?),
 			('database-stale-failure', 'database-backup-1', 'failed', NULL, 'old database failure', ?, ?, ?, ?),
 			('database-success', 'database-backup-1', 'success', 'success-task', NULL, ?, ?, ?, ?),
 			('database-other-team', 'database-backup-2', 'running', NULL, NULL, ?, NULL, ?, ?),
@@ -152,12 +169,14 @@ func TestActiveActionsRetainsRecentBackupFailuresWithinTeam(t *testing.T) {
 	require.Equal(t, "database upload failed", databaseFailure.Description)
 	require.Equal(t, "database", databaseFailure.TargetType)
 	require.Equal(t, "database-1", databaseFailure.TargetID)
+	require.Equal(t, "database-failed-task", *databaseFailure.TaskID)
 
 	serverFailure := activeActionByID(t, actions, "server-recent-failure")
 	require.Equal(t, "failed", serverFailure.Status)
 	require.Equal(t, "server credentials are invalid", serverFailure.Description)
 	require.Equal(t, "server", serverFailure.TargetType)
 	require.Equal(t, "server-1", serverFailure.TargetID)
+	require.Equal(t, "server-failed-task", *serverFailure.TaskID)
 
 	for _, excludedID := range []string{
 		"server-stale-failure",

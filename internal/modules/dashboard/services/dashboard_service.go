@@ -229,9 +229,33 @@ func (s *DashboardService) ActiveActions(ctx context.Context, teamID string) ([]
 		return nil, err
 	}
 	actions = append(actions, databaseBackupActions...)
+	actions = deduplicateBackupTasks(actions)
 
 	sort.Slice(actions, func(i, j int) bool { return actions[i].CreatedAt.After(actions[j].CreatedAt) })
 	return actions, nil
+}
+
+func deduplicateBackupTasks(actions []dto.ActiveAction) []dto.ActiveAction {
+	backupTaskIDs := make(map[string]struct{})
+	for _, action := range actions {
+		if (action.Kind == "server_backup" || action.Kind == "database_backup") && action.TaskID != nil {
+			backupTaskIDs[*action.TaskID] = struct{}{}
+		}
+	}
+	if len(backupTaskIDs) == 0 {
+		return actions
+	}
+
+	filtered := make([]dto.ActiveAction, 0, len(actions))
+	for _, action := range actions {
+		if action.Kind == "task" && action.TaskID != nil {
+			if _, duplicated := backupTaskIDs[*action.TaskID]; duplicated {
+				continue
+			}
+		}
+		filtered = append(filtered, action)
+	}
+	return filtered
 }
 
 // sitesCountSubquery returns a GORM subquery for counting sites per server (database-agnostic)
