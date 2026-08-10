@@ -4,6 +4,7 @@ import (
 	"database/sql/driver"
 	"encoding/json"
 	"errors"
+	"fmt"
 
 	"github.com/kkz6/launch-go/internal/database/serializers"
 )
@@ -201,12 +202,8 @@ func (e *EncryptedJSONStringMap) Scan(value any) error {
 		return err
 	}
 
-	// Try to unmarshal JSON - if it fails, the data might still be in Laravel format
-	// or double-encrypted, return empty map instead of error
 	if err := json.Unmarshal([]byte(decrypted), e); err != nil {
-		// Data might not be migrated yet - return empty map
-		*e = make(EncryptedJSONStringMap)
-		return nil
+		return fmt.Errorf("decrypt EncryptedJSONStringMap: invalid JSON: %w", err)
 	}
 
 	return nil
@@ -270,12 +267,8 @@ func (e *EncryptedJSONMap) Scan(value any) error {
 		return err
 	}
 
-	// Try to unmarshal JSON - if it fails, the data might still be in Laravel format
-	// or double-encrypted, return empty map instead of error
 	if err := json.Unmarshal([]byte(decrypted), e); err != nil {
-		// Data might not be migrated yet - return empty map
-		*e = make(EncryptedJSONMap)
-		return nil
+		return fmt.Errorf("decrypt EncryptedJSONMap: invalid JSON: %w", err)
 	}
 
 	return nil

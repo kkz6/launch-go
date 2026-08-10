@@ -46,6 +46,42 @@ func (r *StorageProviderRepository) FindStorageProviderByID(ctx context.Context,
 	return &provider, nil
 }
 
+// FindStorageProviderByIDAndTeam finds a provider within a team.
+func (r *StorageProviderRepository) FindStorageProviderByIDAndTeam(ctx context.Context, id uint64, teamID string) (*models.StorageProvider, error) {
+	var provider models.StorageProvider
+	err := r.DB.WithContext(ctx).
+		Where("id = ? AND team_id = ?", id, teamID).
+		First(&provider).Error
+
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, fiberutil.NotFound()
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &provider, nil
+}
+
+// FindStorageProviderDriverByIDAndTeam returns a scoped provider driver.
+func (r *StorageProviderRepository) FindStorageProviderDriverByIDAndTeam(
+	ctx context.Context,
+	id uint64,
+	teamID string,
+) (backuptypes.StorageDriver, error) {
+	var provider models.StorageProvider
+	err := r.DB.WithContext(ctx).
+		Select("id", "team_id", "provider").
+		Where("id = ? AND team_id = ?", id, teamID).
+		First(&provider).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return "", fiberutil.NotFound()
+	}
+	if err != nil {
+		return "", err
+	}
+	return provider.Provider, nil
+}
+
 // FindStorageProviderByIDString finds a storage provider by string ID
 func (r *StorageProviderRepository) FindStorageProviderByIDString(ctx context.Context, id string) (*models.StorageProvider, error) {
 	return repository.FindOne[models.StorageProvider](ctx, r.DB,

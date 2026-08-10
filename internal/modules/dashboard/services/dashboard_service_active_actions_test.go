@@ -34,7 +34,9 @@ func TestActiveActionsIncludesDeploymentsCommandsAndServerTasks(t *testing.T) {
 		)`,
 		`CREATE TABLE docker_applications (id TEXT PRIMARY KEY, name TEXT, project_id TEXT)`,
 		`CREATE TABLE docker_composes (id TEXT PRIMARY KEY, name TEXT, project_id TEXT)`,
-		`CREATE TABLE docker_databases (id TEXT PRIMARY KEY, name TEXT, project_id TEXT)`,
+		`CREATE TABLE docker_databases (
+			id TEXT PRIMARY KEY, team_id TEXT, server_id TEXT, name TEXT, project_id TEXT
+		)`,
 		`CREATE TABLE commands (
 			id TEXT PRIMARY KEY, team_id TEXT, site_id TEXT, command TEXT,
 			status TEXT, created_at DATETIME
@@ -42,6 +44,22 @@ func TestActiveActionsIncludesDeploymentsCommandsAndServerTasks(t *testing.T) {
 		`CREATE TABLE tasks (
 			id TEXT PRIMARY KEY, server_id TEXT, site_id TEXT, name TEXT,
 			status TEXT, created_at DATETIME, updated_at DATETIME
+		)`,
+		`CREATE TABLE backups (id TEXT PRIMARY KEY, team_id TEXT, server_id TEXT)`,
+		`CREATE TABLE backup_jobs (
+			id TEXT PRIMARY KEY, team_id TEXT, backup_id TEXT, status TEXT,
+			task_id TEXT, error TEXT, created_at DATETIME, updated_at DATETIME
+		)`,
+		`CREATE TABLE docker_projects (
+			id TEXT PRIMARY KEY, team_id TEXT, server_id TEXT, name TEXT
+		)`,
+		`CREATE TABLE docker_database_backups (
+			id TEXT PRIMARY KEY, team_id TEXT, database_id TEXT
+		)`,
+		`CREATE TABLE docker_database_backup_runs (
+			id TEXT PRIMARY KEY, backup_id TEXT, status TEXT, task_id TEXT,
+			error TEXT, started_at DATETIME, finished_at DATETIME,
+			created_at DATETIME, updated_at DATETIME
 		)`,
 		`INSERT INTO servers (id, team_id, name)
 			VALUES
@@ -135,7 +153,9 @@ func activeActionsTaskFixture(t *testing.T, taskRows string) *DashboardService {
 		)`,
 		`CREATE TABLE docker_applications (id TEXT PRIMARY KEY, name TEXT, project_id TEXT)`,
 		`CREATE TABLE docker_composes (id TEXT PRIMARY KEY, name TEXT, project_id TEXT)`,
-		`CREATE TABLE docker_databases (id TEXT PRIMARY KEY, name TEXT, project_id TEXT)`,
+		`CREATE TABLE docker_databases (
+			id TEXT PRIMARY KEY, team_id TEXT, server_id TEXT, name TEXT, project_id TEXT
+		)`,
 		`CREATE TABLE commands (
 			id TEXT PRIMARY KEY, team_id TEXT, site_id TEXT, command TEXT,
 			status TEXT, created_at DATETIME
@@ -143,6 +163,22 @@ func activeActionsTaskFixture(t *testing.T, taskRows string) *DashboardService {
 		`CREATE TABLE tasks (
 			id TEXT PRIMARY KEY, server_id TEXT, site_id TEXT, name TEXT,
 			status TEXT, created_at DATETIME, updated_at DATETIME
+		)`,
+		`CREATE TABLE backups (id TEXT PRIMARY KEY, team_id TEXT, server_id TEXT)`,
+		`CREATE TABLE backup_jobs (
+			id TEXT PRIMARY KEY, team_id TEXT, backup_id TEXT, status TEXT,
+			task_id TEXT, error TEXT, created_at DATETIME, updated_at DATETIME
+		)`,
+		`CREATE TABLE docker_projects (
+			id TEXT PRIMARY KEY, team_id TEXT, server_id TEXT, name TEXT
+		)`,
+		`CREATE TABLE docker_database_backups (
+			id TEXT PRIMARY KEY, team_id TEXT, database_id TEXT
+		)`,
+		`CREATE TABLE docker_database_backup_runs (
+			id TEXT PRIMARY KEY, backup_id TEXT, status TEXT, task_id TEXT,
+			error TEXT, started_at DATETIME, finished_at DATETIME,
+			created_at DATETIME, updated_at DATETIME
 		)`,
 		`INSERT INTO servers (id, team_id, name) VALUES ('server-1', 'team-1', 'Production')`,
 		`INSERT INTO sites (id, address, server_id) VALUES ('site-1', 'example.com', 'server-1')`,

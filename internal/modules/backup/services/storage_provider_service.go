@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strconv"
 
@@ -67,12 +68,9 @@ func (s *StorageProviderService) ConnectStorageProvider(ctx context.Context, tea
 // UpdateStorageProvider updates an existing storage provider and returns
 // the response DTO.
 func (s *StorageProviderService) UpdateStorageProvider(ctx context.Context, id uint64, teamID string, req *dto.UpdateStorageProviderRequest) (dto.StorageProviderResponse, error) {
-	provider, err := s.Repos().StorageProvider().FindStorageProviderByID(ctx, id)
+	provider, err := s.Repos().StorageProvider().FindStorageProviderByIDAndTeam(ctx, id, teamID)
 	if err != nil {
 		return dto.StorageProviderResponse{}, err
-	}
-	if provider.TeamID != teamID {
-		return dto.StorageProviderResponse{}, fiberutil.NotFound()
 	}
 
 	driver := backuptypes.StorageDriver(req.Provider)
@@ -109,12 +107,9 @@ func (s *StorageProviderService) UpdateStorageProvider(ctx context.Context, id u
 // DeleteStorageProvider deletes a storage provider after verifying it
 // has no associated backups.
 func (s *StorageProviderService) DeleteStorageProvider(ctx context.Context, id uint64, teamID string) error {
-	provider, err := s.Repos().StorageProvider().FindStorageProviderByID(ctx, id)
+	_, err := s.Repos().StorageProvider().FindStorageProviderByIDAndTeam(ctx, id, teamID)
 	if err != nil {
 		return err
-	}
-	if provider.TeamID != teamID {
-		return fiberutil.NotFound()
 	}
 
 	hasBackups, err := s.Repos().StorageProvider().HasBackupsForStorageProvider(ctx, id)
@@ -133,20 +128,15 @@ func (s *StorageProviderService) DeleteStorageProvider(ctx context.Context, id u
 	return nil
 }
 
-// GetStorageProvider retrieves a storage provider by string id and
-// returns the response DTO. The team is checked after lookup so a provider
-// ID cannot be used to read another team's credentials.
+// GetStorageProvider retrieves a storage provider within a team.
 func (s *StorageProviderService) GetStorageProvider(ctx context.Context, id, teamID string) (dto.StorageProviderResponse, error) {
 	uid, err := strconv.ParseUint(id, 10, 64)
 	if err != nil {
 		return dto.StorageProviderResponse{}, fiberutil.BadRequest("Invalid provider ID")
 	}
-	provider, err := s.Repos().StorageProvider().FindStorageProviderByID(ctx, uid)
+	provider, err := s.Repos().StorageProvider().FindStorageProviderByIDAndTeam(ctx, uid, teamID)
 	if err != nil {
 		return dto.StorageProviderResponse{}, err
-	}
-	if provider.TeamID != teamID {
-		return dto.StorageProviderResponse{}, fiberutil.NotFound()
 	}
 	return dto.ToStorageProviderResponse(provider), nil
 }
@@ -186,13 +176,22 @@ func (s *StorageProviderService) GetStorageProviderRaw(ctx context.Context, id u
 }
 
 // GetStorageProviderConfig gets the agent configuration for a storage provider.
-func (s *StorageProviderService) GetStorageProviderConfig(ctx context.Context, id uint64) (map[string]any, error) {
-	provider, err := s.Repos().StorageProvider().FindStorageProviderByID(ctx, id)
+func (s *StorageProviderService) GetStorageProviderConfig(ctx context.Context, id uint64, teamID string) (map[string]any, error) {
+	provider, err := s.Repos().StorageProvider().FindStorageProviderByIDAndTeam(ctx, id, teamID)
 	if err != nil {
 		return nil, err
 	}
 
 	credentials := provider.GetCredentials()
+	if provider.Provider == backuptypes.StorageDriverS3 {
+		var s3 models.S3Credentials
+		raw, _ := json.Marshal(credentials)
+		if unmarshalErr := json.Unmarshal(raw, &s3); unmarshalErr != nil {
+			return nil, fmt.Errorf("decode S3 credentials: %w", unmarshalErr)
+		}
+		s3.ApplyLegacyDefaults(credentials)
+		credentials["force_path_style"] = s3.ForcePathStyle
+	}
 	storageProvider, err := s.storageFactory.Create(string(provider.Provider), credentials)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create storage provider: %w", err)

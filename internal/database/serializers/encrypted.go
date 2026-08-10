@@ -4,8 +4,12 @@ import (
 	"context"
 	"crypto/aes"
 	"crypto/cipher"
+	"crypto/hmac"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -64,7 +68,7 @@ func getKey() ([]byte, error) {
 	return encryptionKey, nil
 }
 
-// EncryptedSerializer implements GORM's SerializerInterface for AES-256-GCM encryption
+// EncryptedSerializer encrypts and decrypts database values.
 type EncryptedSerializer struct{}
 
 func init() {
@@ -186,8 +190,7 @@ func Encrypt(plaintext string) (string, error) {
 	return base64.StdEncoding.EncodeToString(ciphertext), nil
 }
 
-// Decrypt decrypts base64-encoded ciphertext using AES-256-GCM
-// If decryption fails, returns the original string (assumes plaintext)
+// Decrypt decrypts native and Laravel-compatible encrypted values.
 func Decrypt(encrypted string) (string, error) {
 	key, err := getKey()
 	if err != nil {
@@ -220,10 +223,110 @@ func Decrypt(encrypted string) (string, error) {
 
 	nonce, cipherData := ciphertext[:nonceSize], ciphertext[nonceSize:]
 	plaintext, err := gcm.Open(nil, nonce, cipherData, nil)
-	if err != nil {
-		// Decryption failed, assume plaintext
-		return encrypted, nil
+	if err == nil {
+		return string(plaintext), nil
 	}
 
-	return string(plaintext), nil
+	plaintext, isLaravelPayload, err := decryptLaravelPayload(ciphertext, key)
+	if isLaravelPayload {
+		if err != nil {
+			return "", err
+		}
+		return string(plaintext), nil
+	}
+
+	return encrypted, nil
+}
+
+type laravelEncryptedPayload struct {
+	IV    string `json:"iv"`
+	Value string `json:"value"`
+	MAC   string `json:"mac"`
+	Tag   string `json:"tag"`
+}
+
+func decryptLaravelPayload(raw, key []byte) ([]byte, bool, error) {
+	return decryptLaravelPayloadWithGCM(raw, key, cipher.NewGCM)
+}
+
+func decryptLaravelPayloadWithGCM(raw, key []byte, newGCM func(cipher.Block) (cipher.AEAD, error)) ([]byte, bool, error) {
+	var payload laravelEncryptedPayload
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		return nil, false, nil
+	}
+	if payload.IV == "" || payload.Value == "" || (payload.MAC == "" && payload.Tag == "") {
+		return nil, false, nil
+	}
+
+	iv, err := base64.StdEncoding.DecodeString(payload.IV)
+	if err != nil {
+		return nil, true, fmt.Errorf("%w: invalid Laravel IV", ErrInvalidData)
+	}
+	ciphertext, err := base64.StdEncoding.DecodeString(payload.Value)
+	if err != nil {
+		return nil, true, fmt.Errorf("%w: invalid Laravel ciphertext", ErrInvalidData)
+	}
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return nil, true, fmt.Errorf("%w: %v", ErrDecryptFailed, err)
+	}
+
+	if payload.Tag != "" {
+		tag, err := base64.StdEncoding.DecodeString(payload.Tag)
+		if err != nil {
+			return nil, true, fmt.Errorf("%w: invalid Laravel authentication tag", ErrInvalidData)
+		}
+		gcm, err := newGCM(block)
+		if err != nil {
+			return nil, true, fmt.Errorf("%w: %v", ErrDecryptFailed, err)
+		}
+		if len(iv) != gcm.NonceSize() {
+			return nil, true, fmt.Errorf("%w: invalid Laravel GCM nonce", ErrInvalidData)
+		}
+		sealed := make([]byte, 0, len(ciphertext)+len(tag))
+		sealed = append(sealed, ciphertext...)
+		sealed = append(sealed, tag...)
+		plaintext, err := gcm.Open(nil, iv, sealed, nil)
+		if err != nil {
+			return nil, true, fmt.Errorf("%w: invalid Laravel authentication tag", ErrDecryptFailed)
+		}
+		return plaintext, true, nil
+	}
+
+	expectedMAC, err := hex.DecodeString(payload.MAC)
+	if err != nil {
+		return nil, true, fmt.Errorf("%w: invalid Laravel MAC", ErrInvalidData)
+	}
+	mac := hmac.New(sha256.New, key)
+	_, _ = mac.Write([]byte(payload.IV + payload.Value))
+	if !hmac.Equal(mac.Sum(nil), expectedMAC) {
+		return nil, true, fmt.Errorf("%w: invalid Laravel MAC", ErrDecryptFailed)
+	}
+	if len(iv) != aes.BlockSize || len(ciphertext) == 0 || len(ciphertext)%aes.BlockSize != 0 {
+		return nil, true, fmt.Errorf("%w: invalid Laravel CBC payload", ErrInvalidData)
+	}
+
+	plaintext := make([]byte, len(ciphertext))
+	cipher.NewCBCDecrypter(block, iv).CryptBlocks(plaintext, ciphertext)
+	plaintext, err = unpadPKCS7(plaintext, aes.BlockSize)
+	if err != nil {
+		return nil, true, err
+	}
+	return plaintext, true, nil
+}
+
+func unpadPKCS7(value []byte, blockSize int) ([]byte, error) {
+	if len(value) == 0 || len(value)%blockSize != 0 {
+		return nil, fmt.Errorf("%w: invalid Laravel padding", ErrDecryptFailed)
+	}
+	padding := int(value[len(value)-1])
+	if padding == 0 || padding > blockSize || padding > len(value) {
+		return nil, fmt.Errorf("%w: invalid Laravel padding", ErrDecryptFailed)
+	}
+	for _, b := range value[len(value)-padding:] {
+		if int(b) != padding {
+			return nil, fmt.Errorf("%w: invalid Laravel padding", ErrDecryptFailed)
+		}
+	}
+	return value[:len(value)-padding], nil
 }

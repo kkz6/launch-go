@@ -33,9 +33,14 @@ type BackupRepository interface {
 type BackupJobRepository interface {
 	CreateBackupJob(ctx context.Context, job *models.BackupJob) error
 	FindBackupJobByID(ctx context.Context, id string) (*models.BackupJob, error)
+	FindBackupJobForRun(ctx context.Context, id, backupID, teamID string) (*models.BackupJob, error)
+	ClaimPendingBackupJobForRun(ctx context.Context, id, backupID, teamID string, allowRunning bool) (*models.BackupJob, bool, error)
 	FindBackupJobsByBackupID(ctx context.Context, backupID string) ([]models.BackupJob, error)
 	FindFinishedBackupJobs(ctx context.Context, backupID string) ([]models.BackupJob, error)
 	UpdateBackupJob(ctx context.Context, job *models.BackupJob) error
+	MarkBackupJobRunningForRun(ctx context.Context, id, backupID, teamID, taskID string) (bool, error)
+	MarkBackupJobFinishedForRun(ctx context.Context, id, backupID, teamID string, size *int, taskID *string) (bool, error)
+	MarkBackupJobFailedForRun(ctx context.Context, id, backupID, teamID, message string, taskID *string) (bool, error)
 	DeleteBackupJob(ctx context.Context, id string) error
 	GetBackupJobsTotalSize(ctx context.Context, backupID string) (int64, error)
 }
@@ -43,13 +48,15 @@ type BackupJobRepository interface {
 // StorageProviderRepository defines the interface for storage provider database operations
 type StorageProviderRepository interface {
 	CreateStorageProvider(ctx context.Context, provider *models.StorageProvider) error
-	FindStorageProviderByID(ctx context.Context, id uint) (*models.StorageProvider, error)
+	FindStorageProviderByID(ctx context.Context, id uint64) (*models.StorageProvider, error)
+	FindStorageProviderByIDAndTeam(ctx context.Context, id uint64, teamID string) (*models.StorageProvider, error)
+	FindStorageProviderDriverByIDAndTeam(ctx context.Context, id uint64, teamID string) (backuptypes.StorageDriver, error)
 	FindStorageProviderByIDString(ctx context.Context, id string) (*models.StorageProvider, error)
 	FindStorageProvidersByTeamID(ctx context.Context, teamID string) ([]models.StorageProvider, error)
 	FindStorageProvidersByDriver(ctx context.Context, driver backuptypes.StorageDriver) ([]models.StorageProvider, error)
 	FindStorageProvidersByTeamAndDriver(ctx context.Context, teamID string, driver backuptypes.StorageDriver) ([]models.StorageProvider, error)
 	UpdateStorageProvider(ctx context.Context, provider *models.StorageProvider) error
-	DeleteStorageProvider(ctx context.Context, id uint) error
-	StorageProviderExists(ctx context.Context, id uint) (bool, error)
-	HasBackupsForStorageProvider(ctx context.Context, providerID uint) (bool, error)
+	DeleteStorageProvider(ctx context.Context, id uint64) error
+	StorageProviderExists(ctx context.Context, id uint64) (bool, error)
+	HasBackupsForStorageProvider(ctx context.Context, providerID uint64) (bool, error)
 }

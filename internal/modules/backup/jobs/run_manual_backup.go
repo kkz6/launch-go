@@ -17,30 +17,15 @@ import (
 
 const TypeRunManualBackup = "backup:run_manual"
 
-// RunManualBackupJob triggers a manual backup run on a server.
-//
-// Lifecycle:
-//
-//  1. Create a backup_jobs row (status=pending) immediately so the UI
-//     has something to render.
-//  2. Resolve the linked storage provider's S3 credentials (the global
-//     storage_providers row, decrypted by the GORM serializer).
-//  3. Build + run the backup script over SSH via the shared TaskRunner
-//     with TrackInDB + OnTaskCreated, so the server-tasks row exists
-//     before SSH even starts. The OnTaskCreated hook stamps the
-//     backup_jobs row with task_id + flips it to "running" and
-//     broadcasts run.started — that's what the live log console
-//     subscribes to.
-//  4. On finish, parse object_key + size markers from the captured
-//     output and update the backup_jobs row to finished/failed +
-//     broadcast the terminal event.
+// RunManualBackupJob executes a queued server backup.
 type RunManualBackupJob struct {
 	Deps    *JobDeps
 	Payload RunManualBackupPayload
 
-	server *servermodels.Server
-	backup *models.Backup
-	job    *models.BackupJob
+	server       *servermodels.Server
+	backup       *models.Backup
+	job          *models.BackupJob
+	finalAttempt func(context.Context, error) bool
 }
 
 func NewRunManualBackupJob(p RunManualBackupPayload) pkgjobs.Handler {
@@ -49,56 +34,98 @@ func NewRunManualBackupJob(p RunManualBackupPayload) pkgjobs.Handler {
 
 func (j *RunManualBackupJob) Handle(ctx context.Context) error {
 	var err error
+	if j.Payload.JobID != "" {
+		if j.Payload.TeamID == "" {
+			return fmt.Errorf("team id is required for a pre-created backup job")
+		}
+		retryCount, hasRetryCount := asynq.GetRetryCount(ctx)
+		allowRunning := hasRetryCount && retryCount > 0
+		claimedJob, claimed, claimErr := j.Deps.Repos.BackupJob().ClaimPendingBackupJobForRun(
+			ctx,
+			j.Payload.JobID,
+			j.Payload.BackupID,
+			j.Payload.TeamID,
+			allowRunning,
+		)
+		if claimErr != nil {
+			return fmt.Errorf("claim pre-created backup job: %w", claimErr)
+		}
+		if !claimed {
+			j.Deps.Logger.Warn().
+				Str("job_id", j.Payload.JobID).
+				Str("backup_id", j.Payload.BackupID).
+				Msg("manual backup run is out of scope, terminal, or already claimed; skipping")
+			return nil
+		}
+		j.job = claimedJob
+	}
 
-	j.backup, err = j.Deps.Repos.Backup().FindBackupByID(ctx, j.Payload.BackupID)
+	j.backup, err = j.Deps.Repos.Backup().FindByID(ctx, j.Payload.BackupID)
 	if err != nil {
 		return fmt.Errorf("find backup: %w", err)
+	}
+	if j.Payload.TeamID != "" && j.backup.TeamID != j.Payload.TeamID {
+		return fmt.Errorf("backup team does not match queued run")
+	}
+	if j.backup.ServerID != j.Payload.ServerID {
+		return fmt.Errorf("backup server does not match queued run")
+	}
+	if j.job != nil {
+		if j.job.BackupID != j.backup.ID || j.job.TeamID != j.backup.TeamID {
+			return fmt.Errorf("backup job scope does not match backup")
+		}
+		if j.job.StorageProviderID != j.backup.StorageProviderID {
+			return fmt.Errorf("backup storage provider changed before the run started")
+		}
 	}
 	j.server, err = j.Deps.ServerRepos.Server().FindByID(ctx, j.Payload.ServerID)
 	if err != nil {
 		return fmt.Errorf("find server: %w", err)
 	}
+	if j.server.TeamID != j.backup.TeamID {
+		return fmt.Errorf("server team does not match backup")
+	}
 
-	// Resolve S3 creds from the linked storage provider. Same pattern as
-	// docker DB backups — the GORM EncryptedJSONMap serializer decrypts
-	// the credentials column on Find; we just shape it into S3Credentials.
+	if j.job == nil {
+		j.job = &models.BackupJob{
+			Status:            backuptypes.BackupJobStatusPending,
+			BackupID:          j.backup.ID,
+			StorageProviderID: j.backup.StorageProviderID,
+		}
+		j.job.TeamID = j.backup.TeamID
+		if err := j.Deps.Repos.BackupJob().CreateBackupJob(ctx, j.job); err != nil {
+			return fmt.Errorf("create backup job row: %w", err)
+		}
+	}
+
 	s3, err := j.loadS3Creds(ctx)
 	if err != nil {
-		j.recordFailure(ctx, fmt.Sprintf("resolve storage credentials: %v", err), nil)
+		if persistErr := j.recordFailure(ctx, fmt.Sprintf("resolve storage credentials: %v", err), nil); persistErr != nil {
+			return fmt.Errorf("persist storage credential failure: %w", persistErr)
+		}
 		return nil
 	}
 
-	// Create the backup_jobs row up-front so the history list shows it
-	// immediately. Status starts pending; OnTaskCreated flips to running.
-	j.job = &models.BackupJob{
-		Status:            backuptypes.BackupJobStatusPending,
-		BackupID:          j.backup.ID,
-		StorageProviderID: j.backup.StorageProviderID,
-	}
-	j.job.TeamID = j.backup.TeamID
-	if err := j.Deps.Repos.BackupJob().CreateBackupJob(ctx, j.job); err != nil {
-		return fmt.Errorf("create backup job row: %w", err)
-	}
-
-	// Parse the JSON-encoded include/exclude paths off the backup row.
 	includes, err := parseBackupPaths(j.backup.IncludeFiles)
 	if err != nil {
-		j.recordFailure(ctx, fmt.Sprintf("invalid include files configuration: %v", err), nil)
+		if persistErr := j.recordFailure(ctx, fmt.Sprintf("invalid include files configuration: %v", err), nil); persistErr != nil {
+			return fmt.Errorf("persist include-files failure: %w", persistErr)
+		}
 		return nil
 	}
 	excludes, err := parseBackupPaths(j.backup.ExcludeFiles)
 	if err != nil {
-		j.recordFailure(ctx, fmt.Sprintf("invalid exclude files configuration: %v", err), nil)
+		if persistErr := j.recordFailure(ctx, fmt.Sprintf("invalid exclude files configuration: %v", err), nil); persistErr != nil {
+			return fmt.Errorf("persist exclude-files failure: %w", persistErr)
+		}
 		return nil
 	}
 
-	// Resolve linked databases → dump specs. Best-effort: skip any that
-	// can't be resolved and log instead of failing the whole run, but if
-	// the operator selected databases and NONE can be resolved, fail
-	// loudly (better than silently uploading an empty archive).
 	dumps, dumpErr := j.resolveDatabaseDumps(ctx)
 	if dumpErr != nil {
-		j.recordFailure(ctx, fmt.Sprintf("resolve database dumps: %v", dumpErr), nil)
+		if persistErr := j.recordFailure(ctx, fmt.Sprintf("resolve database dumps: %v", dumpErr), nil); persistErr != nil {
+			return fmt.Errorf("persist database-dump failure: %w", persistErr)
+		}
 		return nil
 	}
 
@@ -118,28 +145,14 @@ func (j *RunManualBackupJob) Handle(ctx context.Context) error {
 	}
 
 	task := tasks.RunBackup(cfg)
+	createdTaskID := ""
 	result, runErr := j.Deps.RunTask(j.server, task).AsRoot().TrackInDB().
 		OnTaskCreated(func(taskID string) {
-			// Stamp the run row with the task id + flip to running
-			// before the script starts, so the UI can open the live
-			// log console immediately on the run.started event.
-			tid := taskID
-			j.job.TaskID = &tid
-			j.job.Status = backuptypes.BackupJobStatusRunning
-			if err := j.Deps.Repos.BackupJob().UpdateBackupJob(ctx, j.job); err != nil {
-				j.Deps.Logger.Error().Err(err).Str("job_id", j.job.ID).Msg("failed to persist running backup job")
-			}
-			j.broadcast("backup.run.started", map[string]any{
-				"backup_id": j.backup.ID,
-				"job_id":    j.job.ID,
-				"server_id": j.server.ID,
-				"task_id":   tid,
-			})
+			createdTaskID = taskID
+			j.recordStarted(ctx, taskID)
 		}).
 		Dispatch(ctx)
 
-	// Capture the script's output (stdout+stderr concatenated) and parse
-	// the final markers if the script reached the upload step.
 	output := ""
 	exit := -1
 	if result != nil {
@@ -153,85 +166,224 @@ func (j *RunManualBackupJob) Handle(ctx context.Context) error {
 			msg = runErr.Error()
 		}
 		if output != "" {
-			// The full transcript still lives behind View Logs; the
-			// error column only needs a clean one-liner. Strip the
-			// `::LAUNCH::` control markers + the verbose `==>` step
-			// echoes so the row tooltip shows just the actionable
-			// failure message (e.g. "no include paths configured").
 			msg += "\n" + cleanScriptError(output)
 		}
-		j.recordFailure(ctx, msg, j.job.TaskID)
+		if strings.TrimSpace(msg) == "" {
+			msg = fmt.Sprintf("backup command exited with code %d without output", exit)
+		}
+		var taskID *string
+		if createdTaskID != "" {
+			taskID = &createdTaskID
+		}
+		if persistErr := j.recordFailure(ctx, msg, taskID); persistErr != nil {
+			return fmt.Errorf("persist backup failure state: %w", persistErr)
+		}
 		return nil
 	}
 
 	_, size := tasks.ParseRunMarkers(output)
-	j.job.Status = backuptypes.BackupJobStatusFinished
-	if size > 0 {
-		s := int(size)
-		j.job.Size = &s
+	var taskID *string
+	if createdTaskID != "" {
+		taskID = &createdTaskID
 	}
-	if err := j.Deps.Repos.BackupJob().UpdateBackupJob(ctx, j.job); err != nil {
-		j.Deps.Logger.Warn().Err(err).Str("job_id", j.job.ID).
-			Msg("failed to mark backup job as finished")
+	if persistErr := j.recordSuccess(ctx, size, taskID); persistErr != nil {
+		return fmt.Errorf("persist backup success state: %w", persistErr)
 	}
-	j.broadcast("backup.run.succeeded", map[string]any{
-		"backup_id": j.backup.ID,
-		"job_id":    j.job.ID,
-		"server_id": j.server.ID,
-		"task_id":   j.job.TaskID,
-		"size":      size,
-	})
 	return nil
 }
 
 func (j *RunManualBackupJob) Failed(ctx context.Context, err error) {
+	message := "manual backup worker failed"
+	if err != nil {
+		message += ": " + err.Error()
+	}
 	j.Deps.Logger.Error().Err(err).
 		Str("server_id", j.Payload.ServerID).
 		Str("backup_id", j.Payload.BackupID).
 		Msg("failed to run manual backup")
-	// If the job row was created, mark it failed too — Failed() runs on
-	// asynq exhaustion / panic, not on the normal failure path which is
-	// already handled by recordFailure().
-	if j.job != nil && j.job.Status != backuptypes.BackupJobStatusFailed && j.job.Status != backuptypes.BackupJobStatusFinished {
-		msg := err.Error()
-		if updateErr := j.Deps.Repos.BackupJob().UpdateBackupJob(ctx, &models.BackupJob{
-			BaseModel:         j.job.BaseModel,
-			TeamScoped:        j.job.TeamScoped,
-			Status:            backuptypes.BackupJobStatusFailed,
-			BackupID:          j.job.BackupID,
-			StorageProviderID: j.job.StorageProviderID,
-			TaskID:            j.job.TaskID,
-			Error:             &msg,
-		}); updateErr != nil {
-			j.Deps.Logger.Error().Err(updateErr).Str("job_id", j.job.ID).Msg("failed to persist manual backup failure")
+	if !j.isFinalAttempt(ctx, err) {
+		return
+	}
+	if j.job == nil && j.Payload.JobID != "" {
+		if adoptErr := j.adoptPrecreatedJob(ctx); adoptErr != nil {
+			j.Deps.Logger.Error().Err(adoptErr).Str("job_id", j.Payload.JobID).
+				Msg("failed to reload manual backup run for final failure")
 		}
+	}
+	if j.job != nil && (j.job.Status == backuptypes.BackupJobStatusFailed || j.job.Status == backuptypes.BackupJobStatusFinished) {
+		return
+	}
+	var taskID *string
+	if j.job != nil {
+		taskID = j.job.TaskID
+	}
+	if persistErr := j.recordFailure(ctx, message, taskID); persistErr != nil {
+		j.Deps.Logger.Error().Err(persistErr).Str("job_id", j.Payload.JobID).
+			Msg("failed to persist final manual backup failure")
 	}
 }
 
-// recordFailure updates the BackupJob row + broadcasts the failure
-// event. taskID is optional — set when the task was created before the
-// failure, NULL when we failed earlier (e.g. resolving credentials).
-func (j *RunManualBackupJob) recordFailure(ctx context.Context, message string, taskID *string) {
+func (j *RunManualBackupJob) isFinalAttempt(ctx context.Context, err error) bool {
+	if j.finalAttempt != nil {
+		return j.finalAttempt(ctx, err)
+	}
+	return pkgjobs.IsFinalAttempt(ctx, err)
+}
+
+func (j *RunManualBackupJob) adoptPrecreatedJob(ctx context.Context) error {
+	if j.job != nil {
+		return nil
+	}
+	if j.Payload.JobID == "" {
+		return nil
+	}
+	if j.Payload.TeamID == "" {
+		return fmt.Errorf("team id is required for a pre-created backup job")
+	}
+	job, err := j.Deps.Repos.BackupJob().FindBackupJobForRun(
+		ctx,
+		j.Payload.JobID,
+		j.Payload.BackupID,
+		j.Payload.TeamID,
+	)
+	if err != nil {
+		return err
+	}
+	j.job = job
+	return nil
+}
+
+func (j *RunManualBackupJob) recordStarted(ctx context.Context, taskID string) {
+	updated, updateErr := j.Deps.Repos.BackupJob().MarkBackupJobRunningForRun(
+		ctx,
+		j.job.ID,
+		j.job.BackupID,
+		j.job.TeamID,
+		taskID,
+	)
+	if updateErr != nil {
+		j.Deps.Logger.Error().Err(updateErr).Str("job_id", j.job.ID).
+			Msg("failed to persist running backup job")
+		return
+	}
+	if !updated {
+		j.Deps.Logger.Warn().Str("job_id", j.job.ID).
+			Msg("backup job became terminal before its task could be attached")
+		return
+	}
+
+	tid := taskID
+	j.job.TaskID = &tid
+	j.job.Status = backuptypes.BackupJobStatusRunning
+	j.broadcast("backup.run.started", map[string]any{
+		"backup_id": j.job.BackupID,
+		"job_id":    j.job.ID,
+		"server_id": j.Payload.ServerID,
+		"task_id":   taskID,
+	})
+}
+
+func (j *RunManualBackupJob) recordSuccess(ctx context.Context, size int64, taskID *string) error {
+	var persistedSize *int
+	if size > 0 {
+		s := int(size)
+		persistedSize = &s
+	}
+	updated, updateErr := j.Deps.Repos.BackupJob().MarkBackupJobFinishedForRun(
+		ctx,
+		j.job.ID,
+		j.job.BackupID,
+		j.job.TeamID,
+		persistedSize,
+		taskID,
+	)
+	if updateErr != nil {
+		j.Deps.Logger.Error().Err(updateErr).Str("job_id", j.job.ID).
+			Msg("failed to persist backup success state")
+		return updateErr
+	}
+	if !updated {
+		j.Deps.Logger.Warn().Str("job_id", j.job.ID).
+			Msg("backup job was no longer running when success completed")
+		return nil
+	}
+
+	j.job.Status = backuptypes.BackupJobStatusFinished
+	j.job.Size = persistedSize
+	if taskID != nil {
+		id := *taskID
+		j.job.TaskID = &id
+	}
+	payload := map[string]any{
+		"backup_id": j.job.BackupID,
+		"job_id":    j.job.ID,
+		"server_id": j.Payload.ServerID,
+		"size":      size,
+	}
+	if taskID != nil {
+		payload["task_id"] = *taskID
+	}
+	j.broadcast("backup.run.succeeded", payload)
+	return nil
+}
+
+func (j *RunManualBackupJob) recordFailure(ctx context.Context, message string, taskID *string) error {
+	message = strings.TrimSpace(message)
+	if message == "" {
+		message = "backup failed without an error message"
+	}
+	message = truncate(message, 4000)
+
+	if j.Deps.Repos == nil {
+		return nil
+	}
+	jobID := j.Payload.JobID
+	backupID := j.Payload.BackupID
+	teamID := j.Payload.TeamID
+	if j.job != nil {
+		jobID = j.job.ID
+		backupID = j.job.BackupID
+		teamID = j.job.TeamID
+	}
+	if jobID == "" || backupID == "" || teamID == "" {
+		return nil
+	}
+	updated, updateErr := j.Deps.Repos.BackupJob().MarkBackupJobFailedForRun(
+		ctx,
+		jobID,
+		backupID,
+		teamID,
+		message,
+		taskID,
+	)
+	if updateErr != nil {
+		j.Deps.Logger.Error().Err(updateErr).Str("job_id", jobID).
+			Msg("failed to persist backup failure state")
+		return updateErr
+	}
+	if !updated {
+		return nil
+	}
 	if j.job != nil {
 		j.job.Status = backuptypes.BackupJobStatusFailed
-		errCopy := truncate(message, 4000)
+		errCopy := message
 		j.job.Error = &errCopy
-		j.job.TaskID = taskID
-		if updateErr := j.Deps.Repos.BackupJob().UpdateBackupJob(ctx, j.job); updateErr != nil {
-			j.Deps.Logger.Error().Err(updateErr).Str("job_id", j.job.ID).Msg("failed to persist backup failure state")
+		if taskID != nil {
+			id := *taskID
+			j.job.TaskID = &id
 		}
 	}
 	payload := map[string]any{
-		"backup_id": j.Payload.BackupID,
+		"backup_id": backupID,
 		"server_id": j.Payload.ServerID,
-	}
-	if j.job != nil {
-		payload["job_id"] = j.job.ID
+		"error":     message,
+		"job_id":    jobID,
 	}
 	if taskID != nil {
 		payload["task_id"] = *taskID
 	}
 	j.broadcast("backup.run.failed", payload)
+	return nil
 }
 
 func parseBackupPaths(raw string) ([]string, error) {
@@ -245,29 +397,25 @@ func parseBackupPaths(raw string) ([]string, error) {
 	return paths, nil
 }
 
-// broadcast emits a WS event scoped to the backup's team channel. The
-// frontend's `useChannelEvents` filter requires the routing field
-// (team_id) on every payload — added here so callers don't have to
-// remember.
 func (j *RunManualBackupJob) broadcast(event string, data map[string]any) {
 	if data == nil {
 		data = map[string]any{}
 	}
-	if _, ok := data["team_id"]; !ok && j.backup != nil {
-		data["team_id"] = j.backup.TeamID
+	teamID := j.Payload.TeamID
+	if j.job != nil && j.job.TeamID != "" {
+		teamID = j.job.TeamID
+	} else if j.backup != nil && j.backup.TeamID != "" {
+		teamID = j.backup.TeamID
 	}
-	j.Deps.BroadcastToTeam(j.backup.TeamID, event, data)
+	if teamID == "" {
+		return
+	}
+	if _, ok := data["team_id"]; !ok {
+		data["team_id"] = teamID
+	}
+	j.Deps.BroadcastToTeam(teamID, event, data)
 }
 
-// resolveDatabaseDumps loads the databases linked to this backup
-// (backup_databases → databases → users) and pairs them with the
-// server's installed DB engine to produce one DatabaseDump per
-// selected database, each with an authenticated dump command shape.
-//
-// Returns nil if the backup has no linked databases (the run is then
-// files-only). Returns an error if linked DBs exist but none can be
-// resolved — better to fail loudly than silently skip a backup the
-// operator explicitly asked for.
 func (j *RunManualBackupJob) resolveDatabaseDumps(ctx context.Context) ([]tasks.DatabaseDump, error) {
 	databaseIDs, err := j.Deps.Repos.Backup().GetBackupDatabaseIDs(ctx, j.backup.ID)
 	if err != nil {
@@ -282,8 +430,6 @@ func (j *RunManualBackupJob) resolveDatabaseDumps(ctx context.Context) ([]tasks.
 		)
 	}
 
-	// Engine is per-server, not per-database — look it up once. The
-	// services table records what was installed via the provision flow.
 	engine, err := j.detectServerDBEngine(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("detect server database engine: %w", err)
@@ -297,8 +443,6 @@ func (j *RunManualBackupJob) resolveDatabaseDumps(ctx context.Context) ([]tasks.
 				Msg("backup: linked database not found — skipping")
 			continue
 		}
-		// Pick the first user that has access — a backup just needs
-		// read perms, so any linked user works; root is preferred.
 		users, err := j.Deps.DatabaseRepos.User().FindByDatabase(ctx, dbID)
 		if err != nil || len(users) == 0 {
 			j.Deps.Logger.Warn().Str("database_id", dbID).
@@ -314,8 +458,6 @@ func (j *RunManualBackupJob) resolveDatabaseDumps(ctx context.Context) ([]tasks.
 		}
 		password := ""
 		if user.Password != nil && user.Password.Valid {
-			// EncryptedNullableString stores the plaintext on .String
-			// after GORM Scan decrypts it; .Valid distinguishes NULL.
 			password = user.Password.String
 		}
 		out = append(out, tasks.DatabaseDump{
@@ -333,18 +475,12 @@ func (j *RunManualBackupJob) resolveDatabaseDumps(ctx context.Context) ([]tasks.
 	return out, nil
 }
 
-// detectServerDBEngine returns "mysql" / "postgres" / "mariadb" based
-// on which database-server service is installed on this server. We
-// pick the first hit; servers running multiple engines simultaneously
-// aren't a supported configuration today.
 func (j *RunManualBackupJob) detectServerDBEngine(ctx context.Context) (string, error) {
 	svcs, err := j.Deps.ServerRepos.Service().FindByServer(ctx, j.server.ID)
 	if err != nil {
 		return "", err
 	}
 	for _, s := range svcs {
-		// Match by prefix so future mysql/postgres versions don't need
-		// a code change here.
 		switch {
 		case strings.HasPrefix(s.Software, "mysql"):
 			return "mysql", nil
@@ -357,32 +493,31 @@ func (j *RunManualBackupJob) detectServerDBEngine(ctx context.Context) (string, 
 	return "", fmt.Errorf("no database engine (mysql/postgres/mariadb) installed on this server")
 }
 
-// loadS3Creds materialises the linked storage provider's S3Credentials.
-// The provider's `credentials` column is an EncryptedJSONMap that GORM
-// decrypts on Find; we just JSON-re-encode/decode it to coerce the
-// map[string]any into the typed S3Credentials shape. Same pattern as
-// the docker module's loadProviderS3Creds.
 func (j *RunManualBackupJob) loadS3Creds(ctx context.Context) (models.S3Credentials, error) {
-	p, err := j.Deps.Repos.StorageProvider().FindStorageProviderByID(ctx, j.backup.StorageProviderID)
+	p, err := j.Deps.Repos.StorageProvider().FindStorageProviderByIDAndTeam(
+		ctx,
+		j.backup.StorageProviderID,
+		j.backup.TeamID,
+	)
 	if err != nil {
 		return models.S3Credentials{}, fmt.Errorf("provider %d not found", j.backup.StorageProviderID)
 	}
-	raw, err := json.Marshal(p.GetCredentials())
-	if err != nil {
-		return models.S3Credentials{}, fmt.Errorf("encode credentials: %w", err)
+	if p.Provider != backuptypes.StorageDriverS3 {
+		return models.S3Credentials{}, fmt.Errorf("provider %d is not an S3 driver", j.backup.StorageProviderID)
 	}
+	credentials := p.GetCredentials()
+	raw, _ := json.Marshal(credentials)
 	var c models.S3Credentials
 	if err := json.Unmarshal(raw, &c); err != nil {
 		return models.S3Credentials{}, fmt.Errorf("decode S3 credentials: %w", err)
 	}
-	if c.Bucket == "" || c.Key == "" {
+	c.ApplyLegacyDefaults(credentials)
+	if c.Bucket == "" || c.Key == "" || c.Secret == "" {
 		return models.S3Credentials{}, fmt.Errorf("provider %d has incomplete S3 credentials", j.backup.StorageProviderID)
 	}
 	return c, nil
 }
 
-// joinPath stitches the backup-row sub-path with the provider's default
-// prefix — neither is required, both are stripped of stray slashes.
 func joinPath(backupPath, providerPath string) string {
 	a := trimSlash(providerPath)
 	b := trimSlash(backupPath)
@@ -414,10 +549,6 @@ func truncate(s string, n int) string {
 	return s[:n] + "…"
 }
 
-// cleanScriptError reduces the raw script transcript to just the lines
-// worth surfacing on the row tooltip: drop `::LAUNCH::` control markers
-// (they're for the marker handler, not humans) and the verbose `==>`
-// step echoes. The full transcript still lives behind View Logs.
 func cleanScriptError(output string) string {
 	var keep []string
 	for _, line := range strings.Split(output, "\n") {
@@ -433,16 +564,29 @@ func cleanScriptError(output string) string {
 		}
 		keep = append(keep, trimmed)
 	}
-	// Last few lines are the most diagnostic (the actual failure tail);
-	// cap to avoid dumping a multi-page script into a tooltip.
 	if len(keep) > 5 {
 		keep = keep[len(keep)-5:]
 	}
 	return strings.Join(keep, "\n")
 }
 
-func NewRunManualBackupTask(serverID, backupID string, userID *string) (*asynq.Task, error) {
-	return pkgjobs.Task(TypeRunManualBackup,
-		RunManualBackupPayload{ServerID: serverID, BackupID: backupID, UserID: userID},
-	)
+func NewRunManualBackupTask(
+	serverID, backupID, teamID, jobID string,
+	userID *string,
+) (*asynq.Task, error) {
+	payload := RunManualBackupPayload{
+		ServerID: serverID,
+		BackupID: backupID,
+		TeamID:   teamID,
+		JobID:    jobID,
+		UserID:   userID,
+	}
+	if jobID == "" {
+		return pkgjobs.Task(TypeRunManualBackup, payload)
+	}
+	return pkgjobs.TaskWithID(TypeRunManualBackup, payload, runManualBackupTaskID(jobID))
+}
+
+func runManualBackupTaskID(jobID string) string {
+	return pkgjobs.Dedup("backup-run-manual", jobID)
 }

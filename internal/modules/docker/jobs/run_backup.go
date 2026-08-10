@@ -19,75 +19,88 @@ import (
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner/markers"
 )
 
-// TypeRunBackup is the asynq task type for executing a single database
-// backup. Dispatched by:
-//
-//   - PollDueBackupsJob (the scheduler poller, every minute)
-//   - One day, a "Run now (async)" button on the UI — today the UI calls
-//     the synchronous BackupService.RunNow path so the response carries
-//     the run row back inline.
-//
-// Mirrors the work BackupService.RunNow does on the HTTP path, but
-// without the user-facing return DTO. Kept here (rather than calling
-// into BackupService) because services → jobs is the established import
-// direction in this module; reversing it would create a cycle.
+// TypeRunBackup is the task type for database backups.
 const TypeRunBackup = "docker:run_backup"
 
-// RunBackupPayload travels through asynq. IDs only — every other field
-// gets re-loaded from the database when the job runs, so a backup
-// that's been disabled / had its credentials rotated between dispatch
-// and execution picks up the live state.
+// RunBackupPayload identifies a database backup run.
 type RunBackupPayload struct {
 	BackupID   string `json:"backup_id"`
 	DatabaseID string `json:"database_id"`
 	ProjectID  string `json:"project_id"`
 	ServerID   string `json:"server_id"`
 	TeamID     string `json:"team_id"`
-	// RunID, when set, is a pre-created backup_run row the job adopts
-	// (set status running → success/failed) instead of creating its own.
-	// The manual "Run now" path creates the row as "triggered" up-front
-	// so the UI shows it immediately, then hands the id here. Empty for
-	// the scheduled path, which creates its own run.
-	RunID string `json:"run_id,omitempty"`
-	// Source records who/what triggered this run — "schedule" for the
-	// cron poller; "manual" for ad-hoc dispatches. Mostly for
-	// debugging via the worker log.
-	Source string `json:"source,omitempty"`
+	RunID      string `json:"run_id,omitempty"`
+	Source     string `json:"source,omitempty"`
 }
 
 // RunBackupJob is the asynq handler.
 type RunBackupJob struct {
 	Deps    *JobDeps
 	Payload RunBackupPayload
+
+	runID        string
+	taskID       string
+	finalAttempt func(context.Context, error) bool
 }
 
-// NewRunBackupJob is the constructor asynq picks up via
-// pkgjobs.RegisterTyped — see register.go.
 func NewRunBackupJob(p RunBackupPayload) pkgjobs.Handler {
 	return &RunBackupJob{Deps: deps, Payload: p}
 }
 
-// Handle dumps the database via SSH and uploads to S3. Persistence
-// (BackupRun row + broadcast) is identical to BackupService.RunNow on
-// the HTTP path.
+// Handle executes a database backup.
 func (j *RunBackupJob) Handle(ctx context.Context) error {
+	var run *models.DatabaseBackupRun
+	if j.Payload.RunID != "" {
+		j.runID = j.Payload.RunID
+		retryCount, hasRetryCount := asynq.GetRetryCount(ctx)
+		allowRunning := hasRetryCount && retryCount > 0
+		claimedRun, claimed, err := j.Deps.Repos.BackupRun().ClaimTriggeredForBackup(
+			ctx,
+			j.Payload.RunID,
+			j.Payload.BackupID,
+			j.Payload.TeamID,
+			time.Now().UTC(),
+			allowRunning,
+		)
+		if err != nil {
+			return fmt.Errorf("claim pre-created backup run: %w", err)
+		}
+		if !claimed {
+			j.Deps.Logger.Warn().
+				Str("run_id", j.Payload.RunID).
+				Str("backup_id", j.Payload.BackupID).
+				Msg("manual backup run is out of scope, terminal, or already claimed; skipping")
+			return nil
+		}
+		run = claimedRun
+	}
+
 	backup, err := j.Deps.Repos.Backup().FindByDatabase(ctx, j.Payload.DatabaseID)
 	if err != nil {
 		return fmt.Errorf("find backup: %w", err)
 	}
 	if backup.ID != j.Payload.BackupID {
-		// Backup was deleted + re-created between dispatch and execution.
-		// Treat as a no-op rather than running a backup against a row
-		// the user already removed.
 		j.Deps.Logger.Warn().
 			Str("payload_backup_id", j.Payload.BackupID).
 			Str("current_backup_id", backup.ID).
 			Msg("scheduled backup superseded; skipping")
+		if j.Payload.RunID != "" {
+			_, persistErr := j.recordFailure(
+				ctx,
+				j.Payload.BackupID,
+				j.Payload.RunID,
+				"backup configuration changed or was removed before the worker started",
+			)
+			if persistErr != nil {
+				return fmt.Errorf("persist superseded backup failure: %w", persistErr)
+			}
+		}
 		return nil
 	}
-	if !backup.Enabled {
-		// Race: the poller saw enabled=true, user disabled before this
-		// job ran. Skip without recording a failed run.
+	if backup.TeamID != j.Payload.TeamID {
+		return fmt.Errorf("backup team does not match queued run")
+	}
+	if !backup.Enabled && j.Payload.Source != "manual" {
 		return nil
 	}
 
@@ -108,40 +121,32 @@ func (j *RunBackupJob) Handle(ctx context.Context) error {
 		return fmt.Errorf("find server: %w", err)
 	}
 
-	// Resolve credentials from the linked storage_providers row (the
-	// docker_database_backups row only carries the FK now). If the
-	// provider was deleted out from under us, fail the run with a
-	// clean error instead of retrying forever.
 	s3Creds, err := j.loadProviderS3Creds(ctx, backup.StorageProviderID, backup.TeamID)
 	if err != nil {
-		j.recordFailure(ctx, backup.ID, "", err.Error())
-		j.dispatchFailureNotification(ctx, backup, db, server, err.Error())
+		persisted, persistErr := j.recordFailure(ctx, backup.ID, j.runID, err.Error())
+		if persistErr != nil {
+			return fmt.Errorf("persist storage-configuration backup failure: %w", persistErr)
+		}
+		if persisted {
+			j.dispatchFailureNotification(ctx, backup, db, server, err.Error())
+		}
 		return nil
 	}
 	dbCreds, err := decodeJobCredentials(db.Credentials)
 	if err != nil {
-		j.recordFailure(ctx, backup.ID, "", "database credentials are missing or corrupt")
-		j.dispatchFailureNotification(ctx, backup, db, server, "database credentials are missing or corrupt")
+		const message = "database credentials are missing or corrupt"
+		persisted, persistErr := j.recordFailure(ctx, backup.ID, j.runID, message)
+		if persistErr != nil {
+			return fmt.Errorf("persist credential backup failure: %w", persistErr)
+		}
+		if persisted {
+			j.dispatchFailureNotification(ctx, backup, db, server, message)
+		}
 		return nil
 	}
 
-	now := time.Now().UTC()
-	var run *models.DatabaseBackupRun
-	if j.Payload.RunID != "" {
-		// Adopt the row the manual "Run now" path pre-created as
-		// "triggered" and flip it to "running" now that the job is
-		// actually executing.
-		run, err = j.Deps.Repos.BackupRun().FindByID(ctx, j.Payload.RunID)
-		if err != nil {
-			return fmt.Errorf("find pre-created run row: %w", err)
-		}
-		if err := j.Deps.Repos.BackupRun().UpdateFields(ctx, run.ID, map[string]any{
-			"status":     "running",
-			"started_at": now,
-		}); err != nil {
-			return fmt.Errorf("mark backup run running: %w", err)
-		}
-	} else {
+	if run == nil {
+		now := time.Now().UTC()
 		run = &models.DatabaseBackupRun{
 			BackupID:  backup.ID,
 			Status:    "running",
@@ -150,6 +155,8 @@ func (j *RunBackupJob) Handle(ctx context.Context) error {
 		if err := j.Deps.Repos.BackupRun().Create(ctx, run); err != nil {
 			return fmt.Errorf("create run row: %w", err)
 		}
+		j.runID = run.ID
+		j.Payload.RunID = run.ID
 	}
 
 	j.Deps.BroadcastToTeam(j.Payload.TeamID, "docker.database.backup.run.started", map[string]any{
@@ -168,70 +175,53 @@ func (j *RunBackupJob) Handle(ctx context.Context) error {
 			tasks.SlugFromName(project.Name),
 			tasks.SlugFromName(db.Name),
 		),
-		Engine:   db.Engine,
-		Username: dbCreds.Username,
-		Password: dbCreds.Password,
-		// Database-name override mirrors the synchronous RunNow path
-		// in services/backup_service.go — if the user pointed this
-		// backup config at a specific database inside the engine
-		// (e.g. one they created manually after provisioning), the
-		// scheduled run targets the same name. Empty override falls
-		// back to the row's default database. EffectiveDatabaseName
-		// centralises the picker so the two paths can't drift.
-		Database: backup.EffectiveDatabaseName(dbCreds.Database),
-		// All S3 destination fields come from the storage_providers
-		// row now. The backup row only owns the optional sub-folder
-		// (backup.Path) which we join onto the provider's default
-		// path.
-		Endpoint:   s3Creds.Endpoint,
-		Region:     s3Creds.Region,
-		Bucket:     s3Creds.Bucket,
-		PathPrefix: tasks.BackupObjectPath(backup.Path, s3Creds.Path),
-		AccessKey:  s3Creds.Key,
-		SecretKey:  s3Creds.Secret,
-		// Non-AWS S3 (Contabo/MinIO/Wasabi) needs path-style
-		// addressing; their endpoints have no per-bucket wildcard DNS.
+		Engine:         db.Engine,
+		Username:       dbCreds.Username,
+		Password:       dbCreds.Password,
+		Database:       backup.EffectiveDatabaseName(dbCreds.Database),
+		Endpoint:       s3Creds.Endpoint,
+		Region:         s3Creds.Region,
+		Bucket:         s3Creds.Bucket,
+		PathPrefix:     tasks.BackupObjectPath(backup.Path, s3Creds.Path),
+		AccessKey:      s3Creds.Key,
+		SecretKey:      s3Creds.Secret,
 		ForcePathStyle: s3Creds.ForcePathStyle,
 	}
 
-	// Stream the backup's step markers (dumping / uploading / done +
-	// size_bytes / object_key) to the UI live over WebSocket as the
-	// script runs, so the run shows progress instead of a single
-	// after-the-fact status. Fires per-marker in the background/streaming
-	// dispatch path.
 	runID := run.ID
-	markerHandler := taskrunner.MarkerHandlerFunc(func(_ context.Context, _ string, m *markers.Marker) error {
-		j.Deps.BroadcastToTeam(j.Payload.TeamID, "docker.database.backup.run.progress", map[string]any{
-			"database_id": db.ID,
-			"project_id":  j.Payload.ProjectID,
-			"backup_id":   backup.ID,
-			"run_id":      runID,
-			"server_id":   server.ID,
-			"team_id":     j.Payload.TeamID,
-			"type":        m.Type,
-			"value":       m.Value,
-		})
-		return nil
-	})
+	markerHandler := j.progressMarkerHandler(db.ID, backup.ID, runID, server.ID)
 
 	task := tasks.RunBackup(cfg)
 	result, runErr := j.Deps.RunTask(server, task).AsRoot().
 		TrackInDB().
 		WithMarkerHandler(markerHandler).
 		OnTaskCreated(func(taskID string) {
-			// Link the run to its server-task + broadcast so the UI can
-			// stream the live dump/upload output (ServerLogViewer
-			// entity="task") while the backup runs, not only after.
-			if err := j.Deps.Repos.BackupRun().UpdateFields(ctx, run.ID, map[string]any{"task_id": taskID}); err != nil {
+			j.taskID = taskID
+			attached, err := j.Deps.Repos.BackupRun().AttachTaskForBackup(
+				ctx,
+				run.ID,
+				backup.ID,
+				j.Payload.TeamID,
+				taskID,
+			)
+			if err != nil {
 				j.Deps.Logger.Error().Err(err).Str("run_id", run.ID).Msg("failed to attach task to backup run")
+				return
+			}
+			if !attached {
+				j.Deps.Logger.Warn().Str("run_id", run.ID).
+					Msg("backup run was no longer active when its task was created")
+				return
 			}
 			j.Deps.BroadcastToTeam(j.Payload.TeamID, "docker.database.backup.run.started", map[string]any{
 				"database_id": db.ID,
+				"project_id":  j.Payload.ProjectID,
 				"backup_id":   backup.ID,
 				"run_id":      run.ID,
 				"server_id":   server.ID,
 				"team_id":     j.Payload.TeamID,
 				"task_id":     taskID,
+				"source":      j.Payload.Source,
 			})
 		}).
 		Dispatch(ctx)
@@ -253,29 +243,17 @@ func (j *RunBackupJob) Handle(ctx context.Context) error {
 			}
 			errMsg += truncateForRun(output, 4000)
 		}
-		if err := j.Deps.Repos.BackupRun().UpdateFields(ctx, run.ID, map[string]any{
-			"status":      "failed",
-			"finished_at": finishedAt,
-			"error":       truncateForRun(errMsg, 4000),
-		}); err != nil {
-			j.Deps.Logger.Error().Err(err).Str("run_id", run.ID).Msg("failed to persist backup failure state")
+		errMsg = truncateForRun(errMsg, 4000)
+		if errMsg == "" {
+			errMsg = "database backup failed without an error message"
 		}
-		j.Deps.BroadcastToTeam(j.Payload.TeamID, "docker.database.backup.run.failed", map[string]any{
-			"database_id": db.ID,
-			"project_id":  j.Payload.ProjectID,
-			"backup_id":   backup.ID,
-			"run_id":      run.ID,
-			"server_id":   server.ID,
-			"team_id":     j.Payload.TeamID,
-			"source":      j.Payload.Source,
-		})
-		// Fire the per-config notification (email/slack/etc.) if the
-		// user opted in via NotifyOnFailure. Best-effort — a failed
-		// notify shouldn't override the recorded failure status.
-		j.dispatchFailureNotification(ctx, backup, db, server, errMsg)
-		// Return nil so asynq doesn't auto-retry a backup that will fail
-		// the same way (bad creds, missing CLI tool). The next cron tick
-		// will re-attempt on its natural cadence.
+		persisted, persistErr := j.recordFailure(ctx, backup.ID, run.ID, errMsg)
+		if persistErr != nil {
+			return fmt.Errorf("persist backup failure state: %w", persistErr)
+		}
+		if persisted {
+			j.dispatchFailureNotification(ctx, backup, db, server, errMsg)
+		}
 		return nil
 	}
 
@@ -290,11 +268,38 @@ func (j *RunBackupJob) Handle(ctx context.Context) error {
 	if sizeBytes > 0 {
 		updates["size_bytes"] = sizeBytes
 	}
-	if err := j.Deps.Repos.BackupRun().UpdateFields(ctx, run.ID, updates); err != nil {
-		j.Deps.Logger.Error().Err(err).Str("run_id", run.ID).Msg("failed to persist backup success state")
+	if j.taskID != "" {
+		updates["task_id"] = j.taskID
+	}
+	transitioned, err := j.Deps.Repos.BackupRun().MarkTerminalForBackup(
+		ctx,
+		run.ID,
+		backup.ID,
+		j.Payload.TeamID,
+		updates,
+	)
+	if err != nil {
+		return fmt.Errorf("persist backup success state: %w", err)
+	}
+	if !transitioned {
+		j.Deps.Logger.Warn().Str("run_id", run.ID).
+			Msg("backup run was no longer active when task succeeded; suppressing terminal event")
+		return nil
 	}
 
-	j.Deps.BroadcastToTeam(j.Payload.TeamID, "docker.database.backup.run.succeeded", map[string]any{
+	run.Status = "success"
+	run.FinishedAt = &finishedAt
+	if objectKey != "" {
+		run.ObjectKey = &objectKey
+	}
+	if sizeBytes > 0 {
+		run.SizeBytes = &sizeBytes
+	}
+	if j.taskID != "" {
+		run.TaskID = &j.taskID
+	}
+
+	successPayload := map[string]any{
 		"database_id": db.ID,
 		"project_id":  j.Payload.ProjectID,
 		"backup_id":   backup.ID,
@@ -304,13 +309,12 @@ func (j *RunBackupJob) Handle(ctx context.Context) error {
 		"object_key":  objectKey,
 		"size_bytes":  sizeBytes,
 		"source":      j.Payload.Source,
-	})
+	}
+	if j.taskID != "" {
+		successPayload["task_id"] = j.taskID
+	}
+	j.Deps.BroadcastToTeam(j.Payload.TeamID, "docker.database.backup.run.succeeded", successPayload)
 
-	// Honour the retention cap — prune both old run rows AND their
-	// remote S3 objects. Previously only the synchronous "Run now"
-	// path enforced retention; scheduled runs leaked rows + storage
-	// forever. Best-effort: failure here doesn't fail the run because
-	// the backup itself already succeeded.
 	if backup.Retention > 0 {
 		if err := j.pruneRunsAndObjects(ctx, server, backup, s3Creds); err != nil {
 			j.Deps.Logger.Warn().Err(err).
@@ -319,28 +323,56 @@ func (j *RunBackupJob) Handle(ctx context.Context) error {
 		}
 	}
 
-	// Notifications — only fired AFTER the prune so a user inspecting
-	// the bucket from the email link sees the final state, not a
-	// transient one with stale objects.
 	j.dispatchSuccessNotification(ctx, backup, db, server, run, objectKey)
 	return nil
 }
 
-// Failed is asynq's framework-level callback (Handle panicked or returned
-// an error). User-data failures are recorded inside Handle and return
-// nil, so reaching this point means something genuinely transient.
 func (j *RunBackupJob) Failed(ctx context.Context, err error) {
 	j.Deps.Logger.Error().Err(err).
 		Str("backup_id", j.Payload.BackupID).
 		Str("database_id", j.Payload.DatabaseID).
 		Str("source", j.Payload.Source).
 		Msg("run backup job failed at the framework level")
+	if !j.isFinalAttempt(ctx, err) {
+		return
+	}
+
+	message := "backup worker failed"
+	if err != nil {
+		message += ": " + err.Error()
+	}
+	runID := j.runID
+	if runID == "" {
+		runID = j.Payload.RunID
+	}
+	if _, persistErr := j.recordFailure(ctx, j.Payload.BackupID, runID, message); persistErr != nil {
+		j.Deps.Logger.Error().Err(persistErr).
+			Str("backup_id", j.Payload.BackupID).
+			Str("run_id", runID).
+			Msg("failed to persist framework-level backup failure")
+	}
 }
 
-// recordFailure persists a failed run row when we abort before
-// dispatching the SSH task — e.g. credentials missing on load.
-func (j *RunBackupJob) recordFailure(ctx context.Context, backupID, runID, msg string) {
+func (j *RunBackupJob) isFinalAttempt(ctx context.Context, err error) bool {
+	if j.finalAttempt != nil {
+		return j.finalAttempt(ctx, err)
+	}
+	return pkgjobs.IsFinalAttempt(ctx, err)
+}
+
+func (j *RunBackupJob) recordFailure(
+	ctx context.Context,
+	backupID, runID, msg string,
+) (bool, error) {
 	now := time.Now().UTC()
+	msg = truncateForRun(msg, 4000)
+	if msg == "" {
+		msg = "database backup failed without an error message"
+	}
+	if runID == "" {
+		runID = j.runID
+	}
+	shouldBroadcast := false
 	if runID == "" {
 		run := &models.DatabaseBackupRun{
 			BackupID:   backupID,
@@ -350,19 +382,37 @@ func (j *RunBackupJob) recordFailure(ctx context.Context, backupID, runID, msg s
 			Error:      strPtr(msg),
 		}
 		if err := j.Deps.Repos.BackupRun().Create(ctx, run); err != nil {
-			j.Deps.Logger.Error().Err(err).Str("backup_id", backupID).Msg("failed to persist pre-dispatch backup failure")
+			return false, err
 		}
 		runID = run.ID
+		j.runID = run.ID
+		j.Payload.RunID = run.ID
+		shouldBroadcast = true
 	} else {
-		if err := j.Deps.Repos.BackupRun().UpdateFields(ctx, runID, map[string]any{
+		updates := map[string]any{
 			"status":      "failed",
 			"finished_at": now,
 			"error":       msg,
-		}); err != nil {
-			j.Deps.Logger.Error().Err(err).Str("run_id", runID).Msg("failed to persist pre-dispatch backup failure")
 		}
+		if j.taskID != "" {
+			updates["task_id"] = j.taskID
+		}
+		updated, err := j.Deps.Repos.BackupRun().MarkTerminalForBackup(
+			ctx,
+			runID,
+			backupID,
+			j.Payload.TeamID,
+			updates,
+		)
+		if err != nil {
+			return false, err
+		}
+		shouldBroadcast = updated
 	}
-	j.Deps.BroadcastToTeam(j.Payload.TeamID, "docker.database.backup.run.failed", map[string]any{
+	if !shouldBroadcast {
+		return false, nil
+	}
+	failurePayload := map[string]any{
 		"database_id": j.Payload.DatabaseID,
 		"project_id":  j.Payload.ProjectID,
 		"backup_id":   backupID,
@@ -371,20 +421,45 @@ func (j *RunBackupJob) recordFailure(ctx context.Context, backupID, runID, msg s
 		"team_id":     j.Payload.TeamID,
 		"source":      j.Payload.Source,
 		"error":       msg,
+	}
+	if j.taskID != "" {
+		failurePayload["task_id"] = j.taskID
+	}
+	j.Deps.BroadcastToTeam(j.Payload.TeamID, "docker.database.backup.run.failed", failurePayload)
+	return true, nil
+}
+
+func backupProgressPayload(
+	payload RunBackupPayload,
+	databaseID, backupID, runID, serverID string,
+	marker *markers.Marker,
+) map[string]any {
+	return map[string]any{
+		"database_id": databaseID,
+		"project_id":  payload.ProjectID,
+		"backup_id":   backupID,
+		"run_id":      runID,
+		"server_id":   serverID,
+		"team_id":     payload.TeamID,
+		"source":      payload.Source,
+		"type":        marker.Type,
+		"value":       marker.Value,
+	}
+}
+
+func (j *RunBackupJob) progressMarkerHandler(
+	databaseID, backupID, runID, serverID string,
+) taskrunner.MarkerHandler {
+	return taskrunner.MarkerHandlerFunc(func(_ context.Context, _ string, marker *markers.Marker) error {
+		payload := backupProgressPayload(j.Payload, databaseID, backupID, runID, serverID, marker)
+		j.Deps.BroadcastToTeam(j.Payload.TeamID, "docker.database.backup.run.progress", payload)
+		return nil
 	})
 }
 
-// NewRunBackupTask packages the asynq task. Includes the backup ID +
-// the dispatch minute in the dedup key so two scheduler ticks in the
-// same minute (e.g. on restart) don't double-fire, but distinct minutes
-// each get their own run.
 func NewRunBackupTask(
 	backupID, databaseID, projectID, serverID, teamID, runID, source string,
 ) (*asynq.Task, error) {
-	// Dedup key: a manual run carries a unique pre-created run id, so key
-	// on that (lets a user trigger several distinct runs). The scheduled
-	// path has no run id, so key on the dispatch minute to collapse
-	// duplicate ticks in the same minute.
 	dedupKey := runID
 	if dedupKey == "" {
 		dedupKey = time.Now().UTC().Format("2006-01-02T15:04")
@@ -400,13 +475,6 @@ func NewRunBackupTask(
 	}, pkgjobs.Dedup("docker-run-backup", backupID, dedupKey))
 }
 
-// loadProviderS3Creds resolves the storage_provider FK on a backup row
-// into a usable S3Credentials struct. Validates the provider belongs
-// to the team (defence-in-depth — the configure-time path already
-// checks) and that the provider is S3-flavoured.
-//
-// Kept on the job receiver so we don't have to thread BackupRepos
-// through every helper signature.
 func (j *RunBackupJob) loadProviderS3Creds(
 	ctx context.Context, providerID uint64, teamID string,
 ) (backupmodels.S3Credentials, error) {
@@ -414,15 +482,14 @@ func (j *RunBackupJob) loadProviderS3Creds(
 		return backupmodels.S3Credentials{},
 			fmt.Errorf("storage providers registry is not wired into docker worker")
 	}
-	p, err := j.Deps.BackupRepos.StorageProvider().FindStorageProviderByID(ctx, providerID)
+	p, err := j.Deps.BackupRepos.StorageProvider().FindStorageProviderByIDAndTeam(
+		ctx,
+		providerID,
+		teamID,
+	)
 	if err != nil {
 		return backupmodels.S3Credentials{}, fmt.Errorf(
 			"storage provider %d not found", providerID,
-		)
-	}
-	if p.TeamID != teamID {
-		return backupmodels.S3Credentials{}, fmt.Errorf(
-			"storage provider %d does not belong to team %s", providerID, teamID,
 		)
 	}
 	if p.Provider != backuptypes.StorageDriverS3 {
@@ -430,14 +497,13 @@ func (j *RunBackupJob) loadProviderS3Creds(
 			"storage provider %d is not an S3 driver", providerID,
 		)
 	}
-	raw, err := json.Marshal(p.GetCredentials())
-	if err != nil {
-		return backupmodels.S3Credentials{}, fmt.Errorf("encode provider credentials: %w", err)
-	}
+	credentials := p.GetCredentials()
+	raw, _ := json.Marshal(credentials)
 	var c backupmodels.S3Credentials
 	if err := json.Unmarshal(raw, &c); err != nil {
 		return backupmodels.S3Credentials{}, fmt.Errorf("decode S3 credentials: %w", err)
 	}
+	c.ApplyLegacyDefaults(credentials)
 	if c.Bucket == "" || c.Key == "" || c.Secret == "" {
 		return backupmodels.S3Credentials{},
 			fmt.Errorf("storage provider %d is missing S3 credentials", providerID)
@@ -454,14 +520,6 @@ func truncateForRun(s string, n int) string {
 	return s[:n] + "…"
 }
 
-// pruneRunsAndObjects mirrors the service-side helper in
-// services/backup_service.go — the prune contract has to hold on
-// both the manual and scheduled paths, and the jobs package can't
-// import services (cycle). Best-effort: failure here doesn't fail
-// the surrounding successful run.
-//
-// Deletes BOTH the run rows past Retention AND the corresponding
-// remote S3 objects so the bucket doesn't accumulate stale dumps.
 func (j *RunBackupJob) pruneRunsAndObjects(
 	ctx context.Context,
 	server *servermodels.Server,
@@ -510,12 +568,6 @@ func (j *RunBackupJob) pruneRunsAndObjects(
 	return nil
 }
 
-// dispatchSuccessNotification fires the per-config success
-// notification when the user opted in via NotifyOnSuccess. The
-// notification routes via the TaskRunnerDeps.Notifier (email + Slack
-// + Discord + Telegram per the team's configured channels). No-op if
-// the flag is off or no Notifier is wired (test runs, partial bring-
-// up). The team's enabled channels decide which transports fire.
 func (j *RunBackupJob) dispatchSuccessNotification(
 	ctx context.Context,
 	backup *models.DatabaseBackup,
@@ -525,6 +577,9 @@ func (j *RunBackupJob) dispatchSuccessNotification(
 	objectKey string,
 ) {
 	if !backup.NotifyOnSuccess {
+		return
+	}
+	if j.Deps.TaskRunnerDeps == nil {
 		return
 	}
 	notifier := j.Deps.TaskRunnerDeps.Notifier
@@ -551,10 +606,6 @@ func (j *RunBackupJob) dispatchSuccessNotification(
 	}
 }
 
-// dispatchFailureNotification fires the per-config failure
-// notification when the user opted in via NotifyOnFailure (default
-// true). Same routing as success; the error output is truncated for
-// readability by the notification's WithError helper.
 func (j *RunBackupJob) dispatchFailureNotification(
 	ctx context.Context,
 	backup *models.DatabaseBackup,
@@ -563,6 +614,9 @@ func (j *RunBackupJob) dispatchFailureNotification(
 	errOutput string,
 ) {
 	if !backup.NotifyOnFailure {
+		return
+	}
+	if j.Deps.TaskRunnerDeps == nil {
 		return
 	}
 	notifier := j.Deps.TaskRunnerDeps.Notifier
@@ -586,10 +640,6 @@ func (j *RunBackupJob) dispatchFailureNotification(
 	}
 }
 
-// lookupProjectName resolves a project name for notification copy.
-// Falls back to empty string on any error — the notification renders
-// "—" in that slot rather than crashing. Cheap query (PK on
-// projectID); we don't bother caching across notifications.
 func (j *RunBackupJob) lookupProjectName(ctx context.Context, teamID, projectID, serverID string) string {
 	if projectID == "" {
 		return ""
@@ -601,15 +651,16 @@ func (j *RunBackupJob) lookupProjectName(ctx context.Context, teamID, projectID,
 	return p.Name
 }
 
-// lookupStorageProviderLabel resolves a human label for the linked
-// storage_providers row. The notification body shows it so users can
-// see "uploaded to Contabo Storage" instead of a numeric ID.
 func (j *RunBackupJob) lookupStorageProviderLabel(ctx context.Context, providerID uint64, teamID string) string {
 	if j.Deps.BackupRepos == nil {
 		return ""
 	}
-	p, err := j.Deps.BackupRepos.StorageProvider().FindStorageProviderByID(ctx, providerID)
-	if err != nil || p == nil || p.TeamID != teamID {
+	p, err := j.Deps.BackupRepos.StorageProvider().FindStorageProviderByIDAndTeam(
+		ctx,
+		providerID,
+		teamID,
+	)
+	if err != nil || p == nil {
 		return ""
 	}
 	if p.Label == nil {
@@ -618,11 +669,6 @@ func (j *RunBackupJob) lookupStorageProviderLabel(ctx context.Context, providerI
 	return *p.Label
 }
 
-// notificationSource normalises the asynq payload Source field into
-// a human-friendly tag for the notification body. Empty defaults to
-// "schedule" because manual runs are dispatched via the service
-// (which doesn't currently hit this notification path); future
-// async-manual runs can pass "manual".
 func notificationSource(s string) string {
 	if s == "" {
 		return "schedule"

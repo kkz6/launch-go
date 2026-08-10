@@ -2,6 +2,7 @@ package repositories
 
 import (
 	"context"
+	"errors"
 
 	"gorm.io/gorm"
 
@@ -34,6 +35,127 @@ func (r *BackupJobRepository) FindBackupJobByID(ctx context.Context, id string) 
 		repository.Preload("Backup"),
 		repository.Preload("StorageProvider"),
 	)
+}
+
+// FindBackupJobForRun finds a scoped backup job without preloads.
+func (r *BackupJobRepository) FindBackupJobForRun(
+	ctx context.Context,
+	id, backupID, teamID string,
+) (*models.BackupJob, error) {
+	return repository.FindOne[models.BackupJob](ctx, r.DB,
+		repository.WithID(id),
+		repository.WithTeamID(teamID),
+		func(db *gorm.DB) *gorm.DB {
+			return db.Where("backup_id = ?", backupID)
+		},
+	)
+}
+
+// ClaimPendingBackupJobForRun atomically claims a scoped pending job.
+func (r *BackupJobRepository) ClaimPendingBackupJobForRun(
+	ctx context.Context,
+	id, backupID, teamID string,
+	allowRunning bool,
+) (*models.BackupJob, bool, error) {
+	result := r.DB.WithContext(ctx).
+		Model(&models.BackupJob{}).
+		Where("id = ? AND backup_id = ? AND team_id = ?", id, backupID, teamID).
+		Where("status = ?", backuptypes.BackupJobStatusPending).
+		Update("status", backuptypes.BackupJobStatusRunning)
+	if result.Error != nil {
+		return nil, false, result.Error
+	}
+	if result.RowsAffected != 1 {
+		if !allowRunning {
+			return nil, false, nil
+		}
+
+		var running models.BackupJob
+		err := r.DB.WithContext(ctx).
+			Where("id = ? AND backup_id = ? AND team_id = ?", id, backupID, teamID).
+			Where("status = ?", backuptypes.BackupJobStatusRunning).
+			First(&running).Error
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, false, nil
+		}
+		if err != nil {
+			return nil, false, err
+		}
+		return &running, true, nil
+	}
+
+	var job models.BackupJob
+	if err := r.DB.WithContext(ctx).
+		Where("id = ? AND backup_id = ? AND team_id = ?", id, backupID, teamID).
+		First(&job).Error; err != nil {
+		return nil, true, err
+	}
+	return &job, true, nil
+}
+
+// MarkBackupJobRunningForRun attaches a task to an active job.
+func (r *BackupJobRepository) MarkBackupJobRunningForRun(
+	ctx context.Context,
+	id, backupID, teamID, taskID string,
+) (bool, error) {
+	result := r.DB.WithContext(ctx).
+		Model(&models.BackupJob{}).
+		Where("id = ? AND backup_id = ? AND team_id = ?", id, backupID, teamID).
+		Where("status IN ?", []backuptypes.BackupJobStatus{
+			backuptypes.BackupJobStatusPending,
+			backuptypes.BackupJobStatusRunning,
+		}).
+		Updates(map[string]any{
+			"status":  backuptypes.BackupJobStatusRunning,
+			"task_id": taskID,
+		})
+	return result.RowsAffected == 1, result.Error
+}
+
+// MarkBackupJobFinishedForRun completes a running job.
+func (r *BackupJobRepository) MarkBackupJobFinishedForRun(
+	ctx context.Context,
+	id, backupID, teamID string,
+	size *int,
+	taskID *string,
+) (bool, error) {
+	updates := map[string]any{"status": backuptypes.BackupJobStatusFinished}
+	if size != nil {
+		updates["size"] = *size
+	}
+	if taskID != nil {
+		updates["task_id"] = *taskID
+	}
+	result := r.DB.WithContext(ctx).
+		Model(&models.BackupJob{}).
+		Where("id = ? AND backup_id = ? AND team_id = ?", id, backupID, teamID).
+		Where("status = ?", backuptypes.BackupJobStatusRunning).
+		Updates(updates)
+	return result.RowsAffected == 1, result.Error
+}
+
+// MarkBackupJobFailedForRun fails an active scoped job.
+func (r *BackupJobRepository) MarkBackupJobFailedForRun(
+	ctx context.Context,
+	id, backupID, teamID, message string,
+	taskID *string,
+) (bool, error) {
+	updates := map[string]any{
+		"status": backuptypes.BackupJobStatusFailed,
+		"error":  message,
+	}
+	if taskID != nil {
+		updates["task_id"] = *taskID
+	}
+	result := r.DB.WithContext(ctx).
+		Model(&models.BackupJob{}).
+		Where("id = ? AND backup_id = ? AND team_id = ?", id, backupID, teamID).
+		Where("status IN ?", []backuptypes.BackupJobStatus{
+			backuptypes.BackupJobStatusPending,
+			backuptypes.BackupJobStatusRunning,
+		}).
+		Updates(updates)
+	return result.RowsAffected == 1, result.Error
 }
 
 // FindBackupJobsByBackupID finds all jobs for a backup
