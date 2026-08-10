@@ -12,6 +12,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/backup/dto"
 	"github.com/kkz6/launch-go/internal/modules/backup/jobs"
 	"github.com/kkz6/launch-go/internal/modules/backup/models"
+	backuptypes "github.com/kkz6/launch-go/internal/modules/backup/types"
 	"github.com/kkz6/launch-go/internal/pkg/launch/activity"
 )
 
@@ -25,14 +26,17 @@ const defaultBackupRetention = 10
 //	CreateNested:       CreateBackup(ctx, serverID, teamID, userID, req)
 //	UpdateNested:       UpdateBackup(ctx, id, serverID, teamID, userID, req)
 //	DeleteNested:       DeleteBackup(ctx, id, serverID, teamID, userID)
-//	ActionItemNested:   RunBackup(ctx, id, serverID, teamID, userID)
+//	Run action:         RunBackup(ctx, id, serverID, teamID, userID)
 type BackupService struct {
 	*BaseService
+	dispatchManualBackup func(string, string, string, string, *string) error
 }
 
 // NewBackupService creates a new backup service.
 func NewBackupService(deps *ServiceDeps) *BackupService {
-	return &BackupService{BaseService: NewBaseService(deps)}
+	service := &BackupService{BaseService: NewBaseService(deps)}
+	service.dispatchManualBackup = service.dispatchRunManualBackup
+	return service
 }
 
 // CreateBackup creates a new backup configuration and returns the response DTO.
@@ -56,6 +60,9 @@ func (s *BackupService) buildAndDispatchBackup(ctx context.Context, serverID, te
 	storageProviderID, err := strconv.ParseUint(req.StorageProviderID, 10, 64)
 	if err != nil {
 		return nil, fmt.Errorf("invalid storage provider ID: %w", err)
+	}
+	if err := s.validateS3StorageProvider(ctx, storageProviderID, teamID); err != nil {
+		return nil, err
 	}
 
 	retention := req.Retention
@@ -109,6 +116,9 @@ func (s *BackupService) UpdateBackup(ctx context.Context, id, serverID, teamID, 
 	storageProviderID, err := strconv.ParseUint(req.StorageProviderID, 10, 64)
 	if err != nil {
 		return dto.BackupResponse{}, fmt.Errorf("invalid storage provider ID: %w", err)
+	}
+	if err := s.validateS3StorageProvider(ctx, storageProviderID, teamID); err != nil {
+		return dto.BackupResponse{}, err
 	}
 
 	backup.CronExpression = req.CronExpression
@@ -178,16 +188,90 @@ func (s *BackupService) ListBackups(ctx context.Context, serverID, teamID string
 	return out, nil
 }
 
-// RunBackup triggers a manual backup run. Signature matches ActionItemNestedFunc.
-func (s *BackupService) RunBackup(ctx context.Context, id, serverID, teamID, userID string) error {
-	_ = userID
-	backup, err := s.Repos().Backup().FindBackupByIDAndServerAndTeam(ctx, id, serverID, teamID)
+// RunBackup creates and queues a manual backup run.
+func (s *BackupService) RunBackup(
+	ctx context.Context,
+	id, serverID, teamID, userID string,
+) (dto.BackupJobResponse, error) {
+	backup, err := s.Repos().Backup().FindBackupForRun(ctx, id, serverID, teamID)
+	if err != nil {
+		return dto.BackupJobResponse{}, err
+	}
+
+	job := &models.BackupJob{
+		Status:            backuptypes.BackupJobStatusPending,
+		BackupID:          backup.ID,
+		StorageProviderID: backup.StorageProviderID,
+	}
+	job.TeamID = teamID
+	if err := s.Repos().BackupJob().CreateBackupJob(ctx, job); err != nil {
+		return dto.BackupJobResponse{}, fmt.Errorf("create manual backup run: %w", err)
+	}
+
+	if err := s.validateS3StorageProvider(ctx, backup.StorageProviderID, teamID); err != nil {
+		message := "storage provider validation failed: " + err.Error()
+		s.recordManualBackupFailure(ctx, job, backup, serverID, teamID, message)
+		return dto.BackupJobResponse{}, fmt.Errorf("validate storage provider: %w", err)
+	}
+
+	if err := s.dispatchManualBackup(serverID, backup.ID, teamID, job.ID, &userID); err != nil {
+		message := "failed to enqueue backup job: " + err.Error()
+		s.recordManualBackupFailure(ctx, job, backup, serverID, teamID, message)
+		return dto.BackupJobResponse{}, fmt.Errorf("queue manual backup: %w", err)
+	}
+	s.BroadcastToTeam(teamID, "backup.run.queued", map[string]any{
+		"backup_id": backup.ID,
+		"server_id": serverID,
+		"team_id":   teamID,
+		"job_id":    job.ID,
+		"status":    string(backuptypes.BackupJobStatusPending),
+	})
+	s.Logger.Info().Str("backup_id", id).Str("server_id", serverID).Str("job_id", job.ID).
+		Msg("Manual backup queued for execution")
+	return dto.ToBackupJobResponse(job), nil
+}
+
+func (s *BackupService) recordManualBackupFailure(
+	ctx context.Context,
+	job *models.BackupJob,
+	backup *models.Backup,
+	serverID, teamID, message string,
+) {
+	persisted, updateErr := s.Repos().BackupJob().MarkBackupJobFailedForRun(
+		ctx,
+		job.ID,
+		backup.ID,
+		teamID,
+		message,
+		nil,
+	)
+	if updateErr != nil {
+		s.LogError(updateErr, "failed to mark manual backup failure", "job_id", job.ID)
+		return
+	}
+	if !persisted {
+		return
+	}
+
+	job.Status = backuptypes.BackupJobStatusFailed
+	job.Error = &message
+	s.BroadcastToTeam(teamID, "backup.run.failed", map[string]any{
+		"backup_id": backup.ID,
+		"server_id": serverID,
+		"team_id":   teamID,
+		"job_id":    job.ID,
+		"error":     message,
+	})
+}
+
+func (s *BackupService) validateS3StorageProvider(ctx context.Context, providerID uint64, teamID string) error {
+	driver, err := s.Repos().StorageProvider().FindStorageProviderDriverByIDAndTeam(ctx, providerID, teamID)
 	if err != nil {
 		return err
 	}
-
-	s.dispatchRunManualBackup(serverID, backup.ID)
-	s.Logger.Info().Str("backup_id", id).Str("server_id", serverID).Msg("Manual backup queued for execution")
+	if driver != backuptypes.StorageDriverS3 {
+		return ErrInvalidStorageDriver
+	}
 	return nil
 }
 
@@ -225,8 +309,11 @@ func (s *BackupService) dispatchDeleteBackup(serverID, backupID string) {
 	}, "server_id", serverID, "backup_id", backupID)
 }
 
-func (s *BackupService) dispatchRunManualBackup(serverID, backupID string) {
-	s.DispatchTask("RunManualBackup", func() (*asynq.Task, error) {
-		return jobs.NewRunManualBackupTask(serverID, backupID, nil)
-	}, "server_id", serverID, "backup_id", backupID)
+func (s *BackupService) dispatchRunManualBackup(
+	serverID, backupID, teamID, jobID string,
+	userID *string,
+) error {
+	return s.MustDispatch(func() (*asynq.Task, error) {
+		return jobs.NewRunManualBackupTask(serverID, backupID, teamID, jobID, userID)
+	})
 }

@@ -1,6 +1,8 @@
 package backup
 
 import (
+	"context"
+
 	gofiber "github.com/gofiber/fiber/v2"
 
 	"github.com/kkz6/launch-go/internal/middleware"
@@ -8,6 +10,22 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/backup/handlers"
 	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 )
+
+type runBackupFunc func(context.Context, string, string, string, string) (dto.BackupJobResponse, error)
+
+func runBackupHandler(run runBackupFunc) gofiber.Handler {
+	return func(c *gofiber.Ctx) error {
+		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
+		if err != nil {
+			return err
+		}
+		job, err := run(c.Context(), c.Params("id"), c.Params("serverId"), teamID, userID)
+		if err != nil {
+			return err
+		}
+		return fiberutil.Created(c, "Backup run started", job)
+	}
+}
 
 // RegisterRoutes registers the backup module routes. Server-scoped backup
 // CRUD goes through the framework helpers; storage-provider routes use a
@@ -25,7 +43,7 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 	backups.Get("/:id", fiberutil.ShowNested("serverId", "id", "Backup retrieved", svc.Backup().GetBackup))
 	backups.Put("/:id", middleware.Can("backup.update"), fiberutil.UpdateNested[dto.UpdateBackupRequest]("serverId", "id", "Backup updated successfully", svc.Backup().UpdateBackup))
 	backups.Delete("/:id", middleware.Can("backup.delete"), fiberutil.DeleteNested("serverId", "id", svc.Backup().DeleteBackup))
-	backups.Post("/:id/run", middleware.Can("backup.run"), fiberutil.ActionItemNested("serverId", "id", "Backup queued for execution", svc.Backup().RunBackup))
+	backups.Post("/:id/run", middleware.Can("backup.run"), runBackupHandler(svc.Backup().RunBackup))
 
 	// Team-scoped storage providers. List / dropdown / show fit the
 	// framework helpers; connect / update / delete have unusual path

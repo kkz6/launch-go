@@ -16,7 +16,7 @@ type BackupService interface {
 	GetBackup(ctx context.Context, id string) (*models.Backup, error)
 	GetBackupByIDAndServer(ctx context.Context, id, serverID string) (*models.Backup, error)
 	ListBackupsByServer(ctx context.Context, serverID string) ([]models.Backup, error)
-	RunBackup(ctx context.Context, id, serverID string) error
+	RunBackup(ctx context.Context, id, serverID, teamID, userID string) (dto.BackupJobResponse, error)
 	MarkBackupInstalled(ctx context.Context, id string) error
 	MarkBackupInstallationFailed(ctx context.Context, id string) error
 }

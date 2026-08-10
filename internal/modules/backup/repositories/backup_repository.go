@@ -77,6 +77,15 @@ func (r *BackupRepository) FindBackupByIDAndServerAndTeam(ctx context.Context, i
 	)
 }
 
+// FindBackupForRun finds a scoped backup without preloads.
+func (r *BackupRepository) FindBackupForRun(ctx context.Context, id, serverID, teamID string) (*models.Backup, error) {
+	return repository.FindOne[models.Backup](ctx, r.DB,
+		repository.WithID(id),
+		repository.WithServerID(serverID),
+		repository.WithTeamID(teamID),
+	)
+}
+
 // FindBackupsByServerID finds all backups for a server with preloads.
 func (r *BackupRepository) FindBackupsByServerID(ctx context.Context, serverID string) ([]models.Backup, error) {
 	return repository.FindAll[models.Backup](ctx, r.DB,

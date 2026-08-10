@@ -1,6 +1,8 @@
 package models
 
 import (
+	"net/url"
+	"strings"
 	"time"
 
 	backuptypes "github.com/kkz6/launch-go/internal/modules/backup/types"
@@ -54,6 +56,35 @@ type S3Credentials struct {
 	Bucket         string `json:"bucket"`
 	Path           string `json:"path,omitempty"`
 	ForcePathStyle bool   `json:"force_path_style,omitempty"`
+}
+
+// ApplyLegacyDefaults enables path-style access for legacy non-AWS providers.
+func (c *S3Credentials) ApplyLegacyDefaults(rawCredentials map[string]any) {
+	if c == nil || strings.TrimSpace(c.Endpoint) == "" {
+		return
+	}
+	if _, configured := rawCredentials["force_path_style"]; configured {
+		return
+	}
+	if !isAWSEndpoint(c.Endpoint) {
+		c.ForcePathStyle = true
+	}
+}
+
+func isAWSEndpoint(endpoint string) bool {
+	normalized := strings.TrimSpace(endpoint)
+	if !strings.Contains(normalized, "://") {
+		normalized = "https://" + normalized
+	}
+	parsed, err := url.Parse(normalized)
+	if err != nil {
+		return false
+	}
+	host := strings.TrimSuffix(strings.ToLower(parsed.Hostname()), ".")
+	return host == "amazonaws.com" ||
+		strings.HasSuffix(host, ".amazonaws.com") ||
+		host == "amazonaws.com.cn" ||
+		strings.HasSuffix(host, ".amazonaws.com.cn")
 }
 
 // DropboxCredentials represents Dropbox-specific credentials

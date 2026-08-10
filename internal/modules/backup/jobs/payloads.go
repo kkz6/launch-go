@@ -8,6 +8,14 @@ type BackupJobPayload struct {
 	UserID   *string `json:"user_id,omitempty"`
 }
 
-// Type aliases for clarity
+// InstallBackupPayload is the payload for backup installation jobs.
 type InstallBackupPayload = BackupJobPayload
-type RunManualBackupPayload = BackupJobPayload
+
+// RunManualBackupPayload identifies a manual backup run.
+type RunManualBackupPayload struct {
+	ServerID string  `json:"server_id"`
+	BackupID string  `json:"backup_id"`
+	TeamID   string  `json:"team_id,omitempty"`
+	JobID    string  `json:"job_id,omitempty"`
+	UserID   *string `json:"user_id,omitempty"`
+}

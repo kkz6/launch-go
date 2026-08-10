@@ -1,8 +1,11 @@
 package handlers
 
 import (
+	"encoding/json"
 	"fmt"
+	"io"
 	"sync"
+	"time"
 
 	"github.com/gofiber/contrib/websocket"
 	"github.com/gofiber/fiber/v2"
@@ -16,18 +19,76 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/site/support"
 	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 	launchcache "github.com/kkz6/launch-go/internal/pkg/launch/cache"
+	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
+)
+
+type logStreamSocket interface {
+	WriteMessage(int, []byte) error
+	ReadMessage() (int, []byte, error)
+	SetWriteDeadline(time.Time) error
+	Close() error
+}
+
+type logStreamSession interface {
+	StdoutPipe() (io.Reader, error)
+	Start(string) error
+	Wait() error
+	Signal(ssh.Signal) error
+	Close() error
+}
+
+type logStreamClient interface {
+	NewSession() (logStreamSession, error)
+	Close() error
+}
+
+type taskrunnerLogStreamClient struct {
+	client *taskrunner.SSHClient
+}
+
+func (c *taskrunnerLogStreamClient) NewSession() (logStreamSession, error) {
+	return c.client.NewSession()
+}
+
+func (c *taskrunnerLogStreamClient) Close() error {
+	return c.client.Close()
+}
+
+type logStreamDialer func(*taskrunner.Connection) (logStreamClient, error)
+
+type exitStatusError interface {
+	ExitStatus() int
+}
+
+const (
+	defaultLogStreamWriteTimeout    = 10 * time.Second
+	defaultLogStreamShutdownTimeout = 5 * time.Second
 )
 
 // LogsHandler handles WebSocket log streaming connections
 type LogsHandler struct {
 	Base
+	dialLogStream            logStreamDialer
+	logStreamWriteTimeout    time.Duration
+	logStreamShutdownTimeout time.Duration
 }
 
 // NewLogsHandler creates a new logs handler
 func NewLogsHandler(base Base) *LogsHandler {
 	return &LogsHandler{
-		Base: base.WithComponent("logs"),
+		Base:                     base.WithComponent("logs"),
+		dialLogStream:            defaultLogStreamDialer,
+		logStreamWriteTimeout:    defaultLogStreamWriteTimeout,
+		logStreamShutdownTimeout: defaultLogStreamShutdownTimeout,
 	}
+}
+
+func defaultLogStreamDialer(conn *taskrunner.Connection) (logStreamClient, error) {
+	client, err := conn.Dial()
+	if err != nil {
+		return nil, err
+	}
+	return &taskrunnerLogStreamClient{client: client}, nil
 }
 
 // NewLogsHandlerWithDeps creates a new logs handler with individual dependencies (legacy).
@@ -211,21 +272,21 @@ func (h *LogsHandler) getEntityLogPath(entity, entityID, serverID, logType strin
 	return "", fmt.Errorf("unknown entity type")
 }
 
-func (h *LogsHandler) streamTaskOutput(c *websocket.Conn, taskID, serverID string, tail int) {
+func (h *LogsHandler) streamTaskOutput(c logStreamSocket, taskID, serverID string, tail int) {
 	var task serverModels.Task
 	// Preload Server to get RootUsername for path calculation
 	if err := h.DB.Preload("Server").Where("id = ? AND server_id = ?", taskID, serverID).First(&task).Error; err != nil {
-		_ = SendErrorEvent(c, "Task not found")
-		c.Close()
+		_ = h.sendLogStreamErrorEvent(c, "Task not found")
+		_ = c.Close()
 		return
 	}
 
 	// If task is finished or failed, send the stored output and close
 	if task.Status == "finished" || task.Status == "failed" || task.Status == "timeout" {
 		if !task.Output.IsEmpty() {
-			c.WriteMessage(websocket.TextMessage, []byte(task.Output.String()))
+			_ = h.writeLogStreamMessage(c, []byte(task.Output.String()))
 		}
-		c.Close()
+		_ = c.Close()
 		return
 	}
 
@@ -240,62 +301,91 @@ func (h *LogsHandler) streamTaskOutput(c *websocket.Conn, taskID, serverID strin
 	)
 
 	// Stream logs via SSH (same as other entities)
-	h.streamLogs(c, task.Server, logFilePath, tail, "")
+	h.streamTaskLogs(c, task.Server, logFilePath, tail)
 }
 
-func (h *LogsHandler) streamLogs(c *websocket.Conn, server *serverModels.Server, logFilePath string, tail int, search string) {
+func buildTailCommand(logFilePath string, tail int, waitForFile bool) string {
+	quotedPath := shellQuote(logFilePath)
+	if !waitForFile {
+		return fmt.Sprintf("tail -n %d -f %s 2>&1", tail, quotedPath)
+	}
+
+	return fmt.Sprintf(
+		`attempt=0; while [ "$attempt" -lt 60 ] && [ ! -r %s ]; do attempt=$((attempt + 1)); sleep 0.5; done; if [ ! -r %s ]; then exit 42; fi; tail -n %d -f %s 2>&1`,
+		quotedPath,
+		quotedPath,
+		tail,
+		quotedPath,
+	)
+}
+
+func buildLogStreamCommand(logFilePath string, tail int, search string, waitForFile bool) string {
+	command := buildTailCommand(logFilePath, tail, waitForFile)
+	if search == "" {
+		return command
+	}
+
+	escapedSearch := ""
+	for _, ch := range search {
+		if ch == '\'' {
+			escapedSearch += "'\\''"
+		} else {
+			escapedSearch += string(ch)
+		}
+	}
+	return fmt.Sprintf("%s | grep --line-buffered -iF '%s'", command, escapedSearch)
+}
+
+func (h *LogsHandler) streamLogs(c logStreamSocket, server *serverModels.Server, logFilePath string, tail int, search string) {
+	h.streamLogsWithWait(c, server, logFilePath, tail, search, false)
+}
+
+func (h *LogsHandler) streamTaskLogs(c logStreamSocket, server *serverModels.Server, logFilePath string, tail int) {
+	h.streamLogsWithWait(c, server, logFilePath, tail, "", true)
+}
+
+func (h *LogsHandler) streamLogsWithWait(c logStreamSocket, server *serverModels.Server, logFilePath string, tail int, search string, waitForFile bool) {
 	// Get SSH connection config using the server's connection method
 	conn := server.ConnectionAsRoot()
 	if conn.Host == "" {
-		_ = SendErrorEvent(c, "Server has no public IP")
+		_ = h.sendLogStreamErrorEvent(c, "Server has no public IP")
 		return
 	}
 
 	if conn.PrivateKey == "" {
-		_ = SendErrorEvent(c, "No SSH key configured")
+		_ = h.sendLogStreamErrorEvent(c, "No SSH key configured")
 		return
 	}
 
 	// Create SSH client using taskrunner
-	sshClient, err := conn.Dial()
+	sshClient, err := h.dialLogStream(conn)
 	if err != nil {
 		h.LogError(err, "Failed to connect to SSH", "host", conn.Host, "port", conn.Port)
-		h.SendError(c, fmt.Sprintf("SSH connection failed: %s", err.Error()))
+		h.sendLogStreamError(c, fmt.Sprintf("SSH connection failed: %s", err.Error()))
 		return
 	}
-	defer sshClient.Close()
+	defer func() { _ = sshClient.Close() }()
 
 	// Create SSH session
 	session, err := sshClient.NewSession()
 	if err != nil {
 		h.LogError(err, "Failed to create SSH session")
-		h.SendError(c, "Failed to create session")
+		h.sendLogStreamError(c, "Failed to create session")
 		return
 	}
-	defer session.Close()
-
-	// Fail explicitly when the file is missing instead of leaving the client
-	// attached to a finished tail process with no terminal event.
-	quotedPath := shellQuote(logFilePath)
-	command := fmt.Sprintf("if [ ! -r %s ]; then exit 42; fi; tail -n %d -f %s 2>/dev/null", quotedPath, tail, quotedPath)
-
-	// Add grep filter if search is provided
-	if search != "" {
-		// Escape single quotes in search
-		escapedSearch := ""
-		for _, ch := range search {
-			if ch == '\'' {
-				escapedSearch += "'\\''"
-			} else {
-				escapedSearch += string(ch)
-			}
-		}
-		command = fmt.Sprintf("%s | grep --line-buffered -iF '%s'", command, escapedSearch)
-	}
+	command := buildLogStreamCommand(logFilePath, tail, search, waitForFile)
 
 	h.LogInfo("Executing log tail command", "command", command)
+	h.streamLogSession(c, session, command)
+}
 
-	// Get stdout pipe
+func (h *LogsHandler) streamLogSession(c logStreamSocket, session logStreamSession, command string) {
+	var closeSessionOnce sync.Once
+	closeSession := func() {
+		closeSessionOnce.Do(func() { _ = session.Close() })
+	}
+	defer closeSession()
+
 	stdout, err := session.StdoutPipe()
 	if err != nil {
 		h.LogError(err, "Failed to get stdout pipe")
@@ -305,7 +395,7 @@ func (h *LogsHandler) streamLogs(c *websocket.Conn, server *serverModels.Server,
 	// Start command
 	if err := session.Start(command); err != nil {
 		h.LogError(err, "Failed to start command")
-		h.SendError(c, "Failed to start log streaming")
+		h.sendLogStreamError(c, "Failed to start log streaming")
 		return
 	}
 
@@ -337,7 +427,7 @@ func (h *LogsHandler) streamLogs(c *websocket.Conn, server *serverModels.Server,
 					return
 				}
 				if n > 0 {
-					if err := c.WriteMessage(websocket.TextMessage, buf[:n]); err != nil {
+					if err := h.writeLogStreamMessage(c, buf[:n]); err != nil {
 						return
 					}
 				}
@@ -362,19 +452,62 @@ func (h *LogsHandler) streamLogs(c *websocket.Conn, server *serverModels.Server,
 	select {
 	case err := <-commandDone:
 		stop(false)
-		<-streamDone
-		if err != nil {
+		closeSession()
+		socketOpen := true
+		if _, stopped := waitForLogStream(streamDone, h.logStreamShutdownTimeout); !stopped {
+			socketOpen = false
+			_ = c.Close()
+			_, _ = waitForLogStream(streamDone, h.logStreamShutdownTimeout)
+		}
+		if err != nil && socketOpen {
 			message := "Log stream ended unexpectedly"
-			if exitErr, ok := err.(*ssh.ExitError); ok && exitErr.ExitStatus() == 42 {
+			if exitErr, ok := err.(exitStatusError); ok && exitErr.ExitStatus() == 42 {
 				message = "Task log file is not available on the server"
 			}
-			_ = SendErrorEvent(c, message)
+			_ = h.sendLogStreamErrorEvent(c, message)
 		}
 		_ = c.Close()
+		_, _ = waitForLogStream(clientDone, h.logStreamShutdownTimeout)
 	case <-clientDone:
 		stop(true)
+		closeSession()
+		if _, stopped := waitForLogStream(streamDone, h.logStreamShutdownTimeout); !stopped {
+			_ = c.Close()
+			_, _ = waitForLogStream(streamDone, h.logStreamShutdownTimeout)
+		}
+		_, _ = waitForLogStream(commandDone, h.logStreamShutdownTimeout)
 	}
-
-	session.Close()
 	h.LogInfo("Log streaming ended")
+}
+
+func (h *LogsHandler) sendLogStreamError(c logStreamSocket, message string) {
+	h.LogWarn(message)
+	_ = h.sendLogStreamErrorEvent(c, message)
+}
+
+func (h *LogsHandler) sendLogStreamErrorEvent(c logStreamSocket, message string) error {
+	payload, _ := json.Marshal(WSMessage{
+		Event: "error",
+		Data:  map[string]string{"message": message},
+	})
+	return h.writeLogStreamMessage(c, payload)
+}
+
+func (h *LogsHandler) writeLogStreamMessage(c logStreamSocket, payload []byte) error {
+	if err := c.SetWriteDeadline(time.Now().Add(h.logStreamWriteTimeout)); err != nil {
+		return err
+	}
+	return c.WriteMessage(websocket.TextMessage, payload)
+}
+
+func waitForLogStream[T any](done <-chan T, timeout time.Duration) (T, bool) {
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+	select {
+	case result := <-done:
+		return result, true
+	case <-timer.C:
+		var zero T
+		return zero, false
+	}
 }

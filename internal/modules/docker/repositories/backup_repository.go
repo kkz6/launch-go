@@ -3,6 +3,7 @@ package repositories
 import (
 	"context"
 	"errors"
+	"time"
 
 	"gorm.io/gorm"
 
@@ -50,6 +51,105 @@ type BackupRunRepository struct {
 
 func NewBackupRunRepository(db *gorm.DB) *BackupRunRepository {
 	return &BackupRunRepository{Base: repository.NewBase[models.DatabaseBackupRun](db)}
+}
+
+// ClaimTriggeredForBackup atomically claims a scoped triggered run.
+func (r *BackupRunRepository) ClaimTriggeredForBackup(
+	ctx context.Context,
+	id, backupID, teamID string,
+	startedAt time.Time,
+	allowRunning bool,
+) (*models.DatabaseBackupRun, bool, error) {
+	result := r.DB.WithContext(ctx).
+		Model(&models.DatabaseBackupRun{}).
+		Where("id = ? AND backup_id = ? AND status = ?", id, backupID, "triggered").
+		Where(`EXISTS (
+			SELECT 1 FROM docker_database_backups
+			WHERE docker_database_backups.id = docker_database_backup_runs.backup_id
+			  AND docker_database_backups.team_id = ?
+		)`, teamID).
+		Updates(map[string]any{
+			"status":     "running",
+			"started_at": startedAt,
+		})
+	if result.Error != nil {
+		return nil, false, result.Error
+	}
+	if result.RowsAffected != 1 {
+		if !allowRunning {
+			return nil, false, nil
+		}
+		var running models.DatabaseBackupRun
+		err := r.DB.WithContext(ctx).
+			Where("id = ? AND backup_id = ? AND status = ?", id, backupID, "running").
+			Where(`EXISTS (
+				SELECT 1 FROM docker_database_backups
+				WHERE docker_database_backups.id = docker_database_backup_runs.backup_id
+				  AND docker_database_backups.team_id = ?
+			)`, teamID).
+			First(&running).Error
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, false, nil
+		}
+		if err != nil {
+			return nil, false, err
+		}
+		return &running, true, nil
+	}
+
+	var run models.DatabaseBackupRun
+	if err := r.DB.WithContext(ctx).
+		Where("id = ? AND backup_id = ?", id, backupID).
+		First(&run).Error; err != nil {
+		return nil, true, err
+	}
+	return &run, true, nil
+}
+
+// AttachTaskForBackup links a task to an active scoped run.
+func (r *BackupRunRepository) AttachTaskForBackup(
+	ctx context.Context,
+	id, backupID, teamID, taskID string,
+) (bool, error) {
+	result := r.DB.WithContext(ctx).
+		Model(&models.DatabaseBackupRun{}).
+		Where("id = ? AND backup_id = ?", id, backupID).
+		Where("status IN ?", []string{"triggered", "running"}).
+		Where(`EXISTS (
+			SELECT 1 FROM docker_database_backups
+			WHERE docker_database_backups.id = docker_database_backup_runs.backup_id
+			  AND docker_database_backups.team_id = ?
+		)`, teamID).
+		Update("task_id", taskID)
+	return result.RowsAffected == 1, result.Error
+}
+
+// MarkTerminalForBackup completes an active scoped run.
+func (r *BackupRunRepository) MarkTerminalForBackup(
+	ctx context.Context,
+	id, backupID, teamID string,
+	fields map[string]any,
+) (bool, error) {
+	result := r.DB.WithContext(ctx).
+		Model(&models.DatabaseBackupRun{}).
+		Where("id = ? AND backup_id = ?", id, backupID).
+		Where("status IN ?", []string{"triggered", "running"}).
+		Where(`EXISTS (
+			SELECT 1 FROM docker_database_backups
+			WHERE docker_database_backups.id = docker_database_backup_runs.backup_id
+			  AND docker_database_backups.team_id = ?
+		)`, teamID).
+		Updates(fields)
+	return result.RowsAffected == 1, result.Error
+}
+
+// MarkFailedForBackup fails an active scoped run.
+func (r *BackupRunRepository) MarkFailedForBackup(
+	ctx context.Context,
+	id, backupID, teamID string,
+	fields map[string]any,
+) (bool, error) {
+	return r.MarkTerminalForBackup(ctx, id, backupID, teamID, fields)
 }
 
 func (r *BackupRunRepository) ListForBackup(

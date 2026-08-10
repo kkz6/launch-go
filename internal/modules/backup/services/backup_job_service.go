@@ -58,8 +58,7 @@ func (s *BackupJobService) CreateBackupJob(ctx context.Context, backupID, token 
 		return nil, fmt.Errorf("failed to create backup job: %w", err)
 	}
 
-	// Broadcast job status
-	s.broadcastBackupJobStatus(backup.ServerID, job)
+	s.broadcastBackupJobStatus(backup.ServerID, backup.TeamID, job)
 
 	s.Logger.Info().
 		Str("job_id", job.ID).
@@ -82,11 +81,16 @@ func (s *BackupJobService) ListBackupJobs(ctx context.Context, backupID string) 
 
 // Broadcast helpers
 
-func (s *BackupJobService) broadcastBackupJobStatus(serverID string, job *models.BackupJob) {
-	s.BroadcastToServer(serverID, "backup.job.status", map[string]interface{}{
+func (s *BackupJobService) broadcastBackupJobStatus(serverID, teamID string, job *models.BackupJob) {
+	payload := map[string]interface{}{
 		"job_id":    job.ID,
 		"backup_id": job.BackupID,
+		"server_id": serverID,
+		"team_id":   teamID,
 		"status":    string(job.Status),
 		"size":      job.Size,
-	})
+		"error":     job.Error,
+	}
+	s.BroadcastToServer(serverID, "backup.job.status", payload)
+	s.BroadcastToTeam(teamID, "backup.job.status", payload)
 }

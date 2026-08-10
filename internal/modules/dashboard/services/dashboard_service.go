@@ -23,8 +23,9 @@ import (
 )
 
 const (
-	maxServers        = 8
-	maxRecentActivity = 6
+	maxServers                  = 8
+	maxRecentActivity           = 6
+	failedBackupActionRetention = 30 * time.Minute
 )
 
 // Repositories holds all repositories needed by the dashboard service
@@ -77,15 +78,16 @@ func (s *DashboardService) GetDashboard(ctx context.Context, teamID string) (*dt
 // work rather than a history.
 const failedActionRetention = 30 * time.Minute
 
-// ActiveActions combines active deployments, SSH commands, and tracked server
-// tasks. They remain separate queries because their status vocabularies and
-// target relationships differ.
+// ActiveActions returns current deployments, tasks, commands, and backup runs for a team.
 func (s *DashboardService) ActiveActions(ctx context.Context, teamID string) ([]dto.ActiveAction, error) {
 	siteStatuses := []string{"pending", "installing"}
 	dockerStatuses := []string{"pending", "building", "deploying", "running"}
 	commandStatuses := []string{"pending", "running"}
 	taskStatuses := []string{"pending", "running"}
 	failedTaskStatuses := []string{"failed", "timeout"}
+	backupStatuses := []string{"pending", "running"}
+	databaseBackupStatuses := []string{"triggered", "running"}
+	failureCutoff := time.Now().UTC().Add(-failedBackupActionRetention)
 
 	var actions []dto.ActiveAction
 	if err := s.db.WithContext(ctx).Raw(`
@@ -168,6 +170,65 @@ func (s *DashboardService) ActiveActions(ctx context.Context, teamID string) ([]
 		return nil, err
 	}
 	actions = append(actions, taskActions...)
+
+	var serverBackupActions []dto.ActiveAction
+	if err := s.db.WithContext(ctx).Raw(`
+		SELECT jobs.id, 'server_backup' AS kind, jobs.status,
+		       servers.name AS label, COALESCE(jobs.error, '') AS description,
+		       backups.server_id, '' AS project_id,
+		       'server' AS target_type, backups.server_id AS target_id,
+		       jobs.task_id, jobs.created_at AS started_at, jobs.created_at
+		FROM backup_jobs jobs
+		JOIN backups ON backups.id = jobs.backup_id
+		JOIN servers ON servers.id = backups.server_id
+		WHERE jobs.team_id = ?
+		  AND backups.team_id = ?
+		  AND servers.team_id = ?
+		  AND (
+		      jobs.status IN ?
+		      OR (
+		          jobs.status = 'failed'
+		          AND COALESCE(jobs.updated_at, jobs.created_at) >= ?
+		      )
+		  )
+	`, teamID, teamID, teamID, backupStatuses, failureCutoff).
+		Scan(&serverBackupActions).Error; err != nil {
+		return nil, err
+	}
+	actions = append(actions, serverBackupActions...)
+
+	var databaseBackupActions []dto.ActiveAction
+	if err := s.db.WithContext(ctx).Raw(`
+		SELECT runs.id, 'database_backup' AS kind,
+		       CASE WHEN runs.status = 'triggered' THEN 'pending' ELSE runs.status END AS status,
+		       databases.name AS label, COALESCE(runs.error, '') AS description,
+		       databases.server_id, projects.id AS project_id,
+		       'database' AS target_type, databases.id AS target_id,
+		       runs.task_id, runs.started_at,
+		       runs.created_at
+		FROM docker_database_backup_runs runs
+		JOIN docker_database_backups backups ON backups.id = runs.backup_id
+		JOIN docker_databases databases ON databases.id = backups.database_id
+		JOIN docker_projects projects
+		  ON projects.id = databases.project_id
+		 AND projects.server_id = databases.server_id
+		JOIN servers ON servers.id = databases.server_id
+		WHERE backups.team_id = ?
+		  AND databases.team_id = ?
+		  AND projects.team_id = ?
+		  AND servers.team_id = ?
+		  AND (
+		      runs.status IN ?
+		      OR (
+		          runs.status = 'failed'
+		          AND COALESCE(runs.finished_at, runs.updated_at, runs.created_at) >= ?
+		      )
+		  )
+	`, teamID, teamID, teamID, teamID, databaseBackupStatuses, failureCutoff).
+		Scan(&databaseBackupActions).Error; err != nil {
+		return nil, err
+	}
+	actions = append(actions, databaseBackupActions...)
 
 	sort.Slice(actions, func(i, j int) bool { return actions[i].CreatedAt.After(actions[j].CreatedAt) })
 	return actions, nil

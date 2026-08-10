@@ -23,13 +23,13 @@ func NewAgentConfigService(deps *ServiceDeps) *AgentConfigService {
 
 // GetAgentBackupConfig gets the complete backup configuration for the agent
 func (s *AgentConfigService) GetAgentBackupConfig(ctx context.Context, backupID, webhookBaseURL string) (*dto.AgentBackupConfig, error) {
-	backup, err := s.Repos().Backup().FindBackupByID(ctx, backupID)
+	backup, err := s.Repos().Backup().FindByID(ctx, backupID)
 	if err != nil {
 		return nil, err
 	}
 
 	// Get storage provider config
-	storageConfig, err := s.Services().StorageProvider().GetStorageProviderConfig(ctx, backup.StorageProviderID)
+	storageConfig, err := s.Services().StorageProvider().GetStorageProviderConfig(ctx, backup.StorageProviderID, backup.TeamID)
 	if err != nil {
 		// Log error but continue with empty config
 		s.Logger.Error().Err(err).Msg("Failed to get storage provider config")
