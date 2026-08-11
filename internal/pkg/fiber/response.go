@@ -107,6 +107,7 @@ func HandleError(c *fiber.Ctx, err error) error {
 		message = e.Message
 	}
 
+	CaptureServerError(c, err)
 	return Error(c, code, message)
 }
 
@@ -116,6 +117,8 @@ func HandleErrorOrInternal(c *fiber.Ctx, err error, message string) error {
 	if err == nil {
 		return nil
 	}
+
+	CaptureServerError(c, err)
 
 	var e *fiber.Error
 	if errors.As(err, &e) {

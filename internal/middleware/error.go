@@ -3,10 +3,8 @@ package middleware
 import (
 	"errors"
 
-	sentryfiber "github.com/getsentry/sentry-go/fiber"
 	"github.com/gofiber/fiber/v2"
 
-	"github.com/kkz6/launch-go/internal/pkg/apperror"
 	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 )
 
@@ -24,36 +22,7 @@ func ErrorHandler(c *fiber.Ctx, err error) error {
 		err = errors.New("nil error reached global handler")
 	}
 
-	captureIfServerError(c, err)
+	fiberutil.CaptureServerError(c, err)
 
 	return baseErrorHandler(c, err)
-}
-
-// captureIfServerError forwards 5xx errors to Sentry when the integration is
-// enabled. Determines server-error-ness from the typed error rather than the
-// response status — by the time the response is written, we'd have lost the
-// chance to capture.
-func captureIfServerError(c *fiber.Ctx, err error) {
-	hub := sentryfiber.GetHubFromContext(c)
-	if hub == nil {
-		return
-	}
-
-	if appErr := apperror.As(err); appErr != nil {
-		if appErr.HTTPStatus >= 500 {
-			hub.CaptureException(err)
-		}
-		return
-	}
-
-	var fiberErr *fiber.Error
-	if errors.As(err, &fiberErr) {
-		if fiberErr.Code >= 500 {
-			hub.CaptureException(err)
-		}
-		return
-	}
-
-	// Plain errors are treated as 500.
-	hub.CaptureException(err)
 }
