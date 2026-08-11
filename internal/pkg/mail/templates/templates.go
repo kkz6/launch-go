@@ -3,6 +3,7 @@ package templates
 import (
 	"bytes"
 	"html/template"
+	"strings"
 
 	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/extension"
@@ -11,17 +12,20 @@ import (
 
 // EmailBuilder builds HTML emails using a fluent interface
 type EmailBuilder struct {
-	appName    string
-	appURL     string
-	greeting   string
-	intros     []string
-	content    string
-	actions    []Action
-	panels     []Panel
-	tables     []Table
-	outros     []string
-	subcopy    string
-	footerText string
+	appName         string
+	appURL          string
+	preheader       string
+	greeting        string
+	intros          []string
+	content         string
+	renderedContent template.HTML
+	layoutVariant   string
+	actions         []Action
+	panels          []Panel
+	tables          []Table
+	outros          []string
+	subcopy         string
+	footerText      string
 }
 
 // Action represents a call-to-action button
@@ -57,6 +61,12 @@ func (b *EmailBuilder) WithGreeting(greeting string) *EmailBuilder {
 	return b
 }
 
+// WithPreheader sets the hidden inbox preview text shown by supporting clients.
+func (b *EmailBuilder) WithPreheader(preheader string) *EmailBuilder {
+	b.preheader = preheader
+	return b
+}
+
 // WithIntro adds an intro paragraph
 func (b *EmailBuilder) WithIntro(text string) *EmailBuilder {
 	b.intros = append(b.intros, text)
@@ -66,6 +76,23 @@ func (b *EmailBuilder) WithIntro(text string) *EmailBuilder {
 // WithMarkdownContent sets markdown content that will be rendered as HTML
 func (b *EmailBuilder) WithMarkdownContent(markdown string) *EmailBuilder {
 	b.content = markdown
+	b.renderedContent = ""
+	return b
+}
+
+// withRenderedContent sets content that was already rendered by html/template.
+// It stays private so callers cannot bypass contextual escaping with arbitrary HTML.
+func (b *EmailBuilder) withRenderedContent(content template.HTML) *EmailBuilder {
+	b.renderedContent = content
+	b.content = ""
+	return b
+}
+
+// withLayoutVariant selects a private shared-shell treatment for a template.
+// Keeping this private prevents callers from coupling arbitrary emails to
+// internal layout details.
+func (b *EmailBuilder) withLayoutVariant(variant string) *EmailBuilder {
+	b.layoutVariant = variant
 	return b
 }
 
@@ -111,17 +138,20 @@ func (b *EmailBuilder) WithFooter(text string) *EmailBuilder {
 // Build generates the HTML email
 func (b *EmailBuilder) Build() (string, error) {
 	data := templateData{
-		AppName:    b.appName,
-		AppURL:     b.appURL,
-		Greeting:   b.greeting,
-		Intros:     b.buildIntros(),
-		Content:    template.HTML(renderMarkdown(b.content)),
-		Actions:    b.actions,
-		Panels:     b.buildPanels(),
-		Tables:     b.tables,
-		Outros:     b.buildOutros(),
-		Subcopy:    b.subcopy,
-		FooterText: b.footerText,
+		AppName:       b.appName,
+		BrandName:     emailBrandName(b.appName),
+		AppURL:        b.appURL,
+		LayoutVariant: b.layoutVariant,
+		Preheader:     b.preheader,
+		Greeting:      b.greeting,
+		Intros:        b.buildIntros(),
+		Content:       b.buildContent(),
+		Actions:       b.actions,
+		Panels:        b.buildPanels(),
+		Tables:        b.tables,
+		Outros:        b.buildOutros(),
+		Subcopy:       b.subcopy,
+		FooterText:    b.footerText,
 	}
 
 	tmpl, err := template.New("email").Parse(baseLayout)
@@ -135,6 +165,14 @@ func (b *EmailBuilder) Build() (string, error) {
 	}
 
 	return buf.String(), nil
+}
+
+func (b *EmailBuilder) buildContent() template.HTML {
+	if b.renderedContent != "" {
+		return b.renderedContent
+	}
+
+	return template.HTML(renderMarkdown(b.content))
 }
 
 // BuildPlainText generates a plain text version of the email
@@ -197,17 +235,29 @@ func (b *EmailBuilder) buildPanels() []template.HTML {
 }
 
 type templateData struct {
-	AppName    string
-	AppURL     string
-	Greeting   string
-	Intros     []template.HTML
-	Content    template.HTML
-	Actions    []Action
-	Panels     []template.HTML
-	Tables     []Table
-	Outros     []template.HTML
-	Subcopy    string
-	FooterText string
+	AppName       string
+	BrandName     string
+	AppURL        string
+	LayoutVariant string
+	Preheader     string
+	Greeting      string
+	Intros        []template.HTML
+	Content       template.HTML
+	Actions       []Action
+	Panels        []template.HTML
+	Tables        []Table
+	Outros        []template.HTML
+	Subcopy       string
+	FooterText    string
+}
+
+func emailBrandName(appName string) string {
+	name := strings.TrimSpace(appName)
+	if name == "" || strings.EqualFold(name, "launch") {
+		return "launchctl"
+	}
+
+	return name
 }
 
 var md = goldmark.New(

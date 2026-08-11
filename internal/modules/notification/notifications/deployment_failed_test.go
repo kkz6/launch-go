@@ -151,7 +151,7 @@ func TestDeploymentFailedNotification_ToEmail(t *testing.T) {
 	email := notif.ToEmail()
 
 	require.NotNil(t, email)
-	assert.Contains(t, email.Subject, "Failed")
+	assert.Equal(t, "Deployment failed: mysite.com", email.Subject)
 	assert.Contains(t, email.Body, "mysite.com")
 	assert.Contains(t, email.Body, "my-server")
 	assert.Contains(t, email.Body, "abc123d")

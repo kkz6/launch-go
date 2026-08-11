@@ -48,59 +48,6 @@ func ServerProvisionedEmail(serverName, serverIP, serverUsername, dashboardURL s
 	return html, builder.BuildPlainText(), nil
 }
 
-// DeploymentFailedEmail creates an HTML email for deployment failures
-func DeploymentFailedEmail(siteAddress, serverName, statusLabel, gitHash, commitMessage, commitAuthor, triggeredBy string, deploymentTime time.Time, output string, siteURL string) (htmlContent string, plainText string, err error) {
-	builder := NewEmail().
-		WithGreeting(fmt.Sprintf("Deployment %s", statusLabel))
-
-	intro := fmt.Sprintf("Deployment **%s** for site **%s** on server **%s**.", statusLabel, siteAddress, serverName)
-	builder.WithIntro(intro)
-
-	// Build details panel
-	var details string
-	if gitHash != "" {
-		shortHash := gitHash
-		if len(shortHash) > 7 {
-			shortHash = shortHash[:7]
-		}
-		details += fmt.Sprintf("**Commit:** `%s`\n\n", shortHash)
-	}
-
-	if commitMessage != "" {
-		details += fmt.Sprintf("**Commit Message:** %s\n\n", commitMessage)
-	}
-
-	if commitAuthor != "" {
-		details += fmt.Sprintf("**Author:** %s\n\n", commitAuthor)
-	}
-
-	if triggeredBy != "" {
-		details += fmt.Sprintf("**Triggered by:** %s\n\n", triggeredBy)
-	}
-
-	details += fmt.Sprintf("**Time:** %s", deploymentTime.Format(time.RFC1123))
-
-	if details != "" {
-		builder.WithPanel(details)
-	}
-
-	if output != "" {
-		builder.WithIntro("**Last lines of output:**")
-		builder.WithPanel("```\n" + output + "\n```")
-	}
-
-	if siteURL != "" {
-		builder.WithAction("View Site", siteURL, "primary")
-	}
-
-	html, err := builder.Build()
-	if err != nil {
-		return "", "", err
-	}
-
-	return html, builder.BuildPlainText(), nil
-}
-
 // TeamInvitationEmail creates an HTML email for team invitations
 func TeamInvitationEmail(teamName, acceptURL, registerURL string, hasRegistration bool) (htmlContent string, plainText string, err error) {
 	builder := NewEmail().

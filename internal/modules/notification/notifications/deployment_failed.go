@@ -2,6 +2,7 @@ package notifications
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/kkz6/launch-go/internal/modules/notification/channels"
@@ -120,7 +121,7 @@ func (n *DeploymentFailedNotification) ToEmail() *channels.EmailMessage {
 	}
 
 	return &channels.EmailMessage{
-		Subject: fmt.Sprintf("Deployment %s", statusLabel),
+		Subject: fmt.Sprintf("Deployment %s: %s", strings.ToLower(statusLabel), n.SiteAddress),
 		Body:    html,
 		IsHTML:  true,
 	}
@@ -154,7 +155,7 @@ func (n *DeploymentFailedNotification) plainTextEmail() *channels.EmailMessage {
 	}
 
 	return &channels.EmailMessage{
-		Subject: fmt.Sprintf("Deployment %s", statusLabel),
+		Subject: fmt.Sprintf("Deployment %s: %s", strings.ToLower(statusLabel), n.SiteAddress),
 		Body:    body,
 		IsHTML:  false,
 	}
