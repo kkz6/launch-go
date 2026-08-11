@@ -168,6 +168,39 @@ func TestAcceptTeamInvitationExistingUserRefreshesTeamState(t *testing.T) {
 	require.Zero(invitationCount)
 }
 
+func TestAcceptTeamInvitationExistingUserReturnsCurrentTeamUpdateError(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(fmt.Sprintf("file:%s?mode=memory&cache=shared", t.Name())), &gorm.Config{})
+	require := testrequire.New(t)
+	require.NoError(err)
+	require.NoError(db.AutoMigrate(&models.User{}, &models.Team{}, &models.TeamMember{}))
+
+	hash, err := security.HashPassword("correct-horse")
+	require.NoError(err)
+	user := &models.User{BaseModel: basemodels.BaseModel{ID: "user"}, Email: "user@example.com", Password: hash, Status: authtypes.UserStatusActive}
+	team := &models.Team{BaseModel: basemodels.BaseModel{ID: "team"}, UserID: "owner", Name: "Shared"}
+	role := "member"
+	require.NoError(db.Create(user).Error)
+	require.NoError(db.Create(team).Error)
+	require.NoError(db.Create(&models.TeamMember{TeamID: team.ID, UserID: user.ID, Role: &role}).Error)
+	require.NoError(db.Migrator().DropTable(&models.User{}))
+
+	registry := mocks.NewRepositoryRegistry(t)
+	registry.EXPECT().DB().Return(db).Once()
+	logger := zerolog.Nop()
+	service := NewAuthService(registry, &config.Config{}, &logger, nil)
+	result, err := service.acceptTeamInvitationExistingUser(
+		context.Background(),
+		&models.TeamInvitation{TeamID: team.ID, Email: user.Email},
+		user,
+		"correct-horse",
+		"",
+		"",
+	)
+
+	require.Nil(result)
+	require.ErrorContains(err, "failed to set current team")
+}
+
 func TestServiceWiresMembershipCacheToTeamServices(t *testing.T) {
 	cache := launchcache.NewTeamMembershipCache(&recordingCache{}, nil)
 	service := &Service{Auth: &AuthService{}, Team: &TeamService{}, TeamMember: &TeamMemberService{}}
