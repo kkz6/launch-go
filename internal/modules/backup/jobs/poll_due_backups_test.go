@@ -306,6 +306,9 @@ func TestPollDueBackupsJobFactories(t *testing.T) {
 	task, err := NewPollDueBackupsTask()
 	require.NoError(t, err)
 	require.Equal(t, TypePollDueBackups, task.Type())
+	mux := asynq.NewServeMux()
+	registerHandlers(mux)
+	require.NoError(t, mux.ProcessTask(context.Background(), task))
 
 	poller.Failed(context.Background(), errors.New("poll failed"))
 }
