@@ -38,6 +38,9 @@ type DeployOptions struct {
 	// Server name for notifications
 	ServerName string
 
+	// Deployment URL for the notification action
+	DeploymentURL string
+
 	// Git authentication (set by job after checking source control)
 	RepositoryURL string
 	HasAppAuth    bool
@@ -65,8 +68,9 @@ type callbackData struct {
 	DeploymentReleasesRetention int    `json:"deployment_releases_retention"`
 
 	// For notifications
-	SiteAddress string `json:"site_address"`
-	ServerName  string `json:"server_name"`
+	SiteAddress   string `json:"site_address"`
+	ServerName    string `json:"server_name"`
+	DeploymentURL string `json:"deployment_url"`
 }
 
 // deploySiteTask implements Task and CallbackPayload interfaces.
@@ -109,6 +113,7 @@ func DeploySiteTask(opts DeployOptions) taskrunner.Task {
 			DeploymentReleasesRetention: opts.Site.DeploymentReleasesRetention,
 			SiteAddress:                 opts.Site.Address,
 			ServerName:                  opts.ServerName,
+			DeploymentURL:               opts.DeploymentURL,
 		},
 	}
 }
@@ -287,6 +292,7 @@ func (t *deploySiteTask) sendDeploymentNotification(ctx context.Context, cbCtx *
 			notif.WithGitInfo(*deployment.GitHash, deployment.CommitMessage())
 		}
 		notif.WithOutput(output)
+		notif.WithSiteURL(t.callback.DeploymentURL)
 
 		if err := cbCtx.NotifyTeam(ctx, t.callback.TeamID, notif); err != nil {
 			if cbCtx.Logger != nil {
@@ -299,7 +305,16 @@ func (t *deploySiteTask) sendDeploymentNotification(ctx context.Context, cbCtx *
 		if deployment.GitHash != nil && *deployment.GitHash != "" {
 			notif.WithGitInfo(*deployment.GitHash, deployment.CommitMessage(), deployment.CommitAuthor())
 		}
+		if deployment.UserID != nil && *deployment.UserID != "" {
+			var triggeredBy struct {
+				Name string
+			}
+			if err := cbCtx.DB.Table("users").Select("name").Where("id = ?", *deployment.UserID).Take(&triggeredBy).Error; err == nil {
+				notif.WithTriggeredBy(triggeredBy.Name)
+			}
+		}
 		notif.WithOutput(output)
+		notif.WithSiteURL(t.callback.DeploymentURL)
 		if deployment.CreatedAt != nil {
 			notif.WithDeploymentTime(*deployment.CreatedAt)
 		}

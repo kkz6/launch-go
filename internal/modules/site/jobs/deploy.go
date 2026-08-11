@@ -197,6 +197,8 @@ func (j *DeployJob) buildDeployConfig(ctx context.Context, site *models.Site, de
 		Site:             site,
 		Deployment:       deployment,
 		TeamID:           teamID,
+		ServerName:       j.server.Name,
+		DeploymentURL:    deploymentLogURL(j.Deps.FrontendURL, site.ServerID, site.ID, deployment.ID),
 		RepositoryURL:    repositoryURL,
 		HasAppAuth:       hasAppAuth,
 		TempToken:        tempToken,
