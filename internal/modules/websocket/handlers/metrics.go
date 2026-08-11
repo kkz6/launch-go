@@ -40,7 +40,13 @@ func NewMetricsHandlerWithDeps(db *gorm.DB, jwtSecret string, logger zerolog.Log
 func (h *MetricsHandler) Handler() fiber.Handler {
 	return websocket.New(func(c *websocket.Conn) {
 		serverID := c.Query("serverId")
-		interval := fiberutil.ParseIntervalValue(c.Query("interval", "2"), 2)
+		intervalSeconds := fiberutil.ParseIntervalValue(c.Query("interval", "2"), 2)
+		intervalMilliseconds := fiberutil.ParseIntValue(
+			c.Query("interval_ms"),
+			intervalSeconds*1000,
+			250,
+			60000,
+		)
 
 		if serverID == "" {
 			h.sendError(c, "Missing serverId parameter")
@@ -66,11 +72,11 @@ func (h *MetricsHandler) Handler() fiber.Handler {
 		h.LogInfo("Metrics streaming requested",
 			"server_id", serverID,
 			"server_name", server.Name,
-			"interval", interval,
+			"interval_ms", intervalMilliseconds,
 		)
 
 		// Stream metrics via SSH
-		h.streamMetrics(c, &server, interval)
+		h.streamMetrics(c, &server, intervalMilliseconds)
 	})
 }
 
@@ -79,7 +85,7 @@ func (h *MetricsHandler) sendError(c *websocket.Conn, msg string) {
 	c.Close()
 }
 
-func (h *MetricsHandler) streamMetrics(c *websocket.Conn, server *serverModels.Server, interval int) {
+func (h *MetricsHandler) streamMetrics(c *websocket.Conn, server *serverModels.Server, intervalMilliseconds int) {
 	// Get SSH connection config
 	sshConfig := server.ConnectionAsRoot()
 	if sshConfig.Host == "" {
@@ -114,6 +120,10 @@ func (h *MetricsHandler) streamMetrics(c *websocket.Conn, server *serverModels.S
 	// Bash script that outputs JSON metrics at specified interval
 	// Uses standard Linux tools: /proc/stat, free, df, /proc/loadavg, ps, /proc/net/dev
 	// Uses stdbuf to disable output buffering for real-time streaming
+	intervalSeconds := float64(intervalMilliseconds) / 1000
+	collectionDelaySeconds := 0.1
+	loopDelaySeconds := math.Max(intervalSeconds-collectionDelaySeconds, 0.15)
+
 	command := fmt.Sprintf(`stdbuf -oL bash -c '
 # Collect and send system info once at start
 HOSTNAME=$(hostname)
@@ -135,7 +145,7 @@ while true; do
   # CPU - read two samples to calculate usage
   CPU1=$(head -1 /proc/stat | awk "{print \$2+\$3+\$4+\$5+\$6+\$7+\$8}")
   IDLE1=$(head -1 /proc/stat | awk "{print \$5}")
-  sleep 0.2
+  sleep %.2f
   CPU2=$(head -1 /proc/stat | awk "{print \$2+\$3+\$4+\$5+\$6+\$7+\$8}")
   IDLE2=$(head -1 /proc/stat | awk "{print \$5}")
   CPU_DIFF=$((CPU2-CPU1))
@@ -179,25 +189,25 @@ while true; do
     TX_RATE=0
     FIRST_RUN=0
   else
-    RX_RATE=$(( (CURR_RX - PREV_RX) / %d ))
-    TX_RATE=$(( (CURR_TX - PREV_TX) / %d ))
-    [ $RX_RATE -lt 0 ] && RX_RATE=0
-    [ $TX_RATE -lt 0 ] && TX_RATE=0
+    RX_RATE=$(awk "BEGIN {printf \"%%.0f\", ($CURR_RX - $PREV_RX) / %.3f}")
+    TX_RATE=$(awk "BEGIN {printf \"%%.0f\", ($CURR_TX - $PREV_TX) / %.3f}")
+    [ "$RX_RATE" -lt 0 ] && RX_RATE=0
+    [ "$TX_RATE" -lt 0 ] && TX_RATE=0
   fi
   PREV_RX=$CURR_RX
   PREV_TX=$CURR_TX
 
   # Timestamp
-  TS=$(date -u +%%Y-%%m-%%dT%%H:%%M:%%SZ)
+  TS=$(date -u +%%Y-%%m-%%dT%%H:%%M:%%S.%%3NZ)
 
   # Output JSON
   echo "{\"event\":\"metrics\",\"timestamp\":\"$TS\",\"cpu\":$CPU_PERCENT,\"load\":[$LOAD],\"memory\":{$MEM},\"disk\":{$DISK},\"processes\":[$PROCS],\"network\":{\"rx_bytes\":$CURR_RX,\"tx_bytes\":$CURR_TX,\"rx_rate\":$RX_RATE,\"tx_rate\":$TX_RATE}}"
 
-  sleep %d
+  sleep %.2f
 done
-'`, interval, interval, interval)
+'`, collectionDelaySeconds, intervalSeconds, intervalSeconds, loopDelaySeconds)
 
-	h.LogInfo("Executing metrics stream command", "interval", interval)
+	h.LogInfo("Executing metrics stream command", "interval_ms", intervalMilliseconds)
 
 	// Get stdout pipe
 	stdout, err := session.StdoutPipe()
