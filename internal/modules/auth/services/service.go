@@ -37,6 +37,8 @@ type Service struct {
 // nil (e.g. in unit tests) CurrentTeamRole returns an empty string.
 func (s *Service) SetMembershipCache(c *launchcache.TeamMembershipCache) {
 	s.membershipCache = c
+	s.Auth.SetMembershipCache(c)
+	s.Team.SetMembershipCache(c)
 	s.TeamMember.SetMembershipCache(c)
 }
 

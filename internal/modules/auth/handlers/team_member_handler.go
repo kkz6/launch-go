@@ -140,6 +140,7 @@ func (h *TeamMemberHandler) GetInvitationDetails(c *fiber.Ctx) error {
 
 	return fiberctx.OK(c, "Invitation details", fiber.Map{
 		"email":       invitation.Email,
+		"team_id":     invitation.TeamID,
 		"team_name":   teamName,
 		"user_exists": h.Service().TeamMember.InvitationUserExists(c.Context(), invitation.Email),
 	})

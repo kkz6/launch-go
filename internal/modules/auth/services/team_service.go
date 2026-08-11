@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"gorm.io/gorm"
 
@@ -12,16 +13,22 @@ import (
 	authtypes "github.com/kkz6/launch-go/internal/modules/auth/types"
 	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/launch/activity"
+	launchcache "github.com/kkz6/launch-go/internal/pkg/launch/cache"
 )
 
 // TeamService handles team management operations
 type TeamService struct {
-	repos contracts.RepositoryRegistry
+	repos           contracts.RepositoryRegistry
+	membershipCache *launchcache.TeamMembershipCache
 }
 
 // NewTeamService creates a new TeamService instance
 func NewTeamService(repos contracts.RepositoryRegistry) *TeamService {
 	return &TeamService{repos: repos}
+}
+
+func (s *TeamService) SetMembershipCache(c *launchcache.TeamMembershipCache) {
+	s.membershipCache = c
 }
 
 // CreateTeam creates a new team
@@ -82,33 +89,138 @@ func (s *TeamService) UpdateTeam(ctx context.Context, userID, teamID string, req
 }
 
 // DeleteTeam deletes a team
-func (s *TeamService) DeleteTeam(ctx context.Context, userID, teamID string) error {
+func (s *TeamService) DeleteTeam(ctx context.Context, userID, teamID, transferToTeamID string) (*models.Team, error) {
 	team, err := s.repos.Team().FindByID(ctx, teamID)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	if team == nil {
-		return fiberutil.NotFound()
+		return nil, fiberutil.NotFound()
 	}
 
-	// Check ownership
 	if team.UserID != userID {
-		return fiberutil.Forbidden()
+		return nil, fiberutil.Forbidden()
 	}
 
-	// Cannot delete personal team
 	if team.PersonalTeam {
-		return errors.New("cannot delete personal team")
+		return nil, errors.New("cannot delete personal team")
 	}
 
-	if err := s.repos.Team().Delete(ctx, teamID); err != nil {
-		return err
+	if transferToTeamID == teamID {
+		return nil, fiberutil.Validation("resources must be transferred to a different team")
 	}
 
-	activity.RecordWithLog(ctx, "auth", "deleted", userID, team, "Team was deleted")
+	destination, err := s.repos.Team().FindByID(ctx, transferToTeamID)
+	if err != nil {
+		return nil, err
+	}
+	if destination == nil {
+		return nil, fiberutil.Validation("transfer destination was not found")
+	}
+	if destination.UserID != userID {
+		return nil, fiberutil.Forbidden("resources can only be transferred to a team you own")
+	}
 
-	return nil
+	members, err := s.repos.Team().GetMembers(ctx, teamID)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.transferResourcesAndDelete(ctx, userID, teamID, transferToTeamID); err != nil {
+		return nil, err
+	}
+
+	s.invalidateDeletedTeamMemberships(ctx, userID, teamID, members)
+	uid := userID
+	activity.RecordWithLogAndPropsPtr(ctx, "auth", "deleted", &uid, team, "Team was deleted and resources were transferred", map[string]any{
+		"transfer_to_team_id": transferToTeamID,
+		"transfer_to_team":    destination.Name,
+	})
+
+	return destination, nil
+}
+
+var teamTransferExcludedTables = map[string]struct{}{
+	"impersonation_sessions":   {},
+	"notification_preferences": {},
+	"team_invitations":         {},
+	"team_user":                {},
+}
+
+func (s *TeamService) transferResourcesAndDelete(ctx context.Context, userID, sourceTeamID, destinationTeamID string) error {
+	db := s.repos.DB().WithContext(ctx)
+	tables, err := transferableTeamTables(db)
+	if err != nil {
+		return fmt.Errorf("failed to discover team resources: %w", err)
+	}
+
+	return db.Transaction(func(tx *gorm.DB) error {
+		for _, table := range tables {
+			if err := tx.Table(table).
+				Where("team_id = ?", sourceTeamID).
+				Update("team_id", destinationTeamID).Error; err != nil {
+				return fmt.Errorf("failed to transfer resources from %s: %w", table, err)
+			}
+		}
+
+		if err := tx.Model(&models.User{}).
+			Where("current_team_id = ?", sourceTeamID).
+			Update("current_team_id", nil).Error; err != nil {
+			return err
+		}
+		if err := tx.Model(&models.User{}).
+			Where("id = ?", userID).
+			Update("current_team_id", destinationTeamID).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("team_id = ?", sourceTeamID).Delete(&models.TeamMember{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("team_id = ?", sourceTeamID).Delete(&models.TeamInvitation{}).Error; err != nil {
+			return err
+		}
+		return tx.Delete(&models.Team{}, "id = ?", sourceTeamID).Error
+	})
+}
+
+func transferableTeamTables(db *gorm.DB) ([]string, error) {
+	tables, err := db.Migrator().GetTables()
+	if err != nil {
+		return nil, err
+	}
+	return filterTransferableTeamTables(tables, func(table string) ([]gorm.ColumnType, error) {
+		return db.Migrator().ColumnTypes(table)
+	})
+}
+
+func filterTransferableTeamTables(tables []string, columnsFor func(string) ([]gorm.ColumnType, error)) ([]string, error) {
+	transferable := make([]string, 0, len(tables))
+	for _, table := range tables {
+		if _, excluded := teamTransferExcludedTables[table]; excluded {
+			continue
+		}
+		columns, err := columnsFor(table)
+		if err != nil {
+			return nil, err
+		}
+		for _, column := range columns {
+			if column.Name() == "team_id" {
+				transferable = append(transferable, table)
+				break
+			}
+		}
+	}
+	return transferable, nil
+}
+
+func (s *TeamService) invalidateDeletedTeamMemberships(ctx context.Context, userID, teamID string, members []models.TeamMember) {
+	if s.membershipCache == nil {
+		return
+	}
+	_ = s.membershipCache.InvalidateMembership(ctx, userID, teamID)
+	for _, member := range members {
+		_ = s.membershipCache.InvalidateMembership(ctx, member.UserID, teamID)
+	}
 }
 
 // GetTeam retrieves a team by ID

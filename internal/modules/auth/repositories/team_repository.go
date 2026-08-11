@@ -57,41 +57,15 @@ func (r *TeamRepository) Delete(ctx context.Context, id string) error {
 // GetUserTeams gets all teams for a user (owned and member of)
 func (r *TeamRepository) GetUserTeams(ctx context.Context, userID string) ([]models.Team, error) {
 	var teams []models.Team
-
-	// Get teams where user is owner
-	var ownedTeams []models.Team
-	if err := r.DB.WithContext(ctx).
-		Where("user_id = ?", userID).
-		Find(&ownedTeams).Error; err != nil {
-		return nil, err
-	}
-
-	// Get teams where user is a member
-	var memberTeams []models.Team
-	if err := r.DB.WithContext(ctx).
-		Joins("JOIN team_user ON team_user.team_id = teams.id").
-		Where("team_user.user_id = ?", userID).
-		Find(&memberTeams).Error; err != nil {
-		return nil, err
-	}
-
-	// Combine and deduplicate
-	teamMap := make(map[string]models.Team)
-	for _, t := range ownedTeams {
-		teamMap[t.ID] = t
-	}
-
-	for _, t := range memberTeams {
-		if _, exists := teamMap[t.ID]; !exists {
-			teamMap[t.ID] = t
-		}
-	}
-
-	for _, t := range teamMap {
-		teams = append(teams, t)
-	}
-
-	return teams, nil
+	err := r.DB.WithContext(ctx).
+		Distinct("teams.*").
+		Joins("LEFT JOIN team_user ON team_user.team_id = teams.id").
+		Where("teams.user_id = ? OR team_user.user_id = ?", userID, userID).
+		Order("teams.personal_team DESC").
+		Order("LOWER(teams.name) ASC").
+		Order("teams.id ASC").
+		Find(&teams).Error
+	return teams, err
 }
 
 // GetMembers gets all members of a team

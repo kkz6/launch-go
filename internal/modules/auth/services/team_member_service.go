@@ -17,6 +17,7 @@ import (
 	authtypes "github.com/kkz6/launch-go/internal/modules/auth/types"
 	"github.com/kkz6/launch-go/internal/modules/notification/channels"
 	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
+	"github.com/kkz6/launch-go/internal/pkg/launch/activity"
 	launchcache "github.com/kkz6/launch-go/internal/pkg/launch/cache"
 	"github.com/kkz6/launch-go/internal/pkg/mail/templates"
 	"github.com/kkz6/launch-go/internal/pkg/signedurl"
@@ -98,7 +99,7 @@ func (s *TeamMemberService) InviteTeamMember(ctx context.Context, userID, teamID
 	}
 
 	// Send invitation email
-	s.sendInvitationEmail(ctx, invitation, team.Name, existingUser != nil)
+	s.sendInvitationEmail(ctx, invitation, team.Name)
 
 	return nil
 }
@@ -128,18 +129,30 @@ func (s *TeamMemberService) AcceptTeamInvitation(ctx context.Context, userID, in
 		return fiberutil.Forbidden()
 	}
 
-	// Add user to team
 	role := "member"
 	if invitation.Role != nil {
 		role = *invitation.Role
 	}
-	if err := s.repos.TeamMember().AddUser(ctx, invitation.TeamID, userID, role); err != nil {
+	isMember, err := s.repos.TeamMember().IsMember(ctx, invitation.TeamID, userID)
+	if err != nil {
+		return err
+	}
+	if !isMember {
+		if err := s.repos.TeamMember().AddUser(ctx, invitation.TeamID, userID, role); err != nil {
+			return err
+		}
+	}
+	if err := s.repos.User().SetCurrentTeam(ctx, userID, invitation.TeamID); err != nil {
+		return err
+	}
+	if err := s.repos.TeamInvitation().Delete(ctx, invitationID); err != nil {
 		return err
 	}
 	s.invalidateMembership(ctx, userID, invitation.TeamID)
-
-	// Delete invitation
-	return s.repos.TeamInvitation().Delete(ctx, invitationID)
+	if invitation.Team != nil {
+		activity.RecordWithLog(ctx, "auth", "joined", userID, invitation.Team, "Team invitation was accepted")
+	}
+	return nil
 }
 
 // ResendTeamInvitation resends the invitation email for a pending invitation
@@ -158,13 +171,7 @@ func (s *TeamMemberService) ResendTeamInvitation(ctx context.Context, userID, te
 		return fiberutil.NotFound()
 	}
 
-	// Check if the invitee already has an account
-	existingUser, err := s.repos.User().FindByEmail(ctx, invitation.Email)
-	if err != nil {
-		return err
-	}
-
-	s.sendInvitationEmail(ctx, invitation, team.Name, existingUser != nil)
+	s.sendInvitationEmail(ctx, invitation, team.Name)
 
 	return nil
 }
@@ -376,19 +383,15 @@ func (s *TeamMemberService) GenerateInvitationURL(invitationID string) string {
 }
 
 // sendInvitationEmail sends an invitation email to the invitee
-func (s *TeamMemberService) sendInvitationEmail(ctx context.Context, invitation *models.TeamInvitation, teamName string, hasAccount bool) {
+func (s *TeamMemberService) sendInvitationEmail(ctx context.Context, invitation *models.TeamInvitation, teamName string) {
 	if s.emailSender == nil {
 		s.logger.Warn().Str("email", invitation.Email).Msg("Skipping invitation email: email sender not configured (check MAIL_DRIVER/RESEND_API_KEY/SMTP_HOST)")
 		return
 	}
 
-	// User-facing links: send users to the frontend, not the API.
-	frontend := s.config.App.Frontend()
-	registerURL := fmt.Sprintf("%s/invite/%s", frontend, invitation.ID)
-
-	acceptURL := s.GenerateInvitationURL(invitation.ID)
-
-	htmlContent, _, err := templates.TeamInvitationEmail(teamName, acceptURL, registerURL, !hasAccount)
+	frontend := strings.TrimRight(s.config.App.Frontend(), "/")
+	invitationURL := fmt.Sprintf("%s/invite/%s", frontend, invitation.ID)
+	htmlContent, _, err := templates.TeamInvitationEmail(teamName, invitationURL, "", false)
 	if err != nil {
 		s.logger.Error().Err(err).Str("email", invitation.Email).Msg("Failed to build invitation email template")
 		return
