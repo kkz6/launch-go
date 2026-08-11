@@ -121,9 +121,21 @@ type CreateTeamRequest struct {
 	PersonalTeam bool   `json:"personal_team"`
 }
 
+func (r *CreateTeamRequest) Normalize() {
+	pkgdto.NormalizeTrim(&r.Name)
+}
+
 // UpdateTeamRequest represents a team update request
 type UpdateTeamRequest struct {
 	Name string `json:"name" validate:"required,min=2,max=255"`
+}
+
+func (r *UpdateTeamRequest) Normalize() {
+	pkgdto.NormalizeTrim(&r.Name)
+}
+
+type DeleteTeamRequest struct {
+	TransferToTeamID string `json:"transfer_to_team_id" validate:"required"`
 }
 
 // InviteTeamMemberRequest represents a team member invitation request

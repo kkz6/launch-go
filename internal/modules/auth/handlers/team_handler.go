@@ -78,7 +78,7 @@ func (h *TeamHandler) UpdateTeam(c *fiber.Ctx, req *dto.UpdateTeamRequest) error
 }
 
 // DeleteTeam deletes a team
-func (h *TeamHandler) DeleteTeam(c *fiber.Ctx) error {
+func (h *TeamHandler) DeleteTeam(c *fiber.Ctx, req *dto.DeleteTeamRequest) error {
 	userID, err := fiberctx.MustGetUserID(c)
 	if err != nil {
 		return err
@@ -89,11 +89,12 @@ func (h *TeamHandler) DeleteTeam(c *fiber.Ctx) error {
 		return err
 	}
 
-	if err := h.Service().Team.DeleteTeam(c.Context(), userID, teamID); err != nil {
+	destination, err := h.Service().Team.DeleteTeam(c.UserContext(), userID, teamID, req.TransferToTeamID)
+	if err != nil {
 		return fiberctx.HandleError(c, err)
 	}
 
-	return fiberctx.OK(c, "Team deleted successfully", nil)
+	return fiberctx.OK(c, "Team deleted and resources transferred successfully", dto.ToTeamResponseForUser(*destination, userID))
 }
 
 // GetUserTeams retrieves all teams for the current user

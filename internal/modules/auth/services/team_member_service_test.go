@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/url"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -35,6 +36,15 @@ type mockRepoRegistry struct {
 
 type recordingCache struct{ deleted []string }
 
+type recordingEmailSender struct {
+	body string
+}
+
+func (s *recordingEmailSender) Send(_ context.Context, _, _, body string, _ bool) error {
+	s.body = body
+	return nil
+}
+
 func (c *recordingCache) Get(context.Context, string) (string, error) {
 	return "", basecache.ErrCacheMiss
 }
@@ -56,7 +66,8 @@ func (m *mockRepoRegistry) TeamInvitation() contracts.TeamInvitationRepository {
 
 type mockUserRepo struct {
 	contracts.UserRepository
-	users map[string]*models.User
+	users             map[string]*models.User
+	setCurrentTeamErr error
 }
 
 func (m *mockUserRepo) FindByID(_ context.Context, id string) (*models.User, error) {
@@ -76,7 +87,7 @@ func (m *mockUserRepo) FindByEmail(_ context.Context, email string) (*models.Use
 }
 
 func (m *mockUserRepo) SetCurrentTeam(_ context.Context, _, _ string) error {
-	return nil
+	return m.setCurrentTeamErr
 }
 
 type mockTeamRepo struct {
@@ -108,8 +119,9 @@ func (m *mockTeamRepo) GetUserTeams(_ context.Context, userID string) ([]models.
 
 type mockTeamMemberRepo struct {
 	contracts.TeamMemberRepository
-	members  map[string]map[string]*models.TeamMember // teamID -> userID -> member
-	addedErr error
+	members     map[string]map[string]*models.TeamMember // teamID -> userID -> member
+	addedErr    error
+	isMemberErr error
 }
 
 func (m *mockTeamMemberRepo) Get(_ context.Context, teamID, userID string) (*models.TeamMember, error) {
@@ -122,6 +134,9 @@ func (m *mockTeamMemberRepo) Get(_ context.Context, teamID, userID string) (*mod
 }
 
 func (m *mockTeamMemberRepo) IsMember(_ context.Context, teamID, userID string) (bool, error) {
+	if m.isMemberErr != nil {
+		return false, m.isMemberErr
+	}
 	if team, ok := m.members[teamID]; ok {
 		if _, ok := team[userID]; ok {
 			return true, nil
@@ -170,6 +185,7 @@ type mockTeamInvitationRepo struct {
 	invitations map[string]*models.TeamInvitation
 	createErr   error
 	created     *models.TeamInvitation
+	deleteErr   error
 }
 
 func (m *mockTeamInvitationRepo) Create(_ context.Context, invitation *models.TeamInvitation) error {
@@ -214,6 +230,9 @@ func (m *mockTeamInvitationRepo) GetByTeam(_ context.Context, teamID string) ([]
 }
 
 func (m *mockTeamInvitationRepo) Delete(_ context.Context, id string) error {
+	if m.deleteErr != nil {
+		return m.deleteErr
+	}
 	delete(m.invitations, id)
 	return nil
 }
@@ -294,6 +313,44 @@ func TestGenerateInvitationURLUsesFrontendAPIProxy(t *testing.T) {
 	assert.Equal(t, "launchctl.io", parsedURL.Host)
 	assert.Equal(t, "/api/auth/team-invitations/invitation_001/accept", parsedURL.Path)
 	assert.True(t, signer.Verify("/auth/team-invitations/invitation_001/accept", parsedURL.Query()))
+}
+
+func TestInvitationEmailUsesFrontendAcceptancePage(t *testing.T) {
+	_, svc := newTestRegistry()
+	sender := &recordingEmailSender{}
+	svc.emailSender = sender
+	svc.config = &config.Config{
+		App: config.AppConfig{FrontendURL: "https://launchctl.io/"},
+	}
+	invitation := &models.TeamInvitation{Email: "member@example.com"}
+	invitation.ID = "invitation_001"
+
+	svc.sendInvitationEmail(context.Background(), invitation, "Shared Team")
+
+	require.True(t, strings.Contains(sender.body, "https://launchctl.io/invite/invitation_001"))
+	require.False(t, strings.Contains(sender.body, "/api/auth/team-invitations/"))
+}
+
+func TestResendTeamInvitationUsesFrontendAcceptancePage(t *testing.T) {
+	reg, svc := newTestRegistry()
+	sender := &recordingEmailSender{}
+	svc.emailSender = sender
+	svc.config = &config.Config{
+		App: config.AppConfig{FrontendURL: "https://launchctl.io"},
+	}
+	role := "member"
+	invitation := &models.TeamInvitation{
+		TeamID: "team_001",
+		Email:  "member@example.com",
+		Role:   &role,
+	}
+	invitation.ID = "invitation_001"
+	reg.teamInvitation.invitations[invitation.ID] = invitation
+
+	err := svc.ResendTeamInvitation(context.Background(), "owner_001", "team_001", invitation.ID)
+
+	require.NoError(t, err)
+	require.True(t, strings.Contains(sender.body, "https://launchctl.io/invite/invitation_001"))
 }
 
 func TestInviteTeamMember_OwnerCanInvite(t *testing.T) {
@@ -424,6 +481,7 @@ func TestAcceptTeamInvitation_Success(t *testing.T) {
 		TeamID: "team_001",
 		Email:  "user@example.com",
 		Role:   &role,
+		Team:   reg.team.teams["team_001"],
 	}
 	reg.teamInvitation.invitations["inv_001"].ID = "inv_001"
 
@@ -485,6 +543,53 @@ func TestAcceptTeamInvitation_DefaultsToMemberRole(t *testing.T) {
 	member, ok := reg.teamMember.members["team_001"]["user_001"]
 	require.True(t, ok)
 	assert.Equal(t, "member", *member.Role)
+}
+
+func TestAcceptTeamInvitationIsIdempotent(t *testing.T) {
+	reg, svc := newTestRegistry()
+	role := "member"
+	reg.teamInvitation.invitations["inv_001"] = &models.TeamInvitation{
+		TeamID: "team_001", Email: "user@example.com", Role: &role,
+	}
+	reg.teamInvitation.invitations["inv_001"].ID = "inv_001"
+	reg.teamMember.members["team_001"]["user_001"] = &models.TeamMember{
+		TeamID: "team_001", UserID: "user_001", Role: &role,
+	}
+
+	require.NoError(t, svc.AcceptTeamInvitation(context.Background(), "user_001", "inv_001"))
+	_, exists := reg.teamInvitation.invitations["inv_001"]
+	assert.False(t, exists)
+}
+
+func TestAcceptTeamInvitationCurrentTeamAndDeleteErrors(t *testing.T) {
+	for _, test := range []struct {
+		name      string
+		configure func(*mockRepoRegistry)
+	}{
+		{name: "current team", configure: func(reg *mockRepoRegistry) {
+			reg.user.setCurrentTeamErr = errors.New("switch failed")
+		}},
+		{name: "delete invitation", configure: func(reg *mockRepoRegistry) {
+			reg.teamInvitation.deleteErr = errors.New("delete failed")
+		}},
+		{name: "membership lookup", configure: func(reg *mockRepoRegistry) {
+			reg.teamMember.isMemberErr = errors.New("membership failed")
+		}},
+		{name: "add member", configure: func(reg *mockRepoRegistry) {
+			reg.teamMember.addedErr = errors.New("add failed")
+		}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			reg, svc := newTestRegistry()
+			role := "member"
+			reg.teamInvitation.invitations["inv_001"] = &models.TeamInvitation{
+				TeamID: "team_001", Email: "user@example.com", Role: &role,
+			}
+			reg.teamInvitation.invitations["inv_001"].ID = "inv_001"
+			test.configure(reg)
+			require.Error(t, svc.AcceptTeamInvitation(context.Background(), "user_001", "inv_001"))
+		})
+	}
 }
 
 // =============================================================================

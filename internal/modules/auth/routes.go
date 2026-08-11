@@ -138,7 +138,7 @@ func (m *Module) registerTeamRoutes(router fiber.Router, handler *handlers.Handl
 	router.Post("/", fiberutil.Validate(handler.Team.CreateTeam))
 	router.Get("/:teamId", middleware.TeamMember(adapter), handler.Team.GetTeam)
 	router.Put("/:teamId", middleware.TeamOwner(adapter), fiberutil.Validate(handler.Team.UpdateTeam))
-	router.Delete("/:teamId", middleware.TeamOwner(adapter), handler.Team.DeleteTeam)
+	router.Delete("/:teamId", middleware.TeamOwner(adapter), fiberutil.Validate(handler.Team.DeleteTeam))
 
 	// Team switching
 	router.Post("/:teamId/switch", handler.Team.SwitchTeamByID)

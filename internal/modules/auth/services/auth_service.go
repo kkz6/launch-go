@@ -21,6 +21,8 @@ import (
 	authtypes "github.com/kkz6/launch-go/internal/modules/auth/types"
 	"github.com/kkz6/launch-go/internal/pkg/cache"
 	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
+	"github.com/kkz6/launch-go/internal/pkg/launch/activity"
+	launchcache "github.com/kkz6/launch-go/internal/pkg/launch/cache"
 	"github.com/kkz6/launch-go/internal/pkg/security"
 	"github.com/kkz6/launch-go/internal/pkg/util"
 )
@@ -40,15 +42,20 @@ type TwoFactorChallengeData struct {
 
 // AuthService handles authentication-related operations
 type AuthService struct {
-	repos  contracts.RepositoryRegistry
-	config *config.Config
-	logger *zerolog.Logger
-	cache  cache.Cache
+	repos           contracts.RepositoryRegistry
+	config          *config.Config
+	logger          *zerolog.Logger
+	cache           cache.Cache
+	membershipCache *launchcache.TeamMembershipCache
 
 	// platformInvites consumes a platform invite during registration (grants an
 	// on_trial subscription on the new personal team). Wired from main.go via
 	// SetPlatformInviteReader. When nil, the trial-grant step is skipped.
 	platformInvites PlatformInviteReader
+}
+
+func (s *AuthService) SetMembershipCache(c *launchcache.TeamMembershipCache) {
+	s.membershipCache = c
 }
 
 // NewAuthService creates a new AuthService instance
@@ -459,17 +466,6 @@ func (s *AuthService) handleInvitation(ctx context.Context, tx *gorm.DB, user *m
 	return nil
 }
 
-// AcceptTeamInvitation accepts a team invitation from the public accept
-// page, handling BOTH cases the page serves:
-//
-//   - the invitee has no account yet → register a new user (name +
-//     password) and add them to the team via handleInvitation;
-//   - the invitee already has an account → verify their existing password
-//     and add that account to the team.
-//
-// Returns an auth response (tokens + user) in both cases so the page can
-// log the invitee straight in. This is the fix for invited members never
-// being allocated to the team when they already had an account (#71).
 func (s *AuthService) AcceptTeamInvitation(
 	ctx context.Context, invitationToken, name, password, ip, userAgent string,
 ) (*dto.AuthResponse, error) {
@@ -486,30 +482,38 @@ func (s *AuthService) AcceptTeamInvitation(
 		return nil, err
 	}
 
+	var result *dto.AuthResponse
 	if existing != nil {
-		return s.acceptTeamInvitationExistingUser(ctx, invitation, existing, password, ip, userAgent)
+		result, err = s.acceptTeamInvitationExistingUser(ctx, invitation, existing, password, ip, userAgent)
+	} else {
+		if strings.TrimSpace(name) == "" {
+			return nil, fiberutil.Validation("Name is required to create your account")
+		}
+		result, err = s.Register(ctx, &dto.RegisterRequest{
+			Name:                 name,
+			Email:                invitation.Email,
+			Password:             password,
+			PasswordConfirmation: password,
+			InvitationID:         &invitationToken,
+			CreatePersonalTeam:   false,
+			IPAddress:            ip,
+			UserAgent:            userAgent,
+		})
+	}
+	if err != nil {
+		return nil, err
 	}
 
-	// New invitee — registration requires a name. (The DTO leaves it
-	// optional so existing users can submit just a password.)
-	if strings.TrimSpace(name) == "" {
-		return nil, fiberutil.Validation("Name is required to create your account")
+	s.invalidateInvitationMembership(ctx, result.User.ID, invitation.TeamID)
+	if invitation.Team != nil {
+		team := dto.ToTeamResponse(*invitation.Team)
+		result.User.CurrentTeam = &team
+		result.User.CurrentTeamID = &invitation.TeamID
+		activity.RecordWithLog(ctx, "auth", "joined", result.User.ID, invitation.Team, "Team invitation was accepted")
 	}
-	return s.Register(ctx, &dto.RegisterRequest{
-		Name:                 name,
-		Email:                invitation.Email,
-		Password:             password,
-		PasswordConfirmation: password,
-		InvitationID:         &invitationToken,
-		CreatePersonalTeam:   false,
-		IPAddress:            ip,
-		UserAgent:            userAgent,
-	})
+	return result, nil
 }
 
-// acceptTeamInvitationExistingUser authenticates an already-registered
-// invitee by password and adds that account to the invitation's team,
-// then issues a session. Idempotent if they're somehow already a member.
 func (s *AuthService) acceptTeamInvitationExistingUser(
 	ctx context.Context, invitation *models.TeamInvitation, user *models.User, password, ip, userAgent string,
 ) (*dto.AuthResponse, error) {
@@ -541,7 +545,9 @@ func (s *AuthService) acceptTeamInvitationExistingUser(
 				return fmt.Errorf("failed to add user to team: %w", err)
 			}
 		}
-		if err := tx.Model(user).Update("current_team_id", invitation.TeamID).Error; err != nil {
+		if err := tx.Model(&models.User{}).
+			Where("id = ?", user.ID).
+			Update("current_team_id", invitation.TeamID).Error; err != nil {
 			return fmt.Errorf("failed to set current team: %w", err)
 		}
 		return tx.Delete(invitation).Error
@@ -550,12 +556,19 @@ func (s *AuthService) acceptTeamInvitationExistingUser(
 		return nil, err
 	}
 	user.CurrentTeamID = &invitation.TeamID
+	user.CurrentTeam = invitation.Team
 
 	sessionID, err := s.createSession(ctx, user.ID, ip, userAgent)
 	if err != nil {
 		return nil, err
 	}
 	return s.buildAuthResponse(ctx, user, sessionID)
+}
+
+func (s *AuthService) invalidateInvitationMembership(ctx context.Context, userID, teamID string) {
+	if s.membershipCache != nil {
+		_ = s.membershipCache.InvalidateMembership(ctx, userID, teamID)
+	}
 }
 
 // createPersonalTeam creates a personal team for a new user
