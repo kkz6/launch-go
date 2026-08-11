@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/hibiken/asynq"
 
@@ -54,7 +55,8 @@ func (j *RunManualBackupJob) Handle(ctx context.Context) error {
 			j.Deps.Logger.Warn().
 				Str("job_id", j.Payload.JobID).
 				Str("backup_id", j.Payload.BackupID).
-				Msg("manual backup run is out of scope, terminal, or already claimed; skipping")
+				Str("source", j.Payload.Source).
+				Msg("backup run is out of scope, terminal, or already claimed; skipping")
 			return nil
 		}
 		j.job = claimedJob
@@ -193,21 +195,22 @@ func (j *RunManualBackupJob) Handle(ctx context.Context) error {
 }
 
 func (j *RunManualBackupJob) Failed(ctx context.Context, err error) {
-	message := "manual backup worker failed"
+	message := "backup worker failed"
 	if err != nil {
 		message += ": " + err.Error()
 	}
 	j.Deps.Logger.Error().Err(err).
 		Str("server_id", j.Payload.ServerID).
 		Str("backup_id", j.Payload.BackupID).
-		Msg("failed to run manual backup")
+		Str("source", j.Payload.Source).
+		Msg("failed to run backup")
 	if !j.isFinalAttempt(ctx, err) {
 		return
 	}
 	if j.job == nil && j.Payload.JobID != "" {
 		if adoptErr := j.adoptPrecreatedJob(ctx); adoptErr != nil {
 			j.Deps.Logger.Error().Err(adoptErr).Str("job_id", j.Payload.JobID).
-				Msg("failed to reload manual backup run for final failure")
+				Msg("failed to reload backup run for final failure")
 		}
 	}
 	if j.job != nil && (j.job.Status == backuptypes.BackupJobStatusFailed || j.job.Status == backuptypes.BackupJobStatusFinished) {
@@ -219,7 +222,7 @@ func (j *RunManualBackupJob) Failed(ctx context.Context, err error) {
 	}
 	if persistErr := j.recordFailure(ctx, message, taskID); persistErr != nil {
 		j.Deps.Logger.Error().Err(persistErr).Str("job_id", j.Payload.JobID).
-			Msg("failed to persist final manual backup failure")
+			Msg("failed to persist final backup failure")
 	}
 }
 
@@ -579,6 +582,7 @@ func NewRunManualBackupTask(
 		BackupID: backupID,
 		TeamID:   teamID,
 		JobID:    jobID,
+		Source:   "manual",
 		UserID:   userID,
 	}
 	if jobID == "" {
@@ -587,6 +591,29 @@ func NewRunManualBackupTask(
 	return pkgjobs.TaskWithID(TypeRunManualBackup, payload, runManualBackupTaskID(jobID))
 }
 
+func NewRunScheduledBackupTask(
+	serverID, backupID, teamID, jobID string,
+	scheduledAt time.Time,
+) (*asynq.Task, error) {
+	payload := RunManualBackupPayload{
+		ServerID: serverID,
+		BackupID: backupID,
+		TeamID:   teamID,
+		JobID:    jobID,
+		Source:   "schedule",
+	}
+	return pkgjobs.TaskWithID(
+		TypeRunManualBackup,
+		payload,
+		scheduledBackupTaskID(backupID, scheduledAt),
+	)
+}
+
 func runManualBackupTaskID(jobID string) string {
 	return pkgjobs.Dedup("backup-run-manual", jobID)
+}
+
+func scheduledBackupTaskID(backupID string, scheduledAt time.Time) string {
+	minute := scheduledAt.UTC().Truncate(time.Minute).Format("2006-01-02T15:04")
+	return pkgjobs.Dedup("backup-run-scheduled", backupID, minute)
 }

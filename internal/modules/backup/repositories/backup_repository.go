@@ -113,6 +113,13 @@ func (r *BackupRepository) FindBackupsByServerAndTeam(ctx context.Context, serve
 	)
 }
 
+// ListEnabled returns backup configurations eligible for scheduled runs.
+func (r *BackupRepository) ListEnabled(ctx context.Context) ([]models.Backup, error) {
+	return repository.FindAll[models.Backup](ctx, r.DB, func(db *gorm.DB) *gorm.DB {
+		return db.Where("enabled = ?", true)
+	})
+}
+
 // UpdateBackupWithDatabases updates a backup and its associated databases.
 func (r *BackupRepository) UpdateBackupWithDatabases(ctx context.Context, backup *models.Backup, databaseIDs []string) error {
 	return r.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {

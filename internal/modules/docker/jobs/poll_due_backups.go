@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/hibiken/asynq"
-	"github.com/robfig/cron/v3"
 
+	"github.com/kkz6/launch-go/internal/pkg/cronutil"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 )
 
@@ -151,34 +151,9 @@ func NewPollDueBackupsTask() (*asynq.Task, error) {
 	return pkgjobs.Task(TypePollDueBackups, PollDueBackupsPayload{})
 }
 
-// cronDueInWindow returns true when the given cron expression fires at
-// any moment in [windowStart, windowEnd). The window is closed on the
-// left, open on the right — for the typical 1-minute window this gives
-// "did this expression fire during this minute?" semantics that mirror
-// dokploy's node-schedule check without double-firing on boundary ticks.
-//
-// Extracted out of Handle so the cron-matching logic can be tested
-// without standing up the full job + DB harness.
-func cronDueInWindow(expr string, windowStart, windowEnd time.Time) (bool, error) {
-	// Standard 5-field cron (minute hour dom month dow) — no descriptors,
-	// no seconds, matching the cron syntax shown in the UI's helper text.
-	parser := cronParser
-	schedule, err := parser.Parse(expr)
-	if err != nil {
-		return false, err
-	}
-	// Next() returns the *next* fire strictly after the supplied time,
-	// so we feed it (windowStart - 1ns) to ensure a fire exactly at
-	// windowStart counts as inside the window.
-	next := schedule.Next(windowStart.Add(-time.Nanosecond))
-	return !next.Before(windowStart) && next.Before(windowEnd), nil
+func cronDueInWindow(expression string, windowStart, windowEnd time.Time) (bool, error) {
+	return cronutil.DueInWindow(expression, windowStart, windowEnd)
 }
-
-// cronParser is a package-level instance to keep allocations off the
-// hot path — the parser itself is stateless and goroutine-safe.
-var cronParser = cron.NewParser(
-	cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow,
-)
 
 // isDuplicateTaskError checks for asynq's task-already-exists sentinel.
 // asynq returns this when TaskID dedup catches a redispatch — for the

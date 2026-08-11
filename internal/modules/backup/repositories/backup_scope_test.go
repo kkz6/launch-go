@@ -63,6 +63,25 @@ func TestBackupRepositoryFindForRunIsServerAndTeamScoped(t *testing.T) {
 	}
 }
 
+func TestBackupRepositoryListsOnlyEnabledBackups(t *testing.T) {
+	db := newBackupScopeRepositoryTestDB(t)
+	repo := NewBackupRepository(db)
+	for _, backup := range []models.Backup{
+		{StorageProviderID: 1, CronExpression: "0 0 * * *", IncludeFiles: "[]", ExcludeFiles: "[]", Path: "enabled", Enabled: true},
+		{StorageProviderID: 1, CronExpression: "0 0 * * *", IncludeFiles: "[]", ExcludeFiles: "[]", Path: "disabled", Enabled: false},
+	} {
+		backup.ID = "backup-" + backup.Path
+		backup.ServerID = "server-01"
+		backup.TeamID = "team-01"
+		require.NoError(t, db.Create(&backup).Error)
+	}
+
+	backups, err := repo.ListEnabled(context.Background())
+	require.NoError(t, err)
+	require.Len(t, backups, 1)
+	require.Equal(t, "backup-enabled", backups[0].ID)
+}
+
 func TestStorageProviderRepositoryScopedLookups(t *testing.T) {
 	db := newBackupScopeRepositoryTestDB(t)
 	repo := NewStorageProviderRepository(db)
