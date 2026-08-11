@@ -75,7 +75,7 @@ func NewService(repos contracts.RepositoryRegistry, cfg *config.Config, logger *
 		EmailVerification: NewEmailVerificationService(repos, cfg, emailSender),
 		PasswordReset:     NewPasswordResetService(repos, cfg, emailSender),
 		TwoFactor:         NewTwoFactorService(repos, cfg, authService),
-		Team:              NewTeamService(repos),
+		Team:              NewTeamService(repos, emailSender, logger),
 		TeamMember:        NewTeamMemberService(repos, cfg, emailSender, logger),
 		Passkey:           passkeyService,
 	}, nil

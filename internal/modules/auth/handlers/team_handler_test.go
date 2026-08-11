@@ -37,7 +37,7 @@ func TestTeamHandlerDeleteTransfersResources(t *testing.T) {
 	require.NoError(t, db.Create(destination).Error)
 	require.NoError(t, db.Create(&handlerTransferResource{TeamID: source.ID}).Error)
 
-	service := &services.Service{Team: services.NewTeamService(repositories.NewRegistry(db))}
+	service := &services.Service{Team: services.NewTeamService(repositories.NewRegistry(db), nil, nil)}
 	handler := handlers.NewTeamHandler(service)
 	app := newTestAppWithValidation()
 	app.Use(func(c *fiber.Ctx) error {

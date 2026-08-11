@@ -6,10 +6,12 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 
+	"github.com/kkz6/launch-go/internal/config"
 	contractmocks "github.com/kkz6/launch-go/internal/modules/auth/contracts/mocks"
 	"github.com/kkz6/launch-go/internal/modules/auth/dto"
 	"github.com/kkz6/launch-go/internal/modules/auth/models"
@@ -71,7 +73,7 @@ func seedTeamDeletion(t *testing.T, db *gorm.DB) (service *TeamService, source, 
 	require.NoError(t, db.Exec("CREATE TABLE impersonation_sessions (id INTEGER PRIMARY KEY, team_id TEXT)").Error)
 	require.NoError(t, db.Exec("INSERT INTO impersonation_sessions (team_id) VALUES (?)", source.ID).Error)
 
-	return NewTeamService(repositories.NewRegistry(db)), source, destination
+	return NewTeamService(repositories.NewRegistry(db), nil, nil), source, destination
 }
 
 func TestDeleteTeamTransfersResourcesAndSwitchesOwner(t *testing.T) {
@@ -114,6 +116,71 @@ func TestDeleteTeamTransfersResourcesAndSwitchesOwner(t *testing.T) {
 		"team_membership:owner:source",
 		"team_membership:member:source",
 	}, cache.deleted)
+}
+
+func TestDeleteTeamEmailsOwner(t *testing.T) {
+	db := newTeamServiceTestDB(t)
+	service, source, destination := seedTeamDeletion(t, db)
+	sender := &recordingEmailSender{}
+	logger := zerolog.Nop()
+	service.emailSender = sender
+	service.logger = &logger
+
+	_, err := service.DeleteTeam(context.Background(), "owner", source.ID, destination.ID)
+	require.NoError(t, err)
+	require.Contains(t, sender.body, "Source")
+	require.Contains(t, sender.body, "Destination")
+}
+
+func TestNewServiceWiresTeamDeletionEmail(t *testing.T) {
+	logger := zerolog.Nop()
+	sender := &recordingEmailSender{}
+	cfg := &config.Config{
+		App: config.AppConfig{Name: "Launch", URL: "https://launchctl.test"},
+		Passkey: config.PasskeyConfig{
+			RPName:   "Launch",
+			RPID:     "launchctl.test",
+			RPOrigin: "https://launchctl.test",
+			Timeout:  60000,
+		},
+	}
+
+	service, err := NewService(nil, cfg, &logger, sender, nil)
+	require.NoError(t, err)
+	require.Same(t, sender, service.Team.emailSender)
+	require.Same(t, &logger, service.Team.logger)
+}
+
+type failingTeamDeletionSender struct{ err error }
+
+func (s *failingTeamDeletionSender) Send(context.Context, string, string, string, bool) error {
+	return s.err
+}
+
+func TestTeamDeletionEmailFailuresDoNotFailDeletion(t *testing.T) {
+	service := NewTeamService(nil, nil, nil)
+	owner := &models.User{Name: "Owner", Email: "owner@example.com"}
+
+	service.sendTeamDeletedEmail(context.Background(), owner, "Source", "Destination")
+	service.emailSender = &recordingEmailSender{}
+	service.sendTeamDeletedEmail(context.Background(), nil, "Source", "Destination")
+	service.sendTeamDeletedEmail(context.Background(), &models.User{}, "Source", "Destination")
+
+	wanted := errors.New("email unavailable")
+	service.emailSender = &failingTeamDeletionSender{err: wanted}
+	service.sendTeamDeletedEmail(context.Background(), owner, "Source", "Destination")
+
+	logger := zerolog.Nop()
+	service.emailSender = &failingTeamDeletionSender{err: wanted}
+	service.logger = &logger
+	service.sendTeamDeletedEmail(context.Background(), owner, "Source", "Destination")
+
+	originalBuilder := buildTeamDeletedEmail
+	buildTeamDeletedEmail = func(string, string) (string, string, error) {
+		return "", "", wanted
+	}
+	t.Cleanup(func() { buildTeamDeletedEmail = originalBuilder })
+	service.sendTeamDeletedEmail(context.Background(), owner, "Source", "Destination")
 }
 
 func TestDeleteTeamValidation(t *testing.T) {
@@ -194,7 +261,7 @@ func TestDeleteTeamRepositoryErrors(t *testing.T) {
 		teamRepo := contractmocks.NewTeamRepository(t)
 		registry.EXPECT().Team().Return(teamRepo).Once()
 		teamRepo.EXPECT().FindByID(ctx, "source").Return(nil, wanted).Once()
-		result, err := NewTeamService(registry).DeleteTeam(ctx, "owner", "source", "destination")
+		result, err := NewTeamService(registry, nil, nil).DeleteTeam(ctx, "owner", "source", "destination")
 		require.Nil(t, result)
 		require.ErrorIs(t, err, wanted)
 	})
@@ -205,7 +272,7 @@ func TestDeleteTeamRepositoryErrors(t *testing.T) {
 		registry.EXPECT().Team().Return(teamRepo).Twice()
 		teamRepo.EXPECT().FindByID(ctx, "source").Return(&models.Team{UserID: "owner"}, nil).Once()
 		teamRepo.EXPECT().FindByID(ctx, "destination").Return(nil, wanted).Once()
-		result, err := NewTeamService(registry).DeleteTeam(ctx, "owner", "source", "destination")
+		result, err := NewTeamService(registry, nil, nil).DeleteTeam(ctx, "owner", "source", "destination")
 		require.Nil(t, result)
 		require.ErrorIs(t, err, wanted)
 	})
@@ -217,7 +284,22 @@ func TestDeleteTeamRepositoryErrors(t *testing.T) {
 		teamRepo.EXPECT().FindByID(ctx, "source").Return(&models.Team{UserID: "owner"}, nil).Once()
 		teamRepo.EXPECT().FindByID(ctx, "destination").Return(&models.Team{UserID: "owner"}, nil).Once()
 		teamRepo.EXPECT().GetMembers(ctx, "source").Return(nil, wanted).Once()
-		result, err := NewTeamService(registry).DeleteTeam(ctx, "owner", "source", "destination")
+		result, err := NewTeamService(registry, nil, nil).DeleteTeam(ctx, "owner", "source", "destination")
+		require.Nil(t, result)
+		require.ErrorIs(t, err, wanted)
+	})
+
+	t.Run("owner lookup", func(t *testing.T) {
+		registry := contractmocks.NewRepositoryRegistry(t)
+		teamRepo := contractmocks.NewTeamRepository(t)
+		userRepo := contractmocks.NewUserRepository(t)
+		registry.EXPECT().Team().Return(teamRepo).Times(3)
+		registry.EXPECT().User().Return(userRepo).Once()
+		teamRepo.EXPECT().FindByID(ctx, "source").Return(&models.Team{UserID: "owner"}, nil).Once()
+		teamRepo.EXPECT().FindByID(ctx, "destination").Return(&models.Team{UserID: "owner"}, nil).Once()
+		teamRepo.EXPECT().GetMembers(ctx, "source").Return(nil, nil).Once()
+		userRepo.EXPECT().FindByID(ctx, "owner").Return(nil, wanted).Once()
+		result, err := NewTeamService(registry, nil, nil).DeleteTeam(ctx, "owner", "source", "destination")
 		require.Nil(t, result)
 		require.ErrorIs(t, err, wanted)
 	})
@@ -231,7 +313,7 @@ func TestTransferResourcesTransactionErrors(t *testing.T) {
 		return db
 	}
 	serviceFor := func(db *gorm.DB) *TeamService {
-		return NewTeamService(repositories.NewRegistry(db))
+		return NewTeamService(repositories.NewRegistry(db), nil, nil)
 	}
 
 	t.Run("table discovery", func(t *testing.T) {
@@ -282,5 +364,5 @@ func TestFilterTransferableTeamTablesReturnsColumnErrors(t *testing.T) {
 }
 
 func TestInvalidateDeletedTeamMembershipsWithoutCache(t *testing.T) {
-	NewTeamService(nil).invalidateDeletedTeamMemberships(context.Background(), "owner", "team", nil)
+	NewTeamService(nil, nil, nil).invalidateDeletedTeamMemberships(context.Background(), "owner", "team", nil)
 }
