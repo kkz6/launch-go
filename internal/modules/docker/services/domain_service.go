@@ -22,11 +22,23 @@ import (
 // name + internal port to render the Traefik file.
 type DomainService struct {
 	*BaseService
+	dnsLookuper dnsLookuper
+}
+
+// dnsLookuper lets tests swap in a fake resolver. *net.Resolver already
+// satisfies it.
+type dnsLookuper interface {
+	LookupIPAddr(ctx context.Context, host string) ([]net.IPAddr, error)
 }
 
 // NewDomainService wires the service.
 func NewDomainService(deps *ServiceDeps) *DomainService {
-	return &DomainService{BaseService: NewBaseService(deps)}
+	return &DomainService{BaseService: NewBaseService(deps), dnsLookuper: net.DefaultResolver}
+}
+
+// SetDNSLookuper overrides the DNS resolver, for tests.
+func (s *DomainService) SetDNSLookuper(lookuper dnsLookuper) {
+	s.dnsLookuper = lookuper
 }
 
 // validateStoredCert enforces the one cross-field rule the struct tags
@@ -251,16 +263,8 @@ func (s *DomainService) DeleteDomain(
 	return nil
 }
 
-// ValidateDNS resolves the domain's hostname against public DNS and
-// compares the result with the docker server's public IP. The
-// frontend's "Validate DNS" button shows the user whether the
-// hostname is pointing at the right server before the deploy / cert
-// issuance bites them.
-//
-// Wildcard-DNS hostnames (*.traefik.me, *.sslip.io, *.nip.io) skip
-// the lookup and report ok=true — those resolvers always answer
-// with the IP encoded in the label by definition, no provisioning
-// required.
+// ValidateDNS checks whether the domain's hostname resolves to the
+// docker server's public IP, for the frontend's "Validate DNS" button.
 func (s *DomainService) ValidateDNS(
 	ctx context.Context, domainID, applicationID, projectID, serverID, teamID string,
 ) (dto.ValidateDNSResponse, error) {
@@ -278,10 +282,8 @@ func (s *DomainService) ValidateDNS(
 	return s.validateDNSAgainstServer(ctx, d.Host, app.ServerID)
 }
 
-// validateDNSAgainstServer is the shared DNS-lookup core used by
-// ValidateDNS (app-scoped) and ValidateComposeDNS (compose-scoped).
-// Wrappers handle the scope check + domain-ownership check; this only
-// runs the wildcard-suffix short-circuit and the public-IP comparison.
+// validateDNSAgainstServer is the shared core behind ValidateDNS and
+// ValidateComposeDNS.
 func (s *DomainService) validateDNSAgainstServer(
 	ctx context.Context, rawHost, serverID string,
 ) (dto.ValidateDNSResponse, error) {
@@ -312,7 +314,7 @@ func (s *DomainService) validateDNSAgainstServer(
 	// thread; 5s is generous for public A records.
 	lookupCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	ips, err := net.DefaultResolver.LookupIPAddr(lookupCtx, host)
+	ips, err := s.dnsLookuper.LookupIPAddr(lookupCtx, host)
 	if err != nil {
 		resp.OK = false
 		resp.Message = fmt.Sprintf("DNS lookup failed: %v", err)
@@ -326,11 +328,22 @@ func (s *DomainService) validateDNSAgainstServer(
 		resp.ResolvedIPs = append(resp.ResolvedIPs, v4.String())
 		if expectedIP != "" && v4.String() == expectedIP {
 			resp.OK = true
+		} else if isCloudflareIP(v4) {
+			resp.Proxied = true
 		}
 	}
 	switch {
 	case resp.OK:
 		resp.Message = fmt.Sprintf("Resolves to %s ✓", expectedIP)
+	case resp.Proxied:
+		resp.Message = fmt.Sprintf(
+			"Proxied through Cloudflare (resolves to %s). The origin IP is "+
+				"hidden behind Cloudflare's proxy, so this can't be checked "+
+				"directly — confirm in your Cloudflare DNS settings that the "+
+				"record points at %s.",
+			strings.Join(resp.ResolvedIPs, ", "),
+			expectedIP,
+		)
 	case len(resp.ResolvedIPs) == 0:
 		resp.Message = "Hostname doesn't resolve to any A record yet."
 	default:

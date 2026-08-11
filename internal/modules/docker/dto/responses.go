@@ -639,9 +639,12 @@ type ApplicationTraefikConfigResponse struct {
 }
 
 type ValidateDNSResponse struct {
-	Host        string   `json:"host"`
-	OK          bool     `json:"ok"`
-	Wildcard    bool     `json:"wildcard"`
+	Host     string `json:"host"`
+	OK       bool   `json:"ok"`
+	Wildcard bool   `json:"wildcard"`
+	// Proxied means the resolved IP is Cloudflare's edge, not the origin.
+	// OK stays false — the origin is hidden, not confirmed.
+	Proxied     bool     `json:"proxied"`
 	ExpectedIP  string   `json:"expected_ip,omitempty"`
 	ResolvedIPs []string `json:"resolved_ips,omitempty"`
 	Message     string   `json:"message"`
