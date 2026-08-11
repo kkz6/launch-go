@@ -3,9 +3,11 @@ package repositories
 import (
 	"context"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"gorm.io/driver/postgres"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 
@@ -47,4 +49,24 @@ func TestGetUserTeamsReturnsDatabaseError(t *testing.T) {
 	teams, err := NewTeamRepository(db).GetUserTeams(context.Background(), "user")
 	require.Error(t, err)
 	require.Empty(t, teams)
+}
+
+func TestGetUserTeamsQueryIsPostgresSafe(t *testing.T) {
+	db, err := gorm.Open(postgres.New(postgres.Config{
+		DSN: "postgres://launch:launch@localhost:5432/launch?sslmode=disable",
+	}), &gorm.Config{DryRun: true, DisableAutomaticPing: true})
+	require.NoError(t, err)
+
+	var teams []models.Team
+	query := NewTeamRepository(db).userTeamsQuery(context.Background(), "user").
+		Order("teams.personal_team DESC").
+		Order("LOWER(teams.name) ASC").
+		Order("teams.id ASC").
+		Find(&teams)
+	require.NoError(t, query.Error)
+
+	sql := strings.ToUpper(query.Statement.SQL.String())
+	require.NotContains(t, sql, "SELECT DISTINCT")
+	require.Contains(t, sql, "EXISTS")
+	require.Contains(t, sql, "LOWER(TEAMS.NAME)")
 }

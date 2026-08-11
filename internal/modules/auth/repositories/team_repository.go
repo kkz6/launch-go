@@ -57,15 +57,23 @@ func (r *TeamRepository) Delete(ctx context.Context, id string) error {
 // GetUserTeams gets all teams for a user (owned and member of)
 func (r *TeamRepository) GetUserTeams(ctx context.Context, userID string) ([]models.Team, error) {
 	var teams []models.Team
-	err := r.DB.WithContext(ctx).
-		Distinct("teams.*").
-		Joins("LEFT JOIN team_user ON team_user.team_id = teams.id").
-		Where("teams.user_id = ? OR team_user.user_id = ?", userID, userID).
+	err := r.userTeamsQuery(ctx, userID).
 		Order("teams.personal_team DESC").
 		Order("LOWER(teams.name) ASC").
 		Order("teams.id ASC").
 		Find(&teams).Error
 	return teams, err
+}
+
+func (r *TeamRepository) userTeamsQuery(ctx context.Context, userID string) *gorm.DB {
+	membership := r.DB.WithContext(ctx).
+		Table("team_user").
+		Select("1").
+		Where("team_user.team_id = teams.id").
+		Where("team_user.user_id = ?", userID)
+
+	return r.DB.WithContext(ctx).
+		Where("teams.user_id = ? OR EXISTS (?)", userID, membership)
 }
 
 // GetMembers gets all members of a team
