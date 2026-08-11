@@ -75,7 +75,7 @@ func (j *PollDueBackupsJob) Handle(ctx context.Context) error {
 		if b.CronSchedule == nil || *b.CronSchedule == "" {
 			continue
 		}
-		due, err := cronutil.DueInWindow(*b.CronSchedule, startOfMinute, endOfMinute)
+		due, err := cronDueInWindow(*b.CronSchedule, startOfMinute, endOfMinute)
 		if err != nil {
 			j.Deps.Logger.Warn().Err(err).
 				Str("backup_id", b.ID).
@@ -149,6 +149,10 @@ func (j *PollDueBackupsJob) Failed(ctx context.Context, err error) {
 // returning *asynq.Task + error).
 func NewPollDueBackupsTask() (*asynq.Task, error) {
 	return pkgjobs.Task(TypePollDueBackups, PollDueBackupsPayload{})
+}
+
+func cronDueInWindow(expression string, windowStart, windowEnd time.Time) (bool, error) {
+	return cronutil.DueInWindow(expression, windowStart, windowEnd)
 }
 
 // isDuplicateTaskError checks for asynq's task-already-exists sentinel.

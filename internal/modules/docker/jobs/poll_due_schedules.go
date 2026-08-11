@@ -7,7 +7,6 @@ import (
 
 	"github.com/hibiken/asynq"
 
-	"github.com/kkz6/launch-go/internal/pkg/cronutil"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 )
 
@@ -65,7 +64,7 @@ func (j *PollDueSchedulesJob) Handle(ctx context.Context) error {
 		if s.Cron == "" {
 			continue
 		}
-		due, err := cronutil.DueInWindow(s.Cron, startOfMinute, endOfMinute)
+		due, err := cronDueInWindow(s.Cron, startOfMinute, endOfMinute)
 		if err != nil {
 			j.Deps.Logger.Warn().Err(err).
 				Str("schedule_id", s.ID).
