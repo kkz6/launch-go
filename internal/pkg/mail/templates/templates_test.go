@@ -1,6 +1,7 @@
 package templates
 
 import (
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -52,6 +53,29 @@ func TestEmailBuilder_BuildPlainText(t *testing.T) {
 	assert.Contains(t, text, "This is a test.")
 	assert.Contains(t, text, "View: https://example.com")
 	assert.Contains(t, text, "Thanks!")
+}
+
+func TestTeamDeletedEmail(t *testing.T) {
+	html, plain, err := TeamDeletedEmail("Legacy Team", "Personal Team")
+	require.NoError(t, err)
+	require.Contains(t, html, "Legacy Team")
+	require.Contains(t, html, "Personal Team")
+	require.Contains(t, plain, "Legacy Team")
+	require.Contains(t, plain, "Personal Team")
+}
+
+func TestTeamDeletedEmailReturnsRenderErrors(t *testing.T) {
+	wanted := errors.New("render failed")
+	originalRenderer := renderTeamDeletedEmail
+	renderTeamDeletedEmail = func(*EmailBuilder) (string, error) {
+		return "", wanted
+	}
+	t.Cleanup(func() { renderTeamDeletedEmail = originalRenderer })
+
+	html, plain, err := TeamDeletedEmail("Legacy Team", "Personal Team")
+	require.Empty(t, html)
+	require.Empty(t, plain)
+	require.ErrorIs(t, err, wanted)
 }
 
 func TestServerProvisionedEmail(t *testing.T) {

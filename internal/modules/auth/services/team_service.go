@@ -5,26 +5,33 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/rs/zerolog"
 	"gorm.io/gorm"
 
 	"github.com/kkz6/launch-go/internal/modules/auth/contracts"
 	"github.com/kkz6/launch-go/internal/modules/auth/dto"
 	"github.com/kkz6/launch-go/internal/modules/auth/models"
 	authtypes "github.com/kkz6/launch-go/internal/modules/auth/types"
+	"github.com/kkz6/launch-go/internal/modules/notification/channels"
 	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/launch/activity"
 	launchcache "github.com/kkz6/launch-go/internal/pkg/launch/cache"
+	"github.com/kkz6/launch-go/internal/pkg/mail/templates"
 )
 
 // TeamService handles team management operations
 type TeamService struct {
 	repos           contracts.RepositoryRegistry
 	membershipCache *launchcache.TeamMembershipCache
+	emailSender     channels.EmailSender
+	logger          *zerolog.Logger
 }
 
+var buildTeamDeletedEmail = templates.TeamDeletedEmail
+
 // NewTeamService creates a new TeamService instance
-func NewTeamService(repos contracts.RepositoryRegistry) *TeamService {
-	return &TeamService{repos: repos}
+func NewTeamService(repos contracts.RepositoryRegistry, emailSender channels.EmailSender, logger *zerolog.Logger) *TeamService {
+	return &TeamService{repos: repos, emailSender: emailSender, logger: logger}
 }
 
 func (s *TeamService) SetMembershipCache(c *launchcache.TeamMembershipCache) {
@@ -126,6 +133,10 @@ func (s *TeamService) DeleteTeam(ctx context.Context, userID, teamID, transferTo
 	if err != nil {
 		return nil, err
 	}
+	owner, err := s.repos.User().FindByID(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
 	if err := s.transferResourcesAndDelete(ctx, userID, teamID, transferToTeamID); err != nil {
 		return nil, err
 	}
@@ -136,8 +147,23 @@ func (s *TeamService) DeleteTeam(ctx context.Context, userID, teamID, transferTo
 		"transfer_to_team_id": transferToTeamID,
 		"transfer_to_team":    destination.Name,
 	})
+	s.sendTeamDeletedEmail(ctx, owner, team.Name, destination.Name)
 
 	return destination, nil
+}
+
+func (s *TeamService) sendTeamDeletedEmail(ctx context.Context, owner *models.User, teamName, destinationName string) {
+	if s.emailSender == nil || owner == nil || owner.Email == "" {
+		return
+	}
+
+	html, _, err := buildTeamDeletedEmail(teamName, destinationName)
+	if err == nil {
+		err = s.emailSender.Send(ctx, owner.Email, fmt.Sprintf("Team deleted: %s", teamName), html, true)
+	}
+	if err != nil && s.logger != nil {
+		s.logger.Error().Err(err).Str("email", owner.Email).Str("team", teamName).Msg("Failed to send team deletion email")
+	}
 }
 
 var teamTransferExcludedTables = map[string]struct{}{
