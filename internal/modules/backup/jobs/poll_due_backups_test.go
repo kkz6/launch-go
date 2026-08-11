@@ -14,11 +14,13 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 
+	"github.com/kkz6/launch-go/internal/config"
 	backupmodels "github.com/kkz6/launch-go/internal/modules/backup/models"
 	backuprepos "github.com/kkz6/launch-go/internal/modules/backup/repositories"
 	backuptypes "github.com/kkz6/launch-go/internal/modules/backup/types"
 	"github.com/kkz6/launch-go/internal/pkg/broadcast"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
+	"github.com/kkz6/launch-go/internal/pkg/queue"
 )
 
 type scheduledBackupBroadcast struct {
@@ -133,6 +135,28 @@ func TestPollDueBackupsCleansUpDuplicateDispatch(t *testing.T) {
 	require.Zero(t, count)
 }
 
+func TestPollDueBackupsTracksDuplicateCleanupFailure(t *testing.T) {
+	db, jobDeps := newScheduledBackupPollerFixture(t)
+	backup := createScheduledBackup(t, db, "backup-due", "0 0 * * *", true)
+	require.NoError(t, db.Callback().Delete().Before("gorm:delete").Register(
+		"scheduled_backup_delete_failure",
+		func(tx *gorm.DB) { tx.AddError(errors.New("delete failed")) },
+	))
+	job := &PollDueBackupsJob{
+		Deps: jobDeps,
+		now:  func() time.Time { return time.Date(2026, 8, 11, 0, 0, 0, 0, time.UTC) },
+		enqueue: func(*asynq.Task, ...asynq.Option) (*asynq.TaskInfo, error) {
+			return nil, asynq.ErrTaskIDConflict
+		},
+	}
+
+	require.NoError(t, job.Handle(context.Background()))
+	var run backupmodels.BackupJob
+	require.NoError(t, db.First(&run).Error)
+	require.Equal(t, backup.ID, run.BackupID)
+	require.Equal(t, backuptypes.BackupJobStatusFailed, run.Status)
+}
+
 func TestPollDueBackupsTracksEnqueueFailure(t *testing.T) {
 	db, deps := newScheduledBackupPollerFixture(t)
 	backup := createScheduledBackup(t, db, "backup-due", "0 0 * * *", true)
@@ -157,6 +181,93 @@ func TestPollDueBackupsTracksEnqueueFailure(t *testing.T) {
 	require.Equal(t, "schedule", recorder.data["source"])
 }
 
+func TestPollDueBackupsTracksMissingQueue(t *testing.T) {
+	db, jobDeps := newScheduledBackupPollerFixture(t)
+	createScheduledBackup(t, db, "backup-due", "0 0 * * *", true)
+	job := &PollDueBackupsJob{
+		Deps: jobDeps,
+		now:  func() time.Time { return time.Date(2026, 8, 11, 0, 0, 0, 0, time.UTC) },
+	}
+
+	require.NoError(t, job.Handle(context.Background()))
+	var run backupmodels.BackupJob
+	require.NoError(t, db.First(&run).Error)
+	require.Equal(t, backuptypes.BackupJobStatusFailed, run.Status)
+	require.Contains(t, *run.Error, "queue is not configured")
+}
+
+func TestPollDueBackupsUsesConfiguredQueue(t *testing.T) {
+	db, jobDeps := newScheduledBackupPollerFixture(t)
+	createScheduledBackup(t, db, "backup-due", "0 0 * * *", true)
+	queueClient := queue.NewClient(config.RedisConfig{Address: "127.0.0.1:1"})
+	t.Cleanup(func() { require.NoError(t, queueClient.Close()) })
+	jobDeps.Queue = queueClient
+	job := &PollDueBackupsJob{
+		Deps: jobDeps,
+		now:  func() time.Time { return time.Date(2026, 8, 11, 0, 0, 0, 0, time.UTC) },
+	}
+
+	require.NoError(t, job.Handle(context.Background()))
+	var run backupmodels.BackupJob
+	require.NoError(t, db.First(&run).Error)
+	require.Equal(t, backuptypes.BackupJobStatusFailed, run.Status)
+	require.Contains(t, *run.Error, "failed to enqueue scheduled backup")
+}
+
+func TestPollDueBackupsTracksTaskBuildFailure(t *testing.T) {
+	db, jobDeps := newScheduledBackupPollerFixture(t)
+	createScheduledBackup(t, db, "backup-due", "0 0 * * *", true)
+	job := &PollDueBackupsJob{
+		Deps: jobDeps,
+		now:  func() time.Time { return time.Date(2026, 8, 11, 0, 0, 0, 0, time.UTC) },
+		buildTask: func(string, string, string, string, time.Time) (*asynq.Task, error) {
+			return nil, errors.New("marshal failed")
+		},
+	}
+
+	require.NoError(t, job.Handle(context.Background()))
+	var run backupmodels.BackupJob
+	require.NoError(t, db.First(&run).Error)
+	require.Equal(t, backuptypes.BackupJobStatusFailed, run.Status)
+	require.Contains(t, *run.Error, "failed to build scheduled backup task")
+}
+
+func TestPollDueBackupsHandlesRunCreateFailure(t *testing.T) {
+	db, jobDeps := newScheduledBackupPollerFixture(t)
+	createScheduledBackup(t, db, "backup-due", "0 0 * * *", true)
+	require.NoError(t, db.Callback().Create().Before("gorm:create").Register(
+		"scheduled_backup_create_failure",
+		func(tx *gorm.DB) {
+			if tx.Statement.Schema != nil && tx.Statement.Schema.Name == "BackupJob" {
+				tx.AddError(errors.New("create failed"))
+			}
+		},
+	))
+	job := &PollDueBackupsJob{
+		Deps: jobDeps,
+		now:  func() time.Time { return time.Date(2026, 8, 11, 0, 0, 0, 0, time.UTC) },
+	}
+
+	require.NoError(t, job.Handle(context.Background()))
+}
+
+func TestPollDueBackupsHandlesFailurePersistenceError(t *testing.T) {
+	db, jobDeps := newScheduledBackupPollerFixture(t)
+	createScheduledBackup(t, db, "backup-due", "0 0 * * *", true)
+	job := &PollDueBackupsJob{
+		Deps: jobDeps,
+		now:  func() time.Time { return time.Date(2026, 8, 11, 0, 0, 0, 0, time.UTC) },
+		enqueue: func(*asynq.Task, ...asynq.Option) (*asynq.TaskInfo, error) {
+			sqlDB, err := db.DB()
+			require.NoError(t, err)
+			require.NoError(t, sqlDB.Close())
+			return nil, errors.New("redis unavailable")
+		},
+	}
+
+	require.NoError(t, job.Handle(context.Background()))
+}
+
 func TestPollDueBackupsReturnsRepositoryFailure(t *testing.T) {
 	db, deps := newScheduledBackupPollerFixture(t)
 	sqlDB, err := db.DB()
@@ -179,4 +290,22 @@ func TestScheduledBackupTaskIDUsesBackupAndUTCMinute(t *testing.T) {
 		scheduledBackupTaskID("backup-01", instant),
 		scheduledBackupTaskID("backup-02", instant),
 	)
+}
+
+func TestPollDueBackupsJobFactories(t *testing.T) {
+	_, jobDeps := newScheduledBackupPollerFixture(t)
+	previousDeps := deps
+	deps = jobDeps
+	t.Cleanup(func() { deps = previousDeps })
+
+	handler := NewPollDueBackupsJob(PollDueBackupsPayload{})
+	poller, ok := handler.(*PollDueBackupsJob)
+	require.True(t, ok)
+	require.Same(t, jobDeps, poller.Deps)
+
+	task, err := NewPollDueBackupsTask()
+	require.NoError(t, err)
+	require.Equal(t, TypePollDueBackups, task.Type())
+
+	poller.Failed(context.Background(), errors.New("poll failed"))
 }

@@ -20,10 +20,11 @@ const TypePollDueBackups = "backup:poll_due_backups"
 type PollDueBackupsPayload struct{}
 
 type PollDueBackupsJob struct {
-	Deps    *JobDeps
-	Payload PollDueBackupsPayload
-	now     func() time.Time
-	enqueue func(*asynq.Task, ...asynq.Option) (*asynq.TaskInfo, error)
+	Deps      *JobDeps
+	Payload   PollDueBackupsPayload
+	now       func() time.Time
+	enqueue   func(*asynq.Task, ...asynq.Option) (*asynq.TaskInfo, error)
+	buildTask func(serverID, backupID, teamID, jobID string, scheduledAt time.Time) (*asynq.Task, error)
 }
 
 func NewPollDueBackupsJob(payload PollDueBackupsPayload) pkgjobs.Handler {
@@ -83,7 +84,11 @@ func (j *PollDueBackupsJob) dispatchScheduledBackup(
 		return
 	}
 
-	task, err := NewRunScheduledBackupTask(
+	buildTask := NewRunScheduledBackupTask
+	if j.buildTask != nil {
+		buildTask = j.buildTask
+	}
+	task, err := buildTask(
 		backup.ServerID,
 		backup.ID,
 		backup.TeamID,
