@@ -13,6 +13,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/backup/jobs"
 	"github.com/kkz6/launch-go/internal/modules/backup/models"
 	backuptypes "github.com/kkz6/launch-go/internal/modules/backup/types"
+	"github.com/kkz6/launch-go/internal/pkg/cronutil"
 	"github.com/kkz6/launch-go/internal/pkg/launch/activity"
 )
 
@@ -49,6 +50,9 @@ func (s *BackupService) CreateBackup(ctx context.Context, serverID, teamID, user
 }
 
 func (s *BackupService) buildAndDispatchBackup(ctx context.Context, serverID, teamID, userID string, req *dto.CreateBackupRequest) (*models.Backup, error) {
+	if err := cronutil.Validate(req.CronExpression); err != nil {
+		return nil, ErrInvalidCronExpression
+	}
 	includeFilesJSON, err := json.Marshal(req.IncludeFiles)
 	if err != nil {
 		return nil, fmt.Errorf("failed to process include files: %w", err)
@@ -91,7 +95,6 @@ func (s *BackupService) buildAndDispatchBackup(ctx context.Context, serverID, te
 	}
 
 	activity.RecordEvent(ctx, "created", userID, backup, "Backup was created")
-	s.dispatchInstallBackup(serverID, backup.ID)
 
 	s.Logger.Info().Str("backup_id", backup.ID).Str("server_id", serverID).Msg("Backup created successfully")
 	return backup, nil
@@ -103,6 +106,9 @@ func (s *BackupService) UpdateBackup(ctx context.Context, id, serverID, teamID, 
 	backup, err := s.Repos().Backup().FindBackupByIDAndServerAndTeam(ctx, id, serverID, teamID)
 	if err != nil {
 		return dto.BackupResponse{}, err
+	}
+	if err := cronutil.Validate(req.CronExpression); err != nil {
+		return dto.BackupResponse{}, ErrInvalidCronExpression
 	}
 
 	includeFilesJSON, err := json.Marshal(req.IncludeFiles)
@@ -155,11 +161,6 @@ func (s *BackupService) DeleteBackup(ctx context.Context, id, serverID, teamID, 
 	if err := s.Repos().Backup().DeleteBackup(ctx, id); err != nil {
 		return fmt.Errorf("failed to delete backup: %w", err)
 	}
-
-	// Dispatch deletion job to remove backup files from server. If
-	// dispatch fails, the backup file remains on the server but the
-	// record is already gone — the safer inconsistency.
-	s.dispatchDeleteBackup(serverID, backup.ID)
 
 	s.Logger.Info().Str("backup_id", id).Str("server_id", serverID).Msg("Backup deleted successfully")
 	return nil
@@ -295,18 +296,6 @@ func (s *BackupService) MarkBackupInstallationFailed(ctx context.Context, id str
 	return s.Repos().Backup().UpdateBackupFields(ctx, id, map[string]interface{}{
 		"installation_failed_at": time.Now(),
 	})
-}
-
-func (s *BackupService) dispatchInstallBackup(serverID, backupID string) {
-	s.DispatchTask("InstallBackup", func() (*asynq.Task, error) {
-		return jobs.NewInstallBackupTask(serverID, backupID, nil)
-	}, "server_id", serverID, "backup_id", backupID)
-}
-
-func (s *BackupService) dispatchDeleteBackup(serverID, backupID string) {
-	s.DispatchTask("DeleteBackup", func() (*asynq.Task, error) {
-		return jobs.NewDeleteBackupTask(serverID, backupID, nil)
-	}, "server_id", serverID, "backup_id", backupID)
 }
 
 func (s *BackupService) dispatchRunManualBackup(

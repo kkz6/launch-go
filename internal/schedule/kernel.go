@@ -1,6 +1,7 @@
 package schedule
 
 import (
+	backupjobs "github.com/kkz6/launch-go/internal/modules/backup/jobs"
 	certjobs "github.com/kkz6/launch-go/internal/modules/certificate/jobs"
 	dockerjobs "github.com/kkz6/launch-go/internal/modules/docker/jobs"
 	serverjobs "github.com/kkz6/launch-go/internal/modules/server/jobs"
@@ -51,6 +52,11 @@ func GetScheduledTasks() []queue.ScheduledTask {
 		At("*/1 * * * *", dockerjobs.NewPollDueBackupsTask,
 			WithName("docker-poll-due-backups"),
 			LowPriority(),
+		),
+
+		At("*/1 * * * *", backupjobs.NewPollDueBackupsTask,
+			WithName("server-poll-due-backups"),
+			DefaultPriority(),
 		),
 
 		// ┌─────────────────────────────────────────────────────────────────┐

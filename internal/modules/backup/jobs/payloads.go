@@ -17,5 +17,6 @@ type RunManualBackupPayload struct {
 	BackupID string  `json:"backup_id"`
 	TeamID   string  `json:"team_id,omitempty"`
 	JobID    string  `json:"job_id,omitempty"`
+	Source   string  `json:"source,omitempty"`
 	UserID   *string `json:"user_id,omitempty"`
 }

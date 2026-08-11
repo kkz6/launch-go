@@ -16,6 +16,7 @@ var (
 	ErrInvalidStorageDriver      = fiberutil.BadRequest("Invalid storage driver")
 	ErrConnectionFailed          = fiberutil.BadRequest("Failed to connect to storage provider")
 	ErrInvalidDispatchToken      = fiberutil.Forbidden(fiberutil.MsgForbidden)
+	ErrInvalidCronExpression     = fiberutil.BadRequest("Invalid cron expression; use five fields: minute hour day month weekday")
 )
 
 // ServiceDeps holds all dependencies needed for backup services.

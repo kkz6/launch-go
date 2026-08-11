@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/kkz6/launch-go/internal/modules/docker/tasks"
+	"github.com/kkz6/launch-go/internal/pkg/cronutil"
 )
 
 // TestCronDueInWindow pins the "is this expression due in [start, end)?"
@@ -68,7 +69,7 @@ func TestCronDueInWindow(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := cronDueInWindow(tc.expr, tc.windowStart, tc.windowStart.Add(time.Minute))
+			got, err := cronutil.DueInWindow(tc.expr, tc.windowStart, tc.windowStart.Add(time.Minute))
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
@@ -84,7 +85,7 @@ func TestCronDueInWindow(t *testing.T) {
 // error rather than silently dropping bad cron strings. The poller logs
 // + skips on error; testing the surface is enough.
 func TestCronDueInWindow_InvalidExpression(t *testing.T) {
-	_, err := cronDueInWindow("not a cron", time.Now(), time.Now().Add(time.Minute))
+	_, err := cronutil.DueInWindow("not a cron", time.Now(), time.Now().Add(time.Minute))
 	if err == nil {
 		t.Fatal("expected parse error for invalid cron, got nil")
 	}

@@ -85,6 +85,55 @@ func TestValidateS3StorageProviderIsTeamScopedAndDriverChecked(t *testing.T) {
 	require.ErrorIs(t, service.validateS3StorageProvider(ctx, 103, "team-a"), ErrInvalidStorageDriver)
 }
 
+func TestCreateBackupRejectsInvalidCronExpression(t *testing.T) {
+	service, db := newBackupServiceForTest(t)
+	_, err := service.CreateBackup(
+		context.Background(),
+		"server-a",
+		"team-a",
+		"user-a",
+		&dto.CreateBackupRequest{
+			CronExpression:    "0 0 * *",
+			Path:              "backups",
+			StorageProviderID: "1",
+		},
+	)
+	require.ErrorIs(t, err, ErrInvalidCronExpression)
+
+	var count int64
+	require.NoError(t, db.Model(&models.Backup{}).Count(&count).Error)
+	require.Zero(t, count)
+}
+
+func TestUpdateBackupRejectsInvalidCronExpression(t *testing.T) {
+	service, db := newBackupServiceForTest(t)
+	backup := &models.Backup{
+		StorageProviderID: 1,
+		CronExpression:    "0 0 * * *",
+		IncludeFiles:      "[]",
+		ExcludeFiles:      "[]",
+		Path:              "backups",
+	}
+	backup.ID = "backup-update-cron"
+	backup.ServerID = "server-a"
+	backup.TeamID = "team-a"
+	require.NoError(t, db.Create(backup).Error)
+
+	_, err := service.UpdateBackup(
+		context.Background(),
+		backup.ID,
+		backup.ServerID,
+		backup.TeamID,
+		"user-a",
+		&dto.UpdateBackupRequest{CronExpression: "invalid"},
+	)
+	require.ErrorIs(t, err, ErrInvalidCronExpression)
+
+	var persisted models.Backup
+	require.NoError(t, db.First(&persisted, "id = ?", backup.ID).Error)
+	require.Equal(t, "0 0 * * *", persisted.CronExpression)
+}
+
 func TestRunBackupReturnsQueueDispatchFailure(t *testing.T) {
 	service, db := newBackupServiceForTest(t)
 	ctx := context.Background()
