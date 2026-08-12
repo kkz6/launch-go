@@ -61,3 +61,15 @@ func TestCheckServiceStatusJobHonorsProtectedProbeUpdate(t *testing.T) {
 	assert.True(t, repository.called)
 	assert.False(t, updated)
 }
+
+func TestParseServiceStatusReportsMissingSoftware(t *testing.T) {
+	job := &CheckServiceStatusJob{}
+
+	for _, output := range []string{
+		"Unit redis-server.service could not be found.",
+		"LoadState=not-found",
+		"Redis not installed",
+	} {
+		assert.Equal(t, types.ServiceStatusMissing, job.parseServiceStatus(output))
+	}
+}

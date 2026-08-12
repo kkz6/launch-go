@@ -5,7 +5,7 @@
 
 echo "Remove Redis"
 
-sudo service redis stop 2>/dev/null || true
+sudo systemctl disable --now redis-server 2>/dev/null || true
 
 waitForAptUnlock
 aptGet purge -y redis-server

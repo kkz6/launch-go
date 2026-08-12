@@ -15,6 +15,16 @@ func TestGetSystemdServiceName_Docker(t *testing.T) {
 	assert.Equal(t, "docker", GetSystemdServiceName("docker"))
 }
 
+func TestParseSystemctlServiceState_DistinguishesMissingUnitFromStoppedUnit(t *testing.T) {
+	state, active := ParseSystemctlServiceState("inactive", "not-found")
+	assert.Equal(t, StateMissing, state)
+	assert.False(t, active)
+
+	state, active = ParseSystemctlServiceState("inactive", "loaded")
+	assert.Equal(t, StateStopped, state)
+	assert.False(t, active)
+}
+
 // TestGetSystemdServiceName_LaunchAgent is the regression guard for
 // the "Launch Agent perpetually shows Installed" bug. The install
 // script writes /etc/systemd/system/launch-agent.service so this MUST

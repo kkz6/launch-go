@@ -104,6 +104,7 @@ const (
 	StateFailed    = "failed"
 	StateUnknown   = "unknown"
 	StateInstalled = "installed"
+	StateMissing   = "missing"
 )
 
 // CalculateUptimeFromTimestamp calculates uptime from a timestamp string.
@@ -264,4 +265,15 @@ func ParseSystemctlActiveState(activeResult string) (status string, isActive boo
 	default:
 		return StateUnknown, false
 	}
+}
+
+// ParseSystemctlServiceState distinguishes a stopped unit from software that
+// is not installed. systemctl reports "inactive" for both; LoadState is the
+// authoritative signal for a unit that does not exist.
+func ParseSystemctlServiceState(activeResult, loadState string) (status string, isActive bool) {
+	if strings.EqualFold(strings.TrimSpace(loadState), "not-found") {
+		return StateMissing, false
+	}
+
+	return ParseSystemctlActiveState(activeResult)
 }

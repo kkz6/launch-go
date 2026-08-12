@@ -13,6 +13,7 @@ import (
 	"gorm.io/gorm"
 
 	serverModels "github.com/kkz6/launch-go/internal/modules/server/models"
+	serverTypes "github.com/kkz6/launch-go/internal/modules/server/types"
 	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 	launchcache "github.com/kkz6/launch-go/internal/pkg/launch/cache"
 	"github.com/kkz6/launch-go/internal/pkg/launch/status"
@@ -251,7 +252,7 @@ func (h *ServiceStatusHandler) getServiceStatus(conn *taskrunner.SSHClient, svc 
 	defer session.Close()
 
 	// Run systemctl command to get service status
-	command := fmt.Sprintf(`systemctl is-active %s 2>/dev/null; echo "---"; systemctl show %s --property=ActiveState,SubState,MainPID,MemoryCurrent,ActiveEnterTimestamp 2>/dev/null`, serviceName, serviceName)
+	command := fmt.Sprintf(`systemctl is-active %s 2>/dev/null; echo "---"; systemctl show %s --property=LoadState,ActiveState,SubState,MainPID,MemoryCurrent,ActiveEnterTimestamp 2>/dev/null`, serviceName, serviceName)
 
 	output, err := session.CombinedOutput(command)
 	if err != nil {
@@ -263,8 +264,25 @@ func (h *ServiceStatusHandler) getServiceStatus(conn *taskrunner.SSHClient, svc 
 
 	// Parse the output
 	h.parseServiceOutput(string(output), &svcStatus)
+	h.persistMissingStatus(svc, svcStatus.Status)
 
 	return svcStatus
+}
+
+func (h *ServiceStatusHandler) persistMissingStatus(svc *serverModels.InstalledService, liveStatus string) {
+	if liveStatus != status.StateMissing || svc.Status == serverTypes.ServiceStatusMissing {
+		return
+	}
+
+	if err := h.DB.Model(&serverModels.InstalledService{}).
+		Where("id = ?", svc.ID).
+		Update("status", serverTypes.ServiceStatusMissing).Error; err != nil {
+		h.Logger.Warn().Err(err).Str("service_id", svc.ID).
+			Msg("failed to persist missing service status")
+		return
+	}
+
+	svc.Status = serverTypes.ServiceStatusMissing
 }
 
 // probeAndPersistVersion runs a binary's `--version` over SSH, sets the
@@ -343,14 +361,17 @@ func (h *ServiceStatusHandler) parseServiceOutput(output string, svcStatus *stat
 		return
 	}
 
-	// First line is the is-active result
+	// First line is the is-active result. LoadState below disambiguates an
+	// inactive installed service from a systemd unit that does not exist.
 	activeResult := strings.TrimSpace(lines[0])
-	svcStatus.Status, svcStatus.IsActive = status.ParseSystemctlActiveState(activeResult)
+	loadState := ""
 
 	// Parse the property lines
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
-		if strings.HasPrefix(line, "MainPID=") {
+		if strings.HasPrefix(line, "LoadState=") {
+			loadState = strings.TrimPrefix(line, "LoadState=")
+		} else if strings.HasPrefix(line, "MainPID=") {
 			pidStr := strings.TrimPrefix(line, "MainPID=")
 			if pid, err := strconv.Atoi(pidStr); err == nil {
 				svcStatus.PID = pid
@@ -367,4 +388,6 @@ func (h *ServiceStatusHandler) parseServiceOutput(output string, svcStatus *stat
 			}
 		}
 	}
+
+	svcStatus.Status, svcStatus.IsActive = status.ParseSystemctlServiceState(activeResult, loadState)
 }

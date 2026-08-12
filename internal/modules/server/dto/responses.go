@@ -198,6 +198,7 @@ type ServiceResponse struct {
 	StatusLabel     string              `json:"status_label"`
 	IsDefault       bool                `json:"is_default"`
 	DefaultPending  bool                `json:"default_change_pending"`
+	CanRemove       bool                `json:"can_remove"`
 	Software        *string             `json:"software,omitempty"`
 	SoftwareLabel   *string             `json:"software_label,omitempty"`
 	LastStatusCheck *string             `json:"last_status_check,omitempty"`
@@ -244,6 +245,7 @@ func ToServiceResponse(service *models.InstalledService) ServiceResponse {
 		StatusLabel: service.Status.Label(),
 		IsDefault:   service.IsDefault,
 		TaskID:      service.TaskID,
+		CanRemove:   service.GetSoftware().CanRemove(),
 		CreatedAt:   createdAt,
 		UpdatedAt:   updatedAt,
 	}
