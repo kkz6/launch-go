@@ -485,11 +485,13 @@ const (
 	ServiceStatusInstalled    ServiceStatus = "installed"
 	ServiceStatusStopped      ServiceStatus = "stopped"
 	ServiceStatusRunning      ServiceStatus = "running"
+	ServiceStatusMissing      ServiceStatus = "missing"
 )
 
 var allServiceStatuses = []ServiceStatus{
 	ServiceStatusPending, ServiceStatusInstalling, ServiceStatusUpdating, ServiceStatusUninstalling,
 	ServiceStatusFailed, ServiceStatusInstalled, ServiceStatusStopped, ServiceStatusRunning,
+	ServiceStatusMissing,
 }
 
 var serviceStatusLabels = map[ServiceStatus]string{
@@ -501,6 +503,7 @@ var serviceStatusLabels = map[ServiceStatus]string{
 	ServiceStatusInstalled:    "Installed",
 	ServiceStatusStopped:      "Stopped",
 	ServiceStatusRunning:      "Running",
+	ServiceStatusMissing:      "Not Installed",
 }
 
 func (s ServiceStatus) String() string {

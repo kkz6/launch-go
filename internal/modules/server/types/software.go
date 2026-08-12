@@ -164,6 +164,21 @@ func (s Software) IsDatabase() bool {
 	return s == SoftwareMySQL80 || s == SoftwarePostgreSQL16
 }
 
+// CanRemove reports whether Launch has a supported uninstall task for the
+// software and the service may be removed independently from its server.
+func (s Software) CanRemove() bool {
+	if s.IsPhp() {
+		return true
+	}
+
+	switch s {
+	case SoftwareMySQL80, SoftwarePostgreSQL16, SoftwareRedis, SoftwareSupervisor:
+		return true
+	default:
+		return false
+	}
+}
+
 func (s Software) Group() string {
 	switch s {
 	case SoftwarePhp56, SoftwarePhp70, SoftwarePhp71, SoftwarePhp72,

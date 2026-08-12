@@ -144,6 +144,11 @@ func (j *CheckServiceStatusJob) updateServiceStatus(
 
 func (j *CheckServiceStatusJob) parseServiceStatus(output string) types.ServiceStatus {
 	lowerOutput := strings.ToLower(output)
+	if strings.Contains(lowerOutput, "could not be found") ||
+		strings.Contains(lowerOutput, "loadstate=not-found") ||
+		strings.Contains(lowerOutput, "not installed") {
+		return types.ServiceStatusMissing
+	}
 
 	if strings.Contains(lowerOutput, "active (running)") ||
 		strings.Contains(lowerOutput, "is running") ||

@@ -187,3 +187,33 @@ func TestSoftware_Traefik_InstallTemplateName(t *testing.T) {
 		t.Errorf("SoftwareTraefik install template = %q, want %q", got, want)
 	}
 }
+
+func TestSoftware_CanRemove(t *testing.T) {
+	removable := []Software{
+		SoftwarePhp83,
+		SoftwareMySQL80,
+		SoftwarePostgreSQL16,
+		SoftwareRedis,
+		SoftwareSupervisor,
+	}
+	for _, software := range removable {
+		if !software.CanRemove() {
+			t.Errorf("%s should be removable", software)
+		}
+	}
+
+	protected := []Software{
+		SoftwareCaddy2,
+		SoftwareComposer2,
+		SoftwareNode21,
+		SoftwareBun,
+		SoftwareLaunchAgent,
+		SoftwareDocker,
+		SoftwareTraefik,
+	}
+	for _, software := range protected {
+		if software.CanRemove() {
+			t.Errorf("%s should not be removable", software)
+		}
+	}
+}

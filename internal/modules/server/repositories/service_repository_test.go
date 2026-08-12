@@ -145,3 +145,25 @@ func TestUpdateStatusFromProbePreservesPhpPatchReservation(t *testing.T) {
 	assert.Equal(t, "running", preserved.TypeData["patch_status"])
 	assert.Equal(t, "inactive (dead)", preserved.TypeData["status_output"])
 }
+
+func TestMarkRemovalFailedUpdatesExistingStatusColumn(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, db.Exec(`CREATE TABLE services (
+		id TEXT PRIMARY KEY,
+		status TEXT NOT NULL,
+		updated_at DATETIME
+	)`).Error)
+	require.NoError(t, db.Exec(
+		"INSERT INTO services (id, status) VALUES (?, ?)",
+		"service-1",
+		types.ServiceStatusUninstalling,
+	).Error)
+
+	repository := NewServiceRepository(db)
+	require.NoError(t, repository.MarkRemovalFailed(context.Background(), "service-1"))
+
+	var status string
+	require.NoError(t, db.Raw("SELECT status FROM services WHERE id = ?", "service-1").Scan(&status).Error)
+	assert.Equal(t, types.ServiceStatusFailed.String(), status)
+}

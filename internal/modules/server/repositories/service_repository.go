@@ -3,7 +3,6 @@ package repositories
 import (
 	"context"
 	"errors"
-	"time"
 
 	"gorm.io/gorm"
 
@@ -240,8 +239,7 @@ func (r *ServiceRepository) UnsetDefaultPhp(ctx context.Context, serverID string
 // MarkRemovalFailed marks a service removal as failed
 func (r *ServiceRepository) MarkRemovalFailed(ctx context.Context, id string) error {
 	return r.UpdateFields(ctx, id, map[string]interface{}{
-		"removal_requested_at": nil,
-		"removal_failed_at":    time.Now(),
+		"status": types.ServiceStatusFailed,
 	})
 }
 
