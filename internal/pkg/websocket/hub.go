@@ -33,6 +33,7 @@ type Hub struct {
 	unregister chan *Client
 	mu         sync.RWMutex
 	done       chan struct{}
+	shutdown   sync.Once
 }
 
 // NewHub creates a new WebSocket hub
@@ -70,6 +71,9 @@ func (h *Hub) Run() {
 
 // removeClient removes a client from the hub and all its channels
 func (h *Hub) removeClient(client *Client) {
+	client.Close()
+	channels := client.GetChannels()
+
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
@@ -77,13 +81,10 @@ func (h *Hub) removeClient(client *Client) {
 		return
 	}
 
-	// Mark client as closing before closing the channel
-	client.Close()
-
 	delete(h.clients, client)
 
 	// Remove from all channels
-	for _, channel := range client.GetChannels() {
+	for _, channel := range channels {
 		if clients, ok := h.channels[channel]; ok {
 			delete(clients, client)
 			if len(clients) == 0 {
@@ -117,28 +118,36 @@ func (h *Hub) broadcastToChannel(message outboundMessage) {
 	for _, client := range clientsCopy {
 		if !client.SafeSend(message.payload) {
 			// Client buffer full or closing, schedule for removal
-			go func(c *Client) {
-				h.unregister <- c
-			}(client)
+			go h.Unregister(client)
 		}
 	}
 }
 
 // Subscribe adds a client to a channel
 func (h *Hub) Subscribe(client *Client, channel string) {
+	if channel == "" || client.IsClosing() {
+		return
+	}
+	client.AddChannel(channel)
+
 	h.mu.Lock()
 	defer h.mu.Unlock()
+	if client.IsClosing() {
+		client.RemoveChannel(channel)
+		return
+	}
 
 	if _, ok := h.channels[channel]; !ok {
 		h.channels[channel] = make(map[*Client]bool)
 	}
 
 	h.channels[channel][client] = true
-	client.AddChannel(channel)
 }
 
 // Unsubscribe removes a client from a channel
 func (h *Hub) Unsubscribe(client *Client, channel string) {
+	client.RemoveChannel(channel)
+
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
@@ -148,8 +157,6 @@ func (h *Hub) Unsubscribe(client *Client, channel string) {
 			delete(h.channels, channel)
 		}
 	}
-
-	client.RemoveChannel(channel)
 }
 
 // Broadcast sends a message to all clients subscribed to a channel
@@ -173,7 +180,10 @@ func (h *Hub) BroadcastSerialized(channel string, payload []byte) {
 }
 
 func (h *Hub) enqueueSerialized(channel string, payload []byte) {
-	h.broadcast <- outboundMessage{channel: channel, payload: payload}
+	select {
+	case h.broadcast <- outboundMessage{channel: channel, payload: payload}:
+	case <-h.done:
+	}
 }
 
 // BroadcastToServer sends a message to the server's channel
@@ -234,17 +244,41 @@ func (h *Hub) BroadcastModelDeleted(teamID, modelName, modelID string, payload i
 
 // Shutdown gracefully shuts down the hub
 func (h *Hub) Shutdown() {
-	close(h.done)
+	h.shutdown.Do(func() {
+		close(h.done)
+		h.mu.RLock()
+		clients := make([]*Client, 0, len(h.clients))
+		for client := range h.clients {
+			clients = append(clients, client)
+		}
+		h.mu.RUnlock()
+		for _, client := range clients {
+			client.Close()
+		}
+	})
 }
 
 // Register registers a client with the hub
 func (h *Hub) Register(client *Client) {
-	h.register <- client
+	select {
+	case h.register <- client:
+	case <-h.done:
+		client.Close()
+	}
+}
+
+// Unregister removes a client unless the hub has already shut down.
+func (h *Hub) Unregister(client *Client) {
+	select {
+	case h.unregister <- client:
+	case <-h.done:
+		client.Close()
+	}
 }
 
 // Handler returns a Fiber handler for the main WebSocket endpoint
 // Connection URL: /ws?token=xxx&team_id=xxx
-func Handler(hub *Hub, jwtSecret string, membershipCache *launchcache.TeamMembershipCache) fiber.Handler {
+func Handler(hub *Hub, jwtSecret string, membershipCache *launchcache.TeamMembershipCache, authorizer ChannelAuthorizer) fiber.Handler {
 	return websocket.New(func(c *websocket.Conn) {
 		// Authenticate and validate team membership
 		claims, err := AuthenticateWebSocket(c, jwtSecret, membershipCache)
@@ -254,7 +288,7 @@ func Handler(hub *Hub, jwtSecret string, membershipCache *launchcache.TeamMember
 		}
 
 		// Create client
-		client := NewClient(hub, c, claims.UserID, claims.TeamID)
+		client := NewClient(hub, c, claims.UserID, claims.TeamID, authorizer)
 
 		// Register with hub
 		hub.Register(client)

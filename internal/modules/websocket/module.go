@@ -30,6 +30,7 @@ type Module struct {
 	dockerLogsHandler      *handlers.DockerLogsHandler
 	jwtSecret              string
 	membershipCache        *launchcache.TeamMembershipCache
+	channelAuthorizer      *channelAuthorizer
 }
 
 // NewModule creates a new WebSocket module. The hub is deliberately passed
@@ -53,6 +54,7 @@ func NewModule(b *app.Builder, hub *ws.Hub) *Module {
 		dockerLogsHandler:      handlers.NewDockerLogsHandler(handlerBase),
 		jwtSecret:              jwtSecret,
 		membershipCache:        deps.MembershipCache,
+		channelAuthorizer:      newChannelAuthorizer(deps.DB),
 	}
 }
 
@@ -60,7 +62,7 @@ func NewModule(b *app.Builder, hub *ws.Hub) *Module {
 func (m *Module) RegisterWebSocketRoutes(router fiber.Router) {
 	// Main WebSocket endpoint for pub/sub events
 	// Connection URL: /api/ws?token=xxx&team_id=xxx
-	router.Get("/ws", ws.Handler(m.hub, m.jwtSecret, m.membershipCache))
+	router.Get("/ws", ws.Handler(m.hub, m.jwtSecret, m.membershipCache, m.channelAuthorizer))
 
 	// Terminal WebSocket endpoint
 	router.Get("/terminal/ws", m.terminalHandler.Handler())
