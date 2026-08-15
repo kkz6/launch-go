@@ -1,6 +1,8 @@
 package websocket
 
 import (
+	"encoding/json"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -9,45 +11,60 @@ import (
 )
 
 const (
-	clientWriteWait = 10 * time.Second
-	clientPongWait  = 60 * time.Second
-	clientPingEvery = 50 * time.Second
-	clientSendQueue = 64
+	clientWriteWait  = 10 * time.Second
+	clientPongWait   = 60 * time.Second
+	clientPingEvery  = 50 * time.Second
+	clientSendQueue  = 64
+	clientMaxMessage = 64 << 10
 )
+
+// ChannelAuthorizer verifies that a connection may subscribe to a resource
+// channel. Implementations must fail closed for unknown channel scopes.
+type ChannelAuthorizer interface {
+	AuthorizeChannel(userID, teamID, channel string) bool
+}
 
 // Client represents a connected WebSocket client
 type Client struct {
-	ID       string
-	UserID   string
-	TeamID   string
-	Conn     *websocket.Conn
-	Channels map[string]bool
-	Send     chan []byte
-	hub      *Hub
-	mu       sync.RWMutex
-	closing  atomic.Bool
+	ID         string
+	UserID     string
+	TeamID     string
+	Conn       *websocket.Conn
+	Channels   map[string]bool
+	Send       chan []byte
+	hub        *Hub
+	mu         sync.RWMutex
+	sendMu     sync.RWMutex
+	closing    atomic.Bool
+	authorizer ChannelAuthorizer
 }
 
 // NewClient creates a new WebSocket client
-func NewClient(hub *Hub, conn *websocket.Conn, userID, teamID string) *Client {
+func NewClient(hub *Hub, conn *websocket.Conn, userID, teamID string, authorizers ...ChannelAuthorizer) *Client {
+	var authorizer ChannelAuthorizer
+	if len(authorizers) > 0 {
+		authorizer = authorizers[0]
+	}
 	return &Client{
-		ID:       userID,
-		UserID:   userID,
-		TeamID:   teamID,
-		Conn:     conn,
-		Channels: make(map[string]bool),
-		Send:     make(chan []byte, clientSendQueue),
-		hub:      hub,
+		ID:         userID,
+		UserID:     userID,
+		TeamID:     teamID,
+		Conn:       conn,
+		Channels:   make(map[string]bool),
+		Send:       make(chan []byte, clientSendQueue),
+		hub:        hub,
+		authorizer: authorizer,
 	}
 }
 
 // Close marks the client as closing to prevent send-on-closed-channel panics
 func (c *Client) Close() {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.closing.CompareAndSwap(false, true) {
-		close(c.Send)
+	c.sendMu.Lock()
+	defer c.sendMu.Unlock()
+	if c.closing.Swap(true) {
+		return
 	}
+	close(c.Send)
 }
 
 // IsClosing returns true if the client is in closing state
@@ -58,8 +75,8 @@ func (c *Client) IsClosing() bool {
 // SafeSend attempts to send a message to the client
 // Returns false if the client is closing or the send buffer is full
 func (c *Client) SafeSend(data []byte) bool {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
+	c.sendMu.RLock()
+	defer c.sendMu.RUnlock()
 	if c.IsClosing() {
 		return false
 	}
@@ -77,10 +94,10 @@ func (c *Client) SafeSend(data []byte) bool {
 // This should be run in its own goroutine
 func (c *Client) ReadPump() {
 	defer func() {
-		c.hub.unregister <- c
+		c.hub.Unregister(c)
 		c.Conn.Close()
 	}()
-
+	c.Conn.SetReadLimit(clientMaxMessage)
 	_ = c.Conn.SetReadDeadline(time.Now().Add(clientPongWait))
 	c.Conn.SetPongHandler(func(string) error {
 		return c.Conn.SetReadDeadline(time.Now().Add(clientPongWait))
@@ -98,9 +115,15 @@ func (c *Client) ReadPump() {
 
 		switch msg.Action {
 		case "subscribe":
-			c.hub.Subscribe(c, msg.Channel)
+			channel := strings.TrimSpace(msg.Channel)
+			if c.authorizer == nil || !c.authorizer.AuthorizeChannel(c.UserID, c.TeamID, channel) {
+				c.sendProtocolMessage("subscription.error", channel, map[string]string{"message": "channel access denied"})
+				continue
+			}
+			c.hub.Subscribe(c, channel)
+			c.sendProtocolMessage("subscription.succeeded", channel, nil)
 		case "unsubscribe":
-			c.hub.Unsubscribe(c, msg.Channel)
+			c.hub.Unsubscribe(c, strings.TrimSpace(msg.Channel))
 		}
 	}
 }
@@ -132,6 +155,13 @@ func (c *Client) WritePump() {
 				return
 			}
 		}
+	}
+}
+
+func (c *Client) sendProtocolMessage(event, channel string, data any) {
+	payload, err := json.Marshal(Message{Event: event, Channel: channel, Data: data})
+	if err == nil {
+		c.SafeSend(payload)
 	}
 }
 
