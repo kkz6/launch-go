@@ -297,8 +297,17 @@ func Handler(hub *Hub, jwtSecret string, membershipCache *launchcache.TeamMember
 		teamChannel := broadcast.TeamChannel(client.TeamID)
 		hub.Subscribe(client, teamChannel)
 
-		// Start pumps
-		go client.WritePump()
+		// Keep the Fiber connection wrapper alive until both pumps have
+		// stopped. Fiber returns the wrapper to a pool when this handler
+		// exits, so letting WritePump outlive the handler races with that
+		// pool cleanup and can make the writer observe a recycled socket.
+		writerDone := make(chan struct{})
+		go func() {
+			defer close(writerDone)
+			client.WritePump()
+		}()
 		client.ReadPump()
+		client.Close()
+		<-writerDone
 	})
 }
