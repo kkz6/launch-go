@@ -23,9 +23,10 @@ const TypeSyncComposeTraefikConfig = "docker:sync_compose_traefik_config"
 // re-fetches the compose row + domains so a stale payload can't
 // write outdated config (same shape as SyncTraefikConfigPayload).
 type SyncComposeTraefikConfigPayload struct {
-	ComposeID string `json:"compose_id"`
-	ServerID  string `json:"server_id"`
-	TeamID    string `json:"team_id"`
+	ComposeID             string `json:"compose_id"`
+	ServerID              string `json:"server_id"`
+	TeamID                string `json:"team_id"`
+	ForceCertificateRetry bool   `json:"force_certificate_retry,omitempty"`
 }
 
 // SyncComposeTraefikConfigJob renders the per-compose YAML and
@@ -77,12 +78,17 @@ func (j *SyncComposeTraefikConfigJob) Handle(ctx context.Context) error {
 	// in lockstep — if the deploy script changes the -p value the
 	// renderer must follow.
 	projectName := fmt.Sprintf("%s-%s", projectSlug, composeSlug)
+	routerSuffix := ""
+	if j.Payload.ForceCertificateRetry {
+		routerSuffix = fmt.Sprintf("-retry-%d", time.Now().UnixNano())
+	}
 
 	yaml := tasks.RenderComposeTraefikConfig(tasks.ComposeTraefikConfigArgs{
-		ProjectSlug: projectSlug,
-		ComposeSlug: composeSlug,
-		ProjectName: projectName,
-		Domains:     domains,
+		ProjectSlug:  projectSlug,
+		ComposeSlug:  composeSlug,
+		ProjectName:  projectName,
+		Domains:      domains,
+		RouterSuffix: routerSuffix,
 	})
 
 	// Same stored-cert materialisation as the application sync —
@@ -144,8 +150,9 @@ func NewSyncComposeTraefikConfigTask(composeID, serverID, teamID string) (*asynq
 
 func NewRetryComposeTraefikConfigTask(composeID, serverID, teamID string) (*asynq.Task, error) {
 	return pkgjobs.Task(TypeSyncComposeTraefikConfig, SyncComposeTraefikConfigPayload{
-		ComposeID: composeID,
-		ServerID:  serverID,
-		TeamID:    teamID,
+		ComposeID:             composeID,
+		ServerID:              serverID,
+		TeamID:                teamID,
+		ForceCertificateRetry: true,
 	}, asynq.Unique(time.Minute))
 }

@@ -19,6 +19,7 @@ type TraefikConfigArgs struct {
 	ContainerName string
 	InternalPort  int
 	Domains       []models.ApplicationDomain
+	RouterSuffix  string
 }
 
 // RenderTraefikConfig produces the YAML Traefik watches for routing
@@ -85,7 +86,7 @@ func RenderTraefikConfig(args TraefikConfigArgs) string {
 	b.WriteString("  routers:\n")
 	for i, d := range args.Domains {
 		host := d.Host
-		safeName := fmt.Sprintf("%s-%d", id, i)
+		safeName := fmt.Sprintf("%s-%d%s", id, i, args.RouterSuffix)
 		svc := serviceNameForPort(portForDomain(d))
 		hostRule := fmt.Sprintf("Host(`%s`)", host)
 		if d.Path != nil && *d.Path != "" {
@@ -307,8 +308,9 @@ type ComposeTraefikConfigArgs struct {
 	ComposeSlug string
 	// ProjectName is the compose project name passed via `-p` flag.
 	// We use it to compute container names: `<ProjectName>-<service>-1`.
-	ProjectName string
-	Domains     []models.ApplicationDomain
+	ProjectName  string
+	Domains      []models.ApplicationDomain
+	RouterSuffix string
 }
 
 // RenderComposeTraefikConfig produces the YAML body for a compose
@@ -369,7 +371,7 @@ func RenderComposeTraefikConfig(args ComposeTraefikConfigArgs) string {
 			continue
 		}
 		host := d.Host
-		safeName := fmt.Sprintf("%s-%d", id, i)
+		safeName := fmt.Sprintf("%s-%d%s", id, i, args.RouterSuffix)
 		svcName := fmt.Sprintf("%s-%s", id, *d.ServiceName)
 		hostRule := fmt.Sprintf("Host(`%s`)", host)
 		if d.Path != nil && *d.Path != "" {

@@ -203,6 +203,44 @@ func TestTraefikConfigPath(t *testing.T) {
 	}
 }
 
+func TestRenderTraefikConfig_RouterSuffixForCertificateRetry(t *testing.T) {
+	out := RenderTraefikConfig(TraefikConfigArgs{
+		ProjectSlug:   "acme",
+		AppSlug:       "api",
+		ContainerName: "launch-acme-api",
+		InternalPort:  80,
+		Domains: []models.ApplicationDomain{
+			{Host: "api.example.com", HTTPS: true},
+		},
+		RouterSuffix: "-retry-123",
+	})
+	if !strings.Contains(out, "acme-api-0-retry-123-http") ||
+		!strings.Contains(out, "acme-api-0-retry-123-https") {
+		t.Fatalf("retry suffix must change both router names, got:\n%s", out)
+	}
+	if !strings.Contains(out, "service: acme-api-80") {
+		t.Fatalf("retry suffix must not change the backend service, got:\n%s", out)
+	}
+}
+
+func TestRenderComposeTraefikConfig_RouterSuffixForCertificateRetry(t *testing.T) {
+	service := "web"
+	port := 80
+	out := RenderComposeTraefikConfig(ComposeTraefikConfigArgs{
+		ProjectSlug: "acme",
+		ComposeSlug: "stack",
+		ProjectName: "acme-stack",
+		Domains: []models.ApplicationDomain{
+			{Host: "app.example.com", HTTPS: true, ServiceName: &service, ContainerPort: &port},
+		},
+		RouterSuffix: "-retry-456",
+	})
+	if !strings.Contains(out, "compose-acme-stack-0-retry-456-http") ||
+		!strings.Contains(out, "compose-acme-stack-0-retry-456-https") {
+		t.Fatalf("retry suffix must change both compose router names, got:\n%s", out)
+	}
+}
+
 func TestRenderTraefikConfig_StoredCertificate(t *testing.T) {
 	certID := "01abcdefghijklmnopqrstuvwx"
 	out := RenderTraefikConfig(TraefikConfigArgs{

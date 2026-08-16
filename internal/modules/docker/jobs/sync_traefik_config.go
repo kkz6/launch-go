@@ -21,9 +21,10 @@ const TypeSyncTraefikConfig = "docker:sync_traefik_config"
 // rules — the job re-fetches the application + domains so a stale
 // payload can't write outdated config.
 type SyncTraefikConfigPayload struct {
-	ApplicationID string `json:"application_id"`
-	ServerID      string `json:"server_id"`
-	TeamID        string `json:"team_id"`
+	ApplicationID         string `json:"application_id"`
+	ServerID              string `json:"server_id"`
+	TeamID                string `json:"team_id"`
+	ForceCertificateRetry bool   `json:"force_certificate_retry,omitempty"`
 }
 
 // SyncTraefikConfigJob renders the Traefik YAML for an application and
@@ -70,6 +71,10 @@ func (j *SyncTraefikConfigJob) Handle(ctx context.Context) error {
 	projectSlug := tasks.SlugFromName(project.Name)
 	appSlug := tasks.SlugFromName(app.Name)
 	containerName := tasks.ContainerNameFor(project, app)
+	routerSuffix := ""
+	if j.Payload.ForceCertificateRetry {
+		routerSuffix = fmt.Sprintf("-retry-%d", time.Now().UnixNano())
+	}
 
 	yaml := tasks.RenderTraefikConfig(tasks.TraefikConfigArgs{
 		ProjectSlug:   projectSlug,
@@ -77,6 +82,7 @@ func (j *SyncTraefikConfigJob) Handle(ctx context.Context) error {
 		ContainerName: containerName,
 		InternalPort:  app.InternalPort,
 		Domains:       domains,
+		RouterSuffix:  routerSuffix,
 	})
 
 	// Before writing the YAML, materialise PEM bytes for any
@@ -136,9 +142,10 @@ func NewSyncTraefikConfigTask(applicationID, serverID, teamID string) (*asynq.Ta
 
 func NewRetryTraefikConfigTask(applicationID, serverID, teamID string) (*asynq.Task, error) {
 	return pkgjobs.Task(TypeSyncTraefikConfig, SyncTraefikConfigPayload{
-		ApplicationID: applicationID,
-		ServerID:      serverID,
-		TeamID:        teamID,
+		ApplicationID:         applicationID,
+		ServerID:              serverID,
+		TeamID:                teamID,
+		ForceCertificateRetry: true,
 	}, asynq.Unique(time.Minute))
 }
 
