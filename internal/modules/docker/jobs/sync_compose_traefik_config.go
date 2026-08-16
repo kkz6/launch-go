@@ -3,6 +3,7 @@ package jobs
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/hibiken/asynq"
 
@@ -139,4 +140,12 @@ func NewSyncComposeTraefikConfigTask(composeID, serverID, teamID string) (*asynq
 		ServerID:  serverID,
 		TeamID:    teamID,
 	}, pkgjobs.Dedup("docker-compose-traefik-sync", composeID))
+}
+
+func NewRetryComposeTraefikConfigTask(composeID, serverID, teamID string) (*asynq.Task, error) {
+	return pkgjobs.Task(TypeSyncComposeTraefikConfig, SyncComposeTraefikConfigPayload{
+		ComposeID: composeID,
+		ServerID:  serverID,
+		TeamID:    teamID,
+	}, asynq.Unique(time.Minute))
 }

@@ -40,3 +40,34 @@ func (h *SSLHandler) UpdateSSL(c *fiber.Ctx, req *dto.UpdateSSLRequest) error {
 	}
 	return fiberctx.OK(c, "SSL settings updated", nil)
 }
+
+func (h *SSLHandler) CheckCertificate(c *fiber.Ctx) error {
+	serverID, siteID, err := fiberctx.GetServerAndSiteID(c)
+	if err != nil {
+		return err
+	}
+	teamID, err := fiberctx.MustGetTeamID(c)
+	if err != nil {
+		return err
+	}
+	result, err := h.sslService.CheckCertificate(c.Context(), siteID, serverID, teamID)
+	if err != nil {
+		return err
+	}
+	return fiberctx.OK(c, "Certificate status checked", result)
+}
+
+func (h *SSLHandler) RetryCertificate(c *fiber.Ctx) error {
+	serverID, siteID, err := fiberctx.GetServerAndSiteID(c)
+	if err != nil {
+		return err
+	}
+	teamID, userID, err := fiberctx.MustGetTeamAndUserID(c)
+	if err != nil {
+		return err
+	}
+	if err := h.sslService.RetryCertificate(c.Context(), siteID, serverID, teamID, userID); err != nil {
+		return err
+	}
+	return fiberctx.OK(c, "Certificate provisioning retry queued", nil)
+}

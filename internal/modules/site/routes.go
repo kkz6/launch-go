@@ -129,6 +129,8 @@ func (m *Module) registerDeploymentRoutes(router gofiber.Router, handler *handle
 // registerSSLRoutes registers SSL/TLS routes.
 func (m *Module) registerSSLRoutes(router gofiber.Router, handler *handlers.SSLHandler) {
 	router.Put("/:id/ssl", middleware.Can("site.ssl.update"), fiberutil.Validate(handler.UpdateSSL))
+	router.Get("/:id/certificate", handler.CheckCertificate)
+	router.Post("/:id/certificate/retry", middleware.Can("site.ssl.update"), handler.RetryCertificate)
 }
 
 // registerSSLListRoutes wires the certificates list via the

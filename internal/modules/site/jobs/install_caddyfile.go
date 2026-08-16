@@ -869,6 +869,13 @@ func NewUpdateCaddyfileTask(siteID string, userID *string) (*asynq.Task, error) 
 	}, asynq.TaskID(pkgjobs.Dedup("update_caddyfile", siteID)))
 }
 
+func NewCertificateRetryCaddyfileTask(siteID string, userID *string) (*asynq.Task, error) {
+	return pkgjobs.Task(TypeUpdateCaddyfile, CaddyfilePayload{
+		SiteID: siteID,
+		UserID: userID,
+	}, asynq.Unique(time.Minute))
+}
+
 // NewReservedUpdateCaddyfileTask creates an update job for a reservation that
 // was atomically claimed by the API before enqueueing.
 func NewReservedUpdateCaddyfileTask(siteID string, userID *string) (*asynq.Task, error) {

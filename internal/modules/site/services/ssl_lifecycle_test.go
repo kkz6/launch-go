@@ -17,9 +17,57 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/site/models"
 	"github.com/kkz6/launch-go/internal/modules/site/repositories"
 	sitetypes "github.com/kkz6/launch-go/internal/modules/site/types"
+	"github.com/kkz6/launch-go/internal/pkg/certificatecheck"
 	basemodels "github.com/kkz6/launch-go/internal/pkg/models"
 	"github.com/kkz6/launch-go/internal/pkg/service"
 )
+
+type fakeCertificateChecker struct {
+	result certificatecheck.Result
+	hosts  []string
+}
+
+func (f *fakeCertificateChecker) Check(_ context.Context, host string) certificatecheck.Result {
+	f.hosts = append(f.hosts, host)
+	return f.result
+}
+
+func TestCheckCertificateUsesPublicCheckerForAutomaticTLS(t *testing.T) {
+	sslService, _, site := sslLifecycleFixture(t)
+	checker := &fakeCertificateChecker{result: certificatecheck.Result{
+		Host:    site.Address,
+		Status:  certificatecheck.StatusValid,
+		Valid:   true,
+		Message: "valid",
+	}}
+	sslService.SetCertificateChecker(checker)
+
+	result, err := sslService.CheckCertificate(
+		context.Background(), site.ID, site.ServerID, site.TeamID,
+	)
+
+	require.NoError(t, err)
+	assert.True(t, result.Valid)
+	assert.Equal(t, []string{site.Address}, checker.hosts)
+}
+
+func TestCheckCertificateExplainsDisabledTLSWithoutNetworkCall(t *testing.T) {
+	sslService, db, site := sslLifecycleFixture(t)
+	require.NoError(t, db.Model(&models.Site{}).
+		Where("id = ?", site.ID).
+		Update("tls_setting", sitetypes.TLSSettingOff).Error)
+	checker := &fakeCertificateChecker{}
+	sslService.SetCertificateChecker(checker)
+
+	result, err := sslService.CheckCertificate(
+		context.Background(), site.ID, site.ServerID, site.TeamID,
+	)
+
+	require.NoError(t, err)
+	assert.Equal(t, certificatecheck.StatusNotIssued, result.Status)
+	assert.Contains(t, result.Message, "disabled")
+	assert.Empty(t, checker.hosts)
+}
 
 func TestUpdateSSLRequiresQueueBeforeReservingTLSState(t *testing.T) {
 	sslService, db, site := sslLifecycleFixture(t)

@@ -11,7 +11,9 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/docker/dto"
 	"github.com/kkz6/launch-go/internal/modules/docker/jobs"
 	"github.com/kkz6/launch-go/internal/modules/docker/models"
+	"github.com/kkz6/launch-go/internal/pkg/certificatecheck"
 	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
+	pkgservice "github.com/kkz6/launch-go/internal/pkg/service"
 )
 
 // DomainService manages application domains and the Traefik dynamic-
@@ -22,7 +24,8 @@ import (
 // name + internal port to render the Traefik file.
 type DomainService struct {
 	*BaseService
-	dnsLookuper dnsLookuper
+	dnsLookuper        dnsLookuper
+	certificateChecker certificatecheck.Checker
 }
 
 // dnsLookuper lets tests swap in a fake resolver. *net.Resolver already
@@ -33,12 +36,20 @@ type dnsLookuper interface {
 
 // NewDomainService wires the service.
 func NewDomainService(deps *ServiceDeps) *DomainService {
-	return &DomainService{BaseService: NewBaseService(deps), dnsLookuper: net.DefaultResolver}
+	return &DomainService{
+		BaseService:        NewBaseService(deps),
+		dnsLookuper:        net.DefaultResolver,
+		certificateChecker: certificatecheck.New(),
+	}
 }
 
 // SetDNSLookuper overrides the DNS resolver, for tests.
 func (s *DomainService) SetDNSLookuper(lookuper dnsLookuper) {
 	s.dnsLookuper = lookuper
+}
+
+func (s *DomainService) SetCertificateChecker(checker certificatecheck.Checker) {
+	s.certificateChecker = checker
 }
 
 // validateStoredCert enforces the one cross-field rule the struct tags
@@ -282,6 +293,63 @@ func (s *DomainService) ValidateDNS(
 	return s.validateDNSAgainstServer(ctx, d.Host, app.ServerID)
 }
 
+func (s *DomainService) CheckCertificate(
+	ctx context.Context, domainID, applicationID, projectID, serverID, teamID string,
+) (certificatecheck.Result, error) {
+	if _, err := s.scopedApp(ctx, applicationID, projectID, serverID, teamID); err != nil {
+		return certificatecheck.Result{}, err
+	}
+	domain, err := s.Repos().Domain().FindByID(ctx, domainID)
+	if err != nil {
+		return certificatecheck.Result{}, err
+	}
+	if domain.ApplicationID == nil || *domain.ApplicationID != applicationID {
+		return certificatecheck.Result{}, fiberutil.NotFound()
+	}
+	return s.checkDomainCertificate(ctx, domain), nil
+}
+
+func (s *DomainService) RetryCertificate(
+	ctx context.Context, domainID, applicationID, projectID, serverID, teamID string,
+) error {
+	app, err := s.scopedApp(ctx, applicationID, projectID, serverID, teamID)
+	if err != nil {
+		return err
+	}
+	domain, err := s.Repos().Domain().FindByID(ctx, domainID)
+	if err != nil {
+		return err
+	}
+	if domain.ApplicationID == nil || *domain.ApplicationID != applicationID {
+		return fiberutil.NotFound()
+	}
+	if !domain.HTTPS {
+		return fiberutil.BadRequest("Enable HTTPS before retrying certificate provisioning")
+	}
+	if !s.HasQueue() {
+		return pkgservice.ErrQueueRequired
+	}
+	task, err := jobs.NewRetryTraefikConfigTask(app.ID, app.ServerID, teamID)
+	if err != nil {
+		return err
+	}
+	return s.EnqueueTask(task)
+}
+
+func (s *DomainService) checkDomainCertificate(
+	ctx context.Context, domain *models.ApplicationDomain,
+) certificatecheck.Result {
+	if !domain.HTTPS {
+		return certificatecheck.Result{
+			Host:      domain.Host,
+			Status:    certificatecheck.StatusNotIssued,
+			Message:   "HTTPS is disabled for this domain.",
+			CheckedAt: time.Now().UTC(),
+		}
+	}
+	return s.certificateChecker.Check(ctx, domain.Host)
+}
+
 // validateDNSAgainstServer is the shared core behind ValidateDNS and
 // ValidateComposeDNS.
 func (s *DomainService) validateDNSAgainstServer(
@@ -439,6 +507,49 @@ func (s *DomainService) ListComposeDomains(
 		return nil, err
 	}
 	return mapResponseValues(rows, dto.ToDomainResponse), nil
+}
+
+func (s *DomainService) CheckComposeCertificate(
+	ctx context.Context, domainID, composeID, projectID, serverID, teamID string,
+) (certificatecheck.Result, error) {
+	if _, err := s.scopedCompose(ctx, composeID, projectID, serverID, teamID); err != nil {
+		return certificatecheck.Result{}, err
+	}
+	domain, err := s.Repos().Domain().FindByID(ctx, domainID)
+	if err != nil {
+		return certificatecheck.Result{}, err
+	}
+	if domain.ComposeID == nil || *domain.ComposeID != composeID {
+		return certificatecheck.Result{}, fiberutil.NotFound()
+	}
+	return s.checkDomainCertificate(ctx, domain), nil
+}
+
+func (s *DomainService) RetryComposeCertificate(
+	ctx context.Context, domainID, composeID, projectID, serverID, teamID string,
+) error {
+	compose, err := s.scopedCompose(ctx, composeID, projectID, serverID, teamID)
+	if err != nil {
+		return err
+	}
+	domain, err := s.Repos().Domain().FindByID(ctx, domainID)
+	if err != nil {
+		return err
+	}
+	if domain.ComposeID == nil || *domain.ComposeID != composeID {
+		return fiberutil.NotFound()
+	}
+	if !domain.HTTPS {
+		return fiberutil.BadRequest("Enable HTTPS before retrying certificate provisioning")
+	}
+	if !s.HasQueue() {
+		return pkgservice.ErrQueueRequired
+	}
+	task, err := jobs.NewRetryComposeTraefikConfigTask(compose.ID, compose.ServerID, teamID)
+	if err != nil {
+		return err
+	}
+	return s.EnqueueTask(task)
 }
 
 func (s *DomainService) CreateComposeDomain(

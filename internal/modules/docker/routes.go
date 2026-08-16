@@ -499,6 +499,43 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 		return fiberutil.OK(c, "DNS validation", out)
 	})
 
+	apps.Get("/:id/domains/:domainId/certificate", func(c *gofiber.Ctx) error {
+		teamID, err := fiberutil.MustGetTeamID(c)
+		if err != nil {
+			return err
+		}
+		out, err := domainSvc.CheckCertificate(
+			c.Context(),
+			c.Params("domainId"),
+			c.Params("id"),
+			c.Params("projectId"),
+			c.Params("serverId"),
+			teamID,
+		)
+		if err != nil {
+			return err
+		}
+		return fiberutil.OK(c, "Certificate status checked", out)
+	})
+
+	apps.Post("/:id/domains/:domainId/certificate/retry", middleware.Can("docker.application.domain.update"), func(c *gofiber.Ctx) error {
+		teamID, err := fiberutil.MustGetTeamID(c)
+		if err != nil {
+			return err
+		}
+		if err := domainSvc.RetryCertificate(
+			c.Context(),
+			c.Params("domainId"),
+			c.Params("id"),
+			c.Params("projectId"),
+			c.Params("serverId"),
+			teamID,
+		); err != nil {
+			return err
+		}
+		return fiberutil.OK(c, "Certificate provisioning retry queued", nil)
+	})
+
 	// Redirect routes — list / create / update / delete. Backed by
 	// build_config.redirects (no table); mirrors the PHP-site shape
 	// (from / to / type) so the Redirects subtab can reuse the same
@@ -1593,6 +1630,43 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 			return err
 		}
 		return fiberutil.OK(c, "DNS validation", out)
+	})
+
+	composes.Get("/:id/domains/:domainId/certificate", func(c *gofiber.Ctx) error {
+		teamID, err := fiberutil.MustGetTeamID(c)
+		if err != nil {
+			return err
+		}
+		out, err := domainSvc.CheckComposeCertificate(
+			c.Context(),
+			c.Params("domainId"),
+			c.Params("id"),
+			c.Params("projectId"),
+			c.Params("serverId"),
+			teamID,
+		)
+		if err != nil {
+			return err
+		}
+		return fiberutil.OK(c, "Certificate status checked", out)
+	})
+
+	composes.Post("/:id/domains/:domainId/certificate/retry", middleware.Can("docker.compose.domain.update"), func(c *gofiber.Ctx) error {
+		teamID, err := fiberutil.MustGetTeamID(c)
+		if err != nil {
+			return err
+		}
+		if err := domainSvc.RetryComposeCertificate(
+			c.Context(),
+			c.Params("domainId"),
+			c.Params("id"),
+			c.Params("projectId"),
+			c.Params("serverId"),
+			teamID,
+		); err != nil {
+			return err
+		}
+		return fiberutil.OK(c, "Certificate provisioning retry queued", nil)
 	})
 
 	// Per-compose Traefik dynamic-config card. Reads/writes

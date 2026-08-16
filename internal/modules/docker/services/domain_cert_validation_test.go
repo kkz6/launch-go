@@ -1,6 +1,14 @@
 package services
 
-import "testing"
+import (
+	"context"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+
+	"github.com/kkz6/launch-go/internal/modules/docker/models"
+	"github.com/kkz6/launch-go/internal/pkg/certificatecheck"
+)
 
 // strptr is a tiny helper for the pointer-y request fields.
 func strptr(s string) *string { return &s }
@@ -37,4 +45,38 @@ func TestValidateStoredCert(t *testing.T) {
 			}
 		})
 	}
+}
+
+type fakeDomainCertificateChecker struct {
+	result certificatecheck.Result
+	hosts  []string
+}
+
+func (f *fakeDomainCertificateChecker) Check(_ context.Context, host string) certificatecheck.Result {
+	f.hosts = append(f.hosts, host)
+	return f.result
+}
+
+func TestCheckDomainCertificateReflectsHTTPSConfiguration(t *testing.T) {
+	checker := &fakeDomainCertificateChecker{result: certificatecheck.Result{
+		Host:   "app.example.com",
+		Status: certificatecheck.StatusValid,
+		Valid:  true,
+	}}
+	service := &DomainService{certificateChecker: checker}
+
+	result := service.checkDomainCertificate(context.Background(), &models.ApplicationDomain{
+		Host:  "app.example.com",
+		HTTPS: true,
+	})
+	assert.True(t, result.Valid)
+	assert.Equal(t, []string{"app.example.com"}, checker.hosts)
+
+	result = service.checkDomainCertificate(context.Background(), &models.ApplicationDomain{
+		Host:  "plain.example.com",
+		HTTPS: false,
+	})
+	assert.Equal(t, certificatecheck.StatusNotIssued, result.Status)
+	assert.Contains(t, result.Message, "disabled")
+	assert.Equal(t, []string{"app.example.com"}, checker.hosts)
 }

@@ -3,6 +3,7 @@ package jobs
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/hibiken/asynq"
 
@@ -131,6 +132,14 @@ func NewSyncTraefikConfigTask(applicationID, serverID, teamID string) (*asynq.Ta
 		ServerID:      serverID,
 		TeamID:        teamID,
 	}, pkgjobs.Dedup("docker-traefik-sync", applicationID))
+}
+
+func NewRetryTraefikConfigTask(applicationID, serverID, teamID string) (*asynq.Task, error) {
+	return pkgjobs.Task(TypeSyncTraefikConfig, SyncTraefikConfigPayload{
+		ApplicationID: applicationID,
+		ServerID:      serverID,
+		TeamID:        teamID,
+	}, asynq.Unique(time.Minute))
 }
 
 // resolveStoredCertMaterials walks the given domains and, for any that

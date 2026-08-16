@@ -14,6 +14,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/site/jobs"
 	"github.com/kkz6/launch-go/internal/modules/site/models"
 	sitetypes "github.com/kkz6/launch-go/internal/modules/site/types"
+	"github.com/kkz6/launch-go/internal/pkg/certificatecheck"
 	"github.com/kkz6/launch-go/internal/pkg/dbtype"
 	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 	pkgservice "github.com/kkz6/launch-go/internal/pkg/service"
@@ -26,13 +27,15 @@ import (
 // returns an explicit error rather than panicking.
 type SSLService struct {
 	*BaseService
-	storedCerts *certrepos.StoredCertificateRepository
+	storedCerts        *certrepos.StoredCertificateRepository
+	certificateChecker certificatecheck.Checker
 }
 
 // NewSSLService creates a new SSL service
 func NewSSLService(deps *ServiceDeps) *SSLService {
 	return &SSLService{
-		BaseService: NewBaseService(deps),
+		BaseService:        NewBaseService(deps),
+		certificateChecker: certificatecheck.New(),
 	}
 }
 
@@ -42,6 +45,75 @@ func NewSSLService(deps *ServiceDeps) *SSLService {
 // services.NewServices via ServiceDeps.StoredCerts.
 func (s *SSLService) SetStoredCertificateRepository(r *certrepos.StoredCertificateRepository) {
 	s.storedCerts = r
+}
+
+func (s *SSLService) SetCertificateChecker(checker certificatecheck.Checker) {
+	s.certificateChecker = checker
+}
+
+func (s *SSLService) CheckCertificate(
+	ctx context.Context, siteID, serverID, teamID string,
+) (certificatecheck.Result, error) {
+	site, err := s.Repos().Site().FindByIDAndServer(ctx, siteID, serverID)
+	if err != nil {
+		return certificatecheck.Result{}, err
+	}
+	if site.TeamID != teamID {
+		return certificatecheck.Result{}, fiberutil.NotFound()
+	}
+	checkedAt := time.Now().UTC()
+	switch site.TLSSetting {
+	case sitetypes.TLSSettingOff:
+		return certificatecheck.Result{
+			Host:      site.Address,
+			Status:    certificatecheck.StatusNotIssued,
+			Message:   "Public HTTPS is disabled for this site.",
+			CheckedAt: checkedAt,
+		}, nil
+	case sitetypes.TLSSettingInternal:
+		return certificatecheck.Result{
+			Host:      site.Address,
+			Status:    certificatecheck.StatusInvalid,
+			Message:   "This site uses Caddy's internal CA, which is not publicly trusted.",
+			CheckedAt: checkedAt,
+		}, nil
+	}
+	return s.certificateChecker.Check(ctx, site.Address), nil
+}
+
+func (s *SSLService) RetryCertificate(
+	ctx context.Context, siteID, serverID, teamID, userID string,
+) error {
+	site, err := s.Repos().Site().FindByIDAndServer(ctx, siteID, serverID)
+	if err != nil {
+		return err
+	}
+	if site.TeamID != teamID {
+		return fiberutil.NotFound()
+	}
+	if site.TLSSetting == sitetypes.TLSSettingOff {
+		return fiberutil.BadRequest("Enable SSL before retrying certificate provisioning")
+	}
+	if site.TLSSetting == sitetypes.TLSSettingInternal {
+		return fiberutil.BadRequest("Internal TLS certificates are not issued by a public certificate authority")
+	}
+	if !site.IsInstalled() {
+		return fiberutil.BadRequest("Deploy the site before retrying certificate provisioning")
+	}
+	if err := ensureSiteConfigurationIdle(site); err != nil {
+		return err
+	}
+	if !s.HasQueue() {
+		return pkgservice.ErrQueueRequired
+	}
+	task, err := jobs.NewCertificateRetryCaddyfileTask(site.ID, stringToPtr(userID))
+	if err != nil {
+		return fmt.Errorf("build certificate retry task: %w", err)
+	}
+	if err := s.EnqueueTask(task); err != nil {
+		return fmt.Errorf("enqueue certificate retry: %w", err)
+	}
+	return nil
 }
 
 // UpdateSSL updates SSL settings for a site
