@@ -106,8 +106,8 @@ func (c *NetworkChecker) Check(ctx context.Context, rawHost string) Result {
 			return result
 		}
 		if firstCertificateResult == nil {
-			copy := result
-			firstCertificateResult = &copy
+			candidate := result
+			firstCertificateResult = &candidate
 		}
 	}
 
