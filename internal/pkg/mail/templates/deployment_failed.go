@@ -194,7 +194,7 @@ func deploymentOutputLines(output string) []deploymentOutputLine {
 	for index, line := range logicalLines {
 		isCleanup := isCleanupLine(line)
 		isFailure := !isCleanup && failureLinePattern.MatchString(line)
-		segments := wrapDeploymentOutputLine(line, 36)
+		segments := wrapDeploymentOutputLine(line, 68)
 		for segmentIndex, segment := range segments {
 			outputLine := deploymentOutputLine{
 				Text:         segment,

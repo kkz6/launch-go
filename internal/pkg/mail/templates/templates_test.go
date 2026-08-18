@@ -239,7 +239,7 @@ func TestDeploymentOutputLines_MarksAndWrapsFailures(t *testing.T) {
 	output := strings.Repeat("x", 72) + ": command not found"
 	lines := deploymentOutputLines(output)
 
-	require.Len(t, lines, 3)
+	require.Len(t, lines, 2)
 	assert.Equal(t, "01", lines[0].Number)
 	assert.Equal(t, "✗", lines[0].Marker)
 	assert.True(t, lines[0].IsFailure)
