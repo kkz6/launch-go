@@ -2,7 +2,8 @@ package templates
 
 import "time"
 
-// baseLayout is the shared, email-client-safe product shell used by all HTML emails.
+// baseLayout is a continuous execution sheet shared by every transactional
+// email. Critical layout rules are inline for clients that strip head styles.
 var baseLayout = `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -11,359 +12,121 @@ var baseLayout = `<!DOCTYPE html>
 <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
 <meta name="color-scheme" content="light">
 <meta name="supported-color-schemes" content="light">
-<style>
-` + emailCSS + `
-</style>
+<style>` + emailCSS + `</style>
 </head>
 <body style="margin:0; padding:0; width:100% !important; background-color:#f4f4f5; color:#3f3f46; -webkit-text-size-adjust:none;">
+{{ .DirectionContract }}
 {{ if .Preheader }}
-<div class="preheader" style="display:none !important; max-height:0; max-width:0; opacity:0; overflow:hidden; mso-hide:all; color:transparent; line-height:1px; font-size:1px;">
-{{ .Preheader }}&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;
-</div>
+<div class="preheader" style="display:none !important; max-height:0; max-width:0; opacity:0; overflow:hidden; mso-hide:all; color:transparent; line-height:1px; font-size:1px;">{{ .Preheader }}&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;</div>
 {{ end }}
+<table class="wrapper" width="100%" cellpadding="0" cellspacing="0" role="presentation" bgcolor="#f4f4f5" style="width:100%; margin:0; padding:0; background-color:#f4f4f5;">
+<tr><td class="wrapper-cell" align="center" style="padding:36px 12px;">
+<!--[if mso]><table width="600" cellpadding="0" cellspacing="0" role="presentation"><tr><td><![endif]-->
+<table class="sheet" width="100%" cellpadding="0" cellspacing="0" role="presentation" bgcolor="#ffffff" style="width:100%; max-width:600px; margin:0 auto; table-layout:fixed; background-color:#ffffff; border:1px solid #d4d4d8;">
 
-<table class="wrapper" width="100%" cellpadding="0" cellspacing="0" role="presentation" style="width:100%; margin:0; padding:0; background-color:#f4f4f5;">
-<tr>
-<td class="wrapper-cell" align="center" style="padding:32px 12px;">
-<!--[if mso]>
-<table width="600" cellpadding="0" cellspacing="0" role="presentation"><tr><td>
-<![endif]-->
-<table class="content" width="100%" cellpadding="0" cellspacing="0" role="presentation" style="width:100%; max-width:600px; margin:0 auto; padding:0; table-layout:fixed;">
+<tr><td class="sheet-header" style="padding:22px 28px; border-bottom:1px solid #e4e4e7;">
+<table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="width:100%;"><tr>
+<td align="left"><a href="{{ .AppURL }}" class="brand" style="display:inline-block; color:#09090b; font-family:'Plus Jakarta Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif; font-size:20px; font-weight:800; letter-spacing:-0.045em; text-decoration:none;">{{ .BrandName }}</a></td>
+<td align="right"><span class="header-route" style="color:#71717a; font-family:'JetBrains Mono','SFMono-Regular',Consolas,'Courier New',monospace; font-size:10px; font-weight:600; letter-spacing:0.05em; line-height:16px; text-transform:uppercase;">{{ if eq .LayoutVariant "incident" }}lctl / deploy{{ else }}{{ .Context }}{{ end }}</span></td>
+</tr></table>
+</td></tr>
 
-<!-- Header -->
+{{ if eq .LayoutVariant "incident" }}
+<tr><td style="padding:0;">{{ .Content }}</td></tr>
+{{ else }}
+<tr><td class="timeline-pad" style="padding:36px 28px 10px;">
+<table class="timeline" width="100%" cellpadding="0" cellspacing="0" role="presentation" style="width:100%; table-layout:fixed;">
 <tr>
-<td style="padding:0 4px 18px;">
-<table class="email-header" align="center" width="100%" cellpadding="0" cellspacing="0" role="presentation" style="width:100%; max-width:600px; margin:0 auto;">
-<tr>
-<td align="left">
-<a href="{{ .AppURL }}" class="brand" style="display:inline-block; color:#18181b; font-family:'Plus Jakarta Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; font-size:20px; font-weight:800; letter-spacing:-0.04em; text-decoration:none;">{{ .BrandName }}</a>
+<td class="timeline-rail" width="28" valign="top" style="width:28px; border-right:1px solid #d4d4d8; padding:0;">
+<table width="100%" cellpadding="0" cellspacing="0" role="presentation"><tr><td align="right" style="padding-top:5px; font-size:0; line-height:0;"><span class="state-node state-{{ .StateTone }}" style="display:inline-block; width:9px; height:9px; margin-right:-5px; border:2px solid #ffffff; background-color:{{ if eq .StateTone "error" }}#ef4444{{ else if eq .StateTone "success" }}#16a34a{{ else if eq .StateTone "warning" }}#d97706{{ else }}#18181b{{ end }}; font-size:0; line-height:0;">&nbsp;</span></td></tr></table>
 </td>
-<td align="right">
-<span class="header-label" style="color:#71717a; font-family:'JetBrains Mono','SFMono-Regular',Consolas,monospace; font-size:11px; font-weight:600; line-height:16px;">{{ if eq .LayoutVariant "incident" }}lctl / deploy{{ else }}mail / notification{{ end }}</span>
-</td>
-</tr>
-</table>
-</td>
-</tr>
-
-<!-- Email body -->
-<tr>
-<td class="body" width="100%" style="width:100%; margin:0; padding:0;">
-<table class="inner-body{{ if eq .LayoutVariant "incident" }} incident-body{{ end }}" align="center" width="100%" cellpadding="0" cellspacing="0" role="presentation" bgcolor="#ffffff" style="width:100%; max-width:600px; margin:0 auto; padding:0; table-layout:fixed; background-color:#ffffff; {{ if eq .LayoutVariant "incident" }}border:1px solid #27272a; border-radius:0;{{ else }}border:1px solid #e4e4e7; border-radius:8px; overflow:hidden;{{ end }}">
-{{ if ne .LayoutVariant "incident" }}
-<tr>
-<td style="height:3px; background-color:#18181b; font-size:0; line-height:0;">&nbsp;</td>
-</tr>
-{{ end }}
-<tr>
-{{ if eq .LayoutVariant "incident" }}<td width="6" bgcolor="#ef4444" style="width:6px; padding:0; background-color:#ef4444; font-size:0; line-height:0;">&nbsp;</td>{{ end }}
-<td class="content-cell{{ if eq .LayoutVariant "incident" }} incident-content{{ end }}" style="max-width:100vw; {{ if eq .LayoutVariant "incident" }}padding:0;{{ else }}padding:40px; overflow:hidden;{{ end }}">
-{{ if .Greeting }}<h1>{{ .Greeting }}</h1>{{ end }}
-
-{{ range .Intros }}
-{{ . }}
-{{ end }}
-
-{{ if .Content }}{{ .Content }}{{ end }}
-
-{{ range .Actions }}
-<table class="action" width="100%" cellpadding="0" cellspacing="0" role="presentation" style="width:100%; margin:28px 0 0; padding:0;">
-<tr>
-<td align="left">
-<table border="0" cellpadding="0" cellspacing="0" role="presentation">
-<tr>
-<td>
-<a href="{{ .URL }}" class="button button-{{ .Color }}" target="_blank" rel="noopener" style="display:inline-block; padding:11px 17px; border-radius:6px; {{ if eq .Color "error" }}background-color:#ef4444;{{ else if eq .Color "success" }}background-color:#16a34a;{{ else }}background-color:#18181b;{{ end }} color:#ffffff; font-size:14px; font-weight:600; line-height:20px; text-decoration:none; -webkit-text-size-adjust:none;">{{ .Text }}</a>
+<td class="timeline-copy hero-copy" valign="top" style="padding:0 0 24px 24px;">
+<p class="state-label state-label-{{ .StateTone }}" style="margin:0 0 8px; color:{{ if eq .StateTone "error" }}#b91c1c{{ else if eq .StateTone "success" }}#15803d{{ else if eq .StateTone "warning" }}#a16207{{ else }}#71717a{{ end }}; font-family:'JetBrains Mono','SFMono-Regular',Consolas,'Courier New',monospace; font-size:10px; font-weight:700; letter-spacing:0.08em; line-height:16px; text-transform:uppercase;">{{ .StateLabel }}</p>
+{{ if .Greeting }}<h1 style="margin:0; color:#09090b; font-family:'Plus Jakarta Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif; font-size:30px; font-weight:700; letter-spacing:-0.045em; line-height:38px;">{{ .Greeting }}</h1>{{ end }}
 </td>
 </tr>
-</table>
+
+{{ range .Blocks }}
+<tr class="timeline-block timeline-{{ .Kind }}">
+<td class="timeline-rail" width="28" valign="top" style="width:28px; border-right:1px solid #d4d4d8; padding:0;">
+{{ if eq .Kind "action" }}<table width="100%" cellpadding="0" cellspacing="0" role="presentation"><tr><td align="right" style="padding-top:17px; font-size:0; line-height:0;"><span style="display:inline-block; width:7px; height:7px; margin-right:-4px; border:1px solid #ffffff; background-color:#18181b; font-size:0; line-height:0;">&nbsp;</span></td></tr></table>{{ end }}
+{{ if or (eq .Kind "panel") (eq .Kind "table") }}<table width="100%" cellpadding="0" cellspacing="0" role="presentation"><tr><td align="right" style="padding-top:15px; font-size:0; line-height:0;"><span style="display:inline-block; width:5px; height:5px; margin-right:-3px; border:1px solid #71717a; background-color:#ffffff; font-size:0; line-height:0;">&nbsp;</span></td></tr></table>{{ end }}
+</td>
+<td class="timeline-copy" valign="top" style="padding:0 0 {{ if eq .Kind "action" }}26px{{ else if or (eq .Kind "panel") (eq .Kind "table") }}22px{{ else }}8px{{ end }} 24px; overflow:hidden;">
+{{ if or (eq .Kind "intro") (eq .Kind "content") (eq .Kind "outro") }}<div class="prose prose-{{ .Kind }}">{{ .Content }}</div>{{ end }}
+{{ if eq .Kind "action" }}
+<table class="action" border="0" cellpadding="0" cellspacing="0" role="presentation"><tr><td bgcolor="{{ if eq .Action.Color "error" }}#b91c1c{{ else if eq .Action.Color "success" }}#15803d{{ else }}#18181b{{ end }}" style="background-color:{{ if eq .Action.Color "error" }}#b91c1c{{ else if eq .Action.Color "success" }}#15803d{{ else }}#18181b{{ end }}; mso-padding-alt:12px 16px;"><a href="{{ .Action.URL }}" class="button button-{{ .Action.Color }}" target="_blank" rel="noopener" style="display:inline-block; border:12px solid {{ if eq .Action.Color "error" }}#b91c1c{{ else if eq .Action.Color "success" }}#15803d{{ else }}#18181b{{ end }}; background-color:{{ if eq .Action.Color "error" }}#b91c1c{{ else if eq .Action.Color "success" }}#15803d{{ else }}#18181b{{ end }}; color:#ffffff; font-family:'JetBrains Mono','SFMono-Regular',Consolas,'Courier New',monospace; font-size:12px; font-weight:650; line-height:16px; text-decoration:none; -webkit-text-size-adjust:none;">{{ .Action.Text }} <span style="color:#d4d4d8;">&#8594;</span></a></td></tr></table>
+{{ end }}
+{{ if eq .Kind "panel" }}<table class="evidence" width="100%" cellpadding="0" cellspacing="0" role="presentation" bgcolor="#fafafa" style="width:100%; border-top:1px solid #27272a; border-bottom:1px solid #e4e4e7; background-color:#fafafa;"><tr><td class="evidence-content" style="padding:16px 18px; color:#52525b;">{{ .Content }}</td></tr></table>{{ end }}
+{{ if eq .Kind "table" }}<table class="data-table" width="100%" cellpadding="0" cellspacing="0" role="presentation" style="width:100%; border-collapse:collapse; border-top:1px solid #27272a;"><thead><tr>{{ range .Table.Headers }}<th>{{ . }}</th>{{ end }}</tr></thead><tbody>{{ range .Table.Rows }}<tr>{{ range . }}<td>{{ . }}</td>{{ end }}</tr>{{ end }}</tbody></table>{{ end }}
 </td>
 </tr>
-</table>
-{{ end }}
-
-{{ range .Panels }}
-<table class="panel" width="100%" cellpadding="0" cellspacing="0" role="presentation" style="width:100%; margin:20px 0; border:1px solid #e4e4e7; border-radius:6px; background-color:#fafafa;">
-<tr>
-<td class="panel-content" style="padding:18px; color:#52525b;">
-{{ . }}
-</td>
-</tr>
-</table>
-{{ end }}
-
-{{ range .Tables }}
-<table class="data-table" width="100%" cellpadding="0" cellspacing="0" role="presentation" style="width:100%; margin:24px 0; border-collapse:collapse;">
-<thead>
-<tr>
-{{ range .Headers }}<th>{{ . }}</th>{{ end }}
-</tr>
-</thead>
-<tbody>
-{{ range .Rows }}
-<tr>
-{{ range . }}<td>{{ . }}</td>{{ end }}
-</tr>
-{{ end }}
-</tbody>
-</table>
-{{ end }}
-
-{{ range .Outros }}
-{{ . }}
 {{ end }}
 
 {{ if .Subcopy }}
-<table class="subcopy" width="100%" cellpadding="0" cellspacing="0" role="presentation" style="width:100%; margin-top:28px; border-top:1px solid #e4e4e7;">
-<tr>
-<td style="padding-top:20px;">
-<p class="sub" style="margin:0; color:#a1a1aa; font-size:12px; line-height:18px;">{{ .Subcopy }}</p>
-</td>
-</tr>
-</table>
+<tr><td class="timeline-rail timeline-rail-end" width="28" valign="top" style="width:28px; border-right:1px solid #d4d4d8; padding:0;">&nbsp;</td><td class="timeline-copy" valign="top" style="padding:8px 0 28px 24px;"><p class="sub" style="margin:0; color:#71717a; font-size:11px; line-height:18px; overflow-wrap:anywhere;">{{ .Subcopy }}</p></td></tr>
 {{ end }}
-</td>
-</tr>
+<tr><td width="28" style="width:28px; padding:0; font-size:0; line-height:0;">&nbsp;</td><td style="height:1px; padding:0; font-size:0; line-height:0;">&nbsp;</td></tr>
 </table>
-</td>
-</tr>
+</td></tr>
+{{ end }}
 
-<!-- Footer -->
-<tr>
-<td style="padding:20px 12px 0;">
-<table class="footer" align="center" width="100%" cellpadding="0" cellspacing="0" role="presentation" style="width:100%; max-width:600px; margin:0 auto; text-align:center;">
-<tr>
-<td align="center">
-<p style="margin:0; color:#a1a1aa; font-size:11px; line-height:18px; text-align:center;">{{ if .FooterText }}{{ .FooterText }}{{ else }}Sent by {{ .BrandName }} &middot; &copy; ` + currentYear() + ` {{ .AppName }}{{ end }}</p>
-</td>
-</tr>
+<tr><td class="sheet-footer" style="padding:18px 28px; border-top:1px solid #e4e4e7;">
+<table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="width:100%;"><tr>
+<td align="left"><p style="margin:0; color:#71717a; font-family:'JetBrains Mono','SFMono-Regular',Consolas,'Courier New',monospace; font-size:9px; line-height:15px; text-transform:uppercase;">{{ if .FooterText }}{{ .FooterText }}{{ else }}transaction recorded / ` + currentYear() + `{{ end }}</p></td>
+<td align="right"><p style="margin:0; color:#71717a; font-size:10px; line-height:15px;">{{ .BrandName }}</p></td>
+</tr></table>
+</td></tr>
 </table>
-</td>
-</tr>
-
-</table>
-<!--[if mso]>
+<!--[if mso]></td></tr></table><![endif]-->
 </td></tr></table>
-<![endif]-->
-</td>
-</tr>
-</table>
 </body>
 </html>`
+
+const directionContract = `<!--
+THESIS: Transactional email is an execution timeline, not a stack of notification cards.
+OWN-WORLD: White operational sheet, zinc ink, one-pixel lifecycle lines, square state nodes, Plus Jakarta Sans interface text, JetBrains Mono for identifiers and output, status color only.
+STORY: The recipient sees what happened, which resource changed, and the next useful action before supporting evidence.
+FIRST VIEWPORT: launchctl header, decisive event title, affected resource, current state and primary action; context follows on the same line.
+FORM: Execution Timeline, candidate 4 in the grounded set, seed 47c85962.
+FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance
+-->`
 
 func currentYear() string {
 	return time.Now().Format("2006")
 }
 
-// emailCSS enhances clients that retain head styles; critical layout styles are
-// duplicated inline so the message remains readable when head CSS is stripped.
 const emailCSS = `
-body,
-table,
-td,
-a,
-p,
-span,
-h1,
-h2,
-h3 {
-    box-sizing: border-box;
-    font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+body, table, td, a, p, span, h1, h2, h3 { box-sizing:border-box; font-family:'Plus Jakarta Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; }
+body { margin:0; padding:0; width:100% !important; background:#f4f4f5; color:#3f3f46; -webkit-text-size-adjust:none; }
+table { border-collapse:separate; }
+p, ul, ol, blockquote { margin-top:0; color:#52525b; font-size:14px; line-height:1.65; text-align:left; }
+p { margin-bottom:14px; }
+.prose p:last-child, .evidence-content p:last-child { margin-bottom:0; }
+h1 { margin:0; color:#09090b; font-size:30px; font-weight:700; letter-spacing:-0.045em; line-height:1.27; }
+h2 { margin:0 0 9px; color:#27272a; font-size:14px; font-weight:700; line-height:1.45; }
+h3 { margin:0 0 7px; color:#27272a; font-size:12px; font-weight:700; line-height:1.45; }
+a { color:#18181b; }
+strong { color:#27272a; font-weight:650; }
+code { padding:2px 5px; background:#f4f4f5; color:#27272a; font-family:'JetBrains Mono','SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace; font-size:88%; }
+pre { box-sizing:border-box; width:100%; max-width:100%; margin:0; padding:0; overflow:hidden; background:transparent; color:#3f3f46; font-family:'JetBrains Mono','SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace; font-size:11px; line-height:1.7; white-space:pre-wrap; overflow-wrap:anywhere; word-break:break-word; }
+pre code { display:block; padding:0; background:transparent; color:inherit; font-size:inherit; line-height:inherit; white-space:inherit; }
+.sheet a:not(.button) { overflow-wrap:anywhere; }
+.data-table th { padding:10px 8px 8px 0; border-bottom:1px solid #e4e4e7; color:#71717a; font-family:'JetBrains Mono','SFMono-Regular',Consolas,monospace; font-size:9px; font-weight:700; letter-spacing:.06em; text-align:left; text-transform:uppercase; }
+.data-table td { padding:10px 8px 10px 0; border-bottom:1px solid #e4e4e7; color:#52525b; font-size:12px; line-height:18px; }
+@media only screen and (max-width:620px) {
+  .wrapper-cell { padding:12px 6px !important; }
+  .sheet-header, .sheet-footer { padding-left:20px !important; padding-right:20px !important; }
+  .timeline-pad { padding:28px 18px 8px !important; }
+  .incident-pad { padding-left:18px !important; padding-right:18px !important; }
+  .trace-heading-pad { padding-left:18px !important; padding-right:18px !important; }
+  .trace-code { padding-right:14px !important; }
 }
-
-body {
-    margin: 0;
-    padding: 0;
-    width: 100% !important;
-    background-color: #f4f4f5;
-    color: #3f3f46;
-    -webkit-text-size-adjust: none;
-}
-
-table {
-    border-collapse: separate;
-}
-
-p,
-ul,
-ol,
-blockquote {
-    margin-top: 0;
-    color: #52525b;
-    font-size: 15px;
-    line-height: 1.65;
-    text-align: left;
-}
-
-p {
-    margin-bottom: 16px;
-}
-
-h1 {
-    margin: 0 0 16px;
-    color: #18181b;
-    font-size: 26px;
-    font-weight: 700;
-    letter-spacing: -0.035em;
-    line-height: 1.25;
-    text-align: left;
-}
-
-h2 {
-    margin: 0 0 10px;
-    color: #27272a;
-    font-size: 15px;
-    font-weight: 700;
-    letter-spacing: -0.01em;
-    line-height: 1.4;
-    text-align: left;
-}
-
-h3 {
-    margin: 0 0 8px;
-    color: #27272a;
-    font-size: 13px;
-    font-weight: 700;
-    line-height: 1.4;
-    text-align: left;
-}
-
-a {
-    color: #18181b;
-}
-
-strong {
-    color: #27272a;
-    font-weight: 600;
-}
-
-code {
-    border-radius: 4px;
-    background-color: #f4f4f5;
-    color: #27272a;
-    font-family: 'JetBrains Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
-    font-size: 88%;
-    padding: 2px 5px;
-}
-
-pre {
-    box-sizing: border-box;
-    width: 100%;
-    max-width: 100%;
-    margin: 0;
-    padding: 18px;
-    overflow: hidden;
-    border: 1px solid #27272a;
-    border-radius: 6px;
-    background-color: #09090b;
-    color: #d4d4d8;
-    font-family: 'JetBrains Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
-    font-size: 12px;
-    line-height: 1.65;
-    white-space: pre-wrap;
-    overflow-wrap: anywhere;
-    word-break: break-word;
-}
-
-pre code {
-    display: block;
-    padding: 0;
-    border-radius: 0;
-    background: transparent;
-    color: inherit;
-    font-size: inherit;
-    line-height: inherit;
-    white-space: inherit;
-}
-
-.inner-body a:not(.button) {
-    overflow-wrap: anywhere;
-}
-
-.panel-content p:last-child {
-    margin-bottom: 0;
-}
-
-.data-table th {
-    padding: 0 0 9px;
-    border-bottom: 1px solid #e4e4e7;
-    color: #71717a;
-    font-size: 11px;
-    font-weight: 700;
-    letter-spacing: 0.06em;
-    text-align: left;
-    text-transform: uppercase;
-}
-
-.data-table td {
-    padding: 11px 0;
-    border-bottom: 1px solid #f4f4f5;
-    color: #52525b;
-    font-size: 14px;
-    line-height: 20px;
-}
-
-@media only screen and (max-width: 620px) {
-    .wrapper-cell {
-        padding: 18px 8px !important;
-    }
-
-    .content-cell {
-        padding: 28px 22px !important;
-    }
-
-    .incident-content {
-        padding: 0 !important;
-    }
-
-    .incident-pad {
-        padding-left: 22px !important;
-        padding-right: 22px !important;
-    }
-
-    .incident-hero .incident-pad {
-        padding-top: 32px !important;
-    }
-
-    .trace-heading-pad {
-        padding-left: 22px !important;
-        padding-right: 22px !important;
-    }
-
-    .trace-code {
-        padding-right: 16px !important;
-    }
-
-    .inner-body,
-    .email-header,
-    .footer {
-        width: 100% !important;
-    }
-}
-
-@media only screen and (max-width: 420px) {
-    h1 {
-        font-size: 23px !important;
-    }
-
-    .incident-title {
-        font-size: 27px !important;
-        line-height: 34px !important;
-    }
-
-    .incident-route {
-        font-size: 15px !important;
-        line-height: 23px !important;
-    }
-
-    .button {
-        display: block !important;
-        text-align: center !important;
-    }
-
-    .detail-label {
-        width: 100px !important;
-    }
-
+@media only screen and (max-width:420px) {
+  .header-route { font-size:9px !important; }
+  .hero-copy h1, .incident-title { font-size:25px !important; line-height:32px !important; }
+  .timeline-copy { padding-left:18px !important; }
+  .button { display:block !important; text-align:center !important; }
+  .detail-label { width:88px !important; }
 }
 `

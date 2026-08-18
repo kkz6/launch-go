@@ -38,6 +38,8 @@ func (n *JobOnServerFailedNotification) WithServerURL(url string) *JobOnServerFa
 // ToEmail returns the email message content
 func (n *JobOnServerFailedNotification) ToEmail() *channels.EmailMessage {
 	builder := templates.NewEmail().
+		WithContext("lctl / server").
+		WithState("JOB FAILED", "error").
 		WithGreeting("Job on Server Failed").
 		WithIntro(fmt.Sprintf("We tried to run a job on your server **%s**, but it failed.", n.ServerName)).
 		WithIntro("Here's what we tried to do:").

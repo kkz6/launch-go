@@ -8,6 +8,8 @@ import (
 // ServerProvisionedEmail creates an HTML email for server provisioning success
 func ServerProvisionedEmail(serverName, serverIP, serverUsername, dashboardURL string, databasePassword string) (htmlContent string, plainText string, err error) {
 	builder := NewEmail().
+		WithContext("lctl / server").
+		WithState("PROVISIONED", "success").
 		WithGreeting("Server Provisioned Successfully").
 		WithIntro(fmt.Sprintf("Your server **%s** has been provisioned and is ready to use.", serverName)).
 		WithIntro("You can access your server by clicking the button below.").
@@ -51,6 +53,8 @@ func ServerProvisionedEmail(serverName, serverIP, serverUsername, dashboardURL s
 // TeamInvitationEmail creates an HTML email for team invitations
 func TeamInvitationEmail(teamName, acceptURL, registerURL string, hasRegistration bool) (htmlContent string, plainText string, err error) {
 	builder := NewEmail().
+		WithContext("lctl / team").
+		WithState("INVITATION", "neutral").
 		WithGreeting("Team Invitation").
 		WithIntro(fmt.Sprintf("You have been invited to join the **%s** team!", teamName))
 
@@ -84,6 +88,8 @@ func PlatformInvitationEmail(inviteURL string, trialEndsAt time.Time) (htmlConte
 	}
 
 	builder := NewEmail().
+		WithContext("lctl / access").
+		WithState("INVITATION", "neutral").
 		WithGreeting("You're Invited").
 		WithIntro(fmt.Sprintf("You've been invited to try **%s** — free until **%s**.", appName, trialEndsAt.Format("January 2, 2006"))).
 		WithIntro("Click the button below to create your account and start your trial:").
@@ -102,6 +108,8 @@ func PlatformInvitationEmail(inviteURL string, trialEndsAt time.Time) (htmlConte
 // PasswordResetEmail creates an HTML email for password reset
 func PasswordResetEmail(resetURL string, expiresIn int) (htmlContent string, plainText string, err error) {
 	builder := NewEmail().
+		WithContext("lctl / account").
+		WithState("ACTION REQUIRED", "warning").
 		WithGreeting("Reset Your Password").
 		WithIntro("You are receiving this email because we received a password reset request for your account.").
 		WithAction("Reset Password", resetURL, "primary").
@@ -120,6 +128,8 @@ func PasswordResetEmail(resetURL string, expiresIn int) (htmlContent string, pla
 // EmailVerificationEmail creates an HTML email for email verification
 func EmailVerificationEmail(verifyURL string) (htmlContent string, plainText string, err error) {
 	builder := NewEmail().
+		WithContext("lctl / account").
+		WithState("ACTION REQUIRED", "neutral").
 		WithGreeting("Verify Your Email Address").
 		WithIntro("Please click the button below to verify your email address.").
 		WithAction("Verify Email Address", verifyURL, "primary").
@@ -137,6 +147,8 @@ func EmailVerificationEmail(verifyURL string) (htmlContent string, plainText str
 // ServerThresholdExceededEmail creates an HTML email for threshold alerts
 func ServerThresholdExceededEmail(serverName, metricName string, threshold, currentValue float64, serverURL string) (htmlContent string, plainText string, err error) {
 	builder := NewEmail().
+		WithContext("lctl / server").
+		WithState("THRESHOLD EXCEEDED", "error").
 		WithGreeting("Server Threshold Alert").
 		WithIntro(fmt.Sprintf("The server **%s** has exceeded the configured threshold for **%s**.", serverName, metricName))
 
@@ -164,6 +176,8 @@ func ServerThresholdExceededEmail(serverName, metricName string, threshold, curr
 // GenericFailureEmail creates an HTML email for generic failures
 func GenericFailureEmail(title, message, output, errorMessage, actionURL, actionText string) (htmlContent string, plainText string, err error) {
 	builder := NewEmail().
+		WithContext("lctl / incident").
+		WithState("FAILED", "error").
 		WithGreeting(title).
 		WithIntro(message)
 
@@ -203,6 +217,8 @@ func VulnerabilityAuditEmail(serverName string, vulnerabilitiesFound int, report
 	}
 
 	builder := NewEmail().
+		WithContext("lctl / security").
+		WithState("AUDIT COMPLETE", color).
 		WithGreeting(greeting).
 		WithIntro(fmt.Sprintf("The vulnerability audit for server **%s** has completed.", serverName))
 
@@ -229,6 +245,8 @@ func VulnerabilityAuditEmail(serverName string, vulnerabilitiesFound int, report
 // ConnectionTestEmail creates an HTML email for testing email connections
 func ConnectionTestEmail() (htmlContent string, plainText string, err error) {
 	builder := NewEmail().
+		WithContext("lctl / notification").
+		WithState("CONNECTED", "success").
 		WithGreeting("Email Connection Successful").
 		WithIntro("This email confirms that your email notification settings are configured correctly.").
 		WithOutro("You will now receive notifications at this email address.")

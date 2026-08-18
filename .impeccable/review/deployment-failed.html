@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<title>Launch</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<meta name="color-scheme" content="light">
+<meta name="supported-color-schemes" content="light">
+<style>
+body, table, td, a, p, span, h1, h2, h3 { box-sizing:border-box; font-family:'Plus Jakarta Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; }
+body { margin:0; padding:0; width:100% !important; background:#f4f4f5; color:#3f3f46; -webkit-text-size-adjust:none; }
+table { border-collapse:separate; }
+p, ul, ol, blockquote { margin-top:0; color:#52525b; font-size:14px; line-height:1.65; text-align:left; }
+p { margin-bottom:14px; }
+.prose p:last-child, .evidence-content p:last-child { margin-bottom:0; }
+h1 { margin:0; color:#09090b; font-size:30px; font-weight:700; letter-spacing:-0.045em; line-height:1.27; }
+h2 { margin:0 0 9px; color:#27272a; font-size:14px; font-weight:700; line-height:1.45; }
+h3 { margin:0 0 7px; color:#27272a; font-size:12px; font-weight:700; line-height:1.45; }
+a { color:#18181b; }
+strong { color:#27272a; font-weight:650; }
+code { padding:2px 5px; background:#f4f4f5; color:#27272a; font-family:'JetBrains Mono','SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace; font-size:88%; }
+pre { box-sizing:border-box; width:100%; max-width:100%; margin:0; padding:0; overflow:hidden; background:transparent; color:#3f3f46; font-family:'JetBrains Mono','SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace; font-size:11px; line-height:1.7; white-space:pre-wrap; overflow-wrap:anywhere; word-break:break-word; }
+pre code { display:block; padding:0; background:transparent; color:inherit; font-size:inherit; line-height:inherit; white-space:inherit; }
+.sheet a:not(.button) { overflow-wrap:anywhere; }
+.data-table th { padding:10px 8px 8px 0; border-bottom:1px solid #e4e4e7; color:#71717a; font-family:'JetBrains Mono','SFMono-Regular',Consolas,monospace; font-size:9px; font-weight:700; letter-spacing:.06em; text-align:left; text-transform:uppercase; }
+.data-table td { padding:10px 8px 10px 0; border-bottom:1px solid #e4e4e7; color:#52525b; font-size:12px; line-height:18px; }
+@media only screen and (max-width:620px) {
+  .wrapper-cell { padding:12px 6px !important; }
+  .sheet-header, .sheet-footer { padding-left:20px !important; padding-right:20px !important; }
+  .timeline-pad { padding:28px 18px 8px !important; }
+  .incident-pad { padding-left:18px !important; padding-right:18px !important; }
+  .trace-heading-pad { padding-left:18px !important; padding-right:18px !important; }
+  .trace-code { padding-right:14px !important; }
+}
+@media only screen and (max-width:420px) {
+  .header-route { font-size:9px !important; }
+  .hero-copy h1, .incident-title { font-size:25px !important; line-height:32px !important; }
+  .timeline-copy { padding-left:18px !important; }
+  .button { display:block !important; text-align:center !important; }
+  .detail-label { width:88px !important; }
+}
+</style>
+</head>
+<body style="margin:0; padding:0; width:100% !important; background-color:#f4f4f5; color:#3f3f46; -webkit-text-size-adjust:none;">
+<!--
+THESIS: Transactional email is an execution timeline, not a stack of notification cards.
+OWN-WORLD: White operational sheet, zinc ink, one-pixel lifecycle lines, square state nodes, Plus Jakarta Sans interface text, JetBrains Mono for identifiers and output, status color only.
+STORY: The recipient sees what happened, which resource changed, and the next useful action before supporting evidence.
+FIRST VIEWPORT: launchctl header, decisive event title, affected resource, current state and primary action; context follows on the same line.
+FORM: Execution Timeline, candidate 4 in the grounded set, seed 47c85962.
+FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance
+-->
+
+<div class="preheader" style="display:none !important; max-height:0; max-width:0; opacity:0; overflow:hidden; mso-hide:all; color:transparent; line-height:1px; font-size:1px;">karti.dev failed on Indigital Server: submodule: command not found&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;</div>
+
+<table class="wrapper" width="100%" cellpadding="0" cellspacing="0" role="presentation" bgcolor="#f4f4f5" style="width:100%; margin:0; padding:0; background-color:#f4f4f5;">
+<tr><td class="wrapper-cell" align="center" style="padding:36px 12px;">
+
+<table class="sheet" width="100%" cellpadding="0" cellspacing="0" role="presentation" bgcolor="#ffffff" style="width:100%; max-width:600px; margin:0 auto; table-layout:fixed; background-color:#ffffff; border:1px solid #d4d4d8;">
+
+<tr><td class="sheet-header" style="padding:22px 28px; border-bottom:1px solid #e4e4e7;">
+<table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="width:100%;"><tr>
+<td align="left"><a href="https://launchctl.io" class="brand" style="display:inline-block; color:#09090b; font-family:'Plus Jakarta Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif; font-size:20px; font-weight:800; letter-spacing:-0.045em; text-decoration:none;">launchctl</a></td>
+<td align="right"><span class="header-route" style="color:#71717a; font-family:'JetBrains Mono','SFMono-Regular',Consolas,'Courier New',monospace; font-size:10px; font-weight:600; letter-spacing:0.05em; line-height:16px; text-transform:uppercase;">lctl / deploy</span></td>
+</tr></table>
+</td></tr>
+
+
+<tr><td style="padding:0;">
+<table class="incident-timeline" width="100%" cellpadding="0" cellspacing="0" role="presentation" style="width:100%; table-layout:fixed;">
+<tr>
+<td class="incident-rail" width="52" valign="top" style="width:52px; border-right:1px solid #d4d4d8; padding:0;">
+<table width="100%" cellpadding="0" cellspacing="0" role="presentation"><tr><td align="right" style="padding-top:43px; font-size:0; line-height:0;"><span style="display:inline-block; width:10px; height:10px; margin-right:-6px; border:2px solid #ffffff; background-color:#ef4444; font-size:0; line-height:0;">&nbsp;</span></td></tr></table>
+</td>
+<td class="incident-pad" valign="top" style="padding:38px 36px 24px 28px;">
+<p style="margin:0 0 8px; color:#b91c1c; font-family:'JetBrains Mono','SFMono-Regular',Consolas,'Courier New',monospace; font-size:10px; font-weight:700; letter-spacing:0.08em; line-height:16px; text-transform:uppercase;">&#10007; FAILED</p>
+<h1 class="incident-title" style="margin:0; color:#09090b; font-family:'Plus Jakarta Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif; font-size:31px; font-weight:700; letter-spacing:-0.045em; line-height:39px;">Deployment failed</h1>
+<p class="incident-route" style="margin:11px 0 0; color:#27272a; font-size:15px; font-weight:650; line-height:23px; overflow-wrap:anywhere;">karti.dev <span style="color:#a1a1aa; font-family:'JetBrains Mono','SFMono-Regular',Consolas,'Courier New',monospace; font-weight:400;">&#8594;</span> Indigital Server</p>
+</td>
+</tr>
+
+
+<tr>
+<td class="incident-rail" width="52" valign="top" style="width:52px; border-right:1px solid #d4d4d8; padding:0;">
+<table width="100%" cellpadding="0" cellspacing="0" role="presentation"><tr><td align="right" style="padding-top:19px; font-size:0; line-height:0;"><span style="display:inline-block; width:6px; height:6px; margin-right:-4px; border:1px solid #ffffff; background-color:#ef4444; font-size:0; line-height:0;">&nbsp;</span></td></tr></table>
+</td>
+<td class="incident-pad" valign="top" style="padding:0 36px 24px 28px;">
+<table width="100%" cellpadding="0" cellspacing="0" role="presentation" bgcolor="#fff7f7" style="width:100%; border-top:1px solid #ef4444; border-bottom:1px solid #fecaca; background-color:#fff7f7;"><tr><td style="padding:14px 16px;">
+<p style="margin:0 0 5px; color:#71717a; font-family:'JetBrains Mono','SFMono-Regular',Consolas,'Courier New',monospace; font-size:9px; font-weight:700; letter-spacing:0.07em; line-height:15px; text-transform:uppercase;">Current failure</p>
+<p style="margin:0; color:#991b1b; font-family:'JetBrains Mono','SFMono-Regular',Consolas,'Courier New',monospace; font-size:12px; font-weight:600; line-height:19px; overflow-wrap:anywhere; word-break:break-word;">submodule: command not found</p>
+</td></tr></table>
+</td>
+</tr>
+
+
+<tr>
+<td class="incident-rail" width="52" valign="top" style="width:52px; border-right:1px solid #d4d4d8; padding:0;">
+<table width="100%" cellpadding="0" cellspacing="0" role="presentation"><tr><td align="right" style="padding-top:16px; font-size:0; line-height:0;"><span style="display:inline-block; width:5px; height:5px; margin-right:-3px; border:1px solid #71717a; background-color:#ffffff; font-size:0; line-height:0;">&nbsp;</span></td></tr></table>
+</td>
+<td class="incident-pad" valign="top" style="padding:0 36px 25px 28px;">
+<table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="width:100%; border-top:1px solid #27272a;"><tr><td style="padding:13px 0 0;">
+<p style="margin:0 0 9px; color:#71717a; font-family:'JetBrains Mono','SFMono-Regular',Consolas,'Courier New',monospace; font-size:9px; font-weight:700; letter-spacing:0.07em; line-height:15px; text-transform:uppercase;">Run context</p>
+<p style="margin:0; color:#27272a; font-size:14px; font-weight:650; line-height:22px; overflow-wrap:anywhere;"><span style="color:#71717a; font-family:'JetBrains Mono','SFMono-Regular',Consolas,'Courier New',monospace; font-size:11px; font-weight:500;">b1e6bb1</span> <span style="color:#d4d4d8;">/</span> Change contact email in README</p>
+<p style="margin:8px 0 0; color:#71717a; font-size:11px; line-height:18px;"><span style="display:block; overflow-wrap:anywhere; word-break:break-word;">Author <strong style="color:#3f3f46; font-weight:650;">Karthick S</strong></span><span style="display:block; overflow-wrap:anywhere; word-break:break-word;">Triggered by <strong style="color:#3f3f46; font-weight:650;">Karthick S</strong></span><span style="display:block; overflow-wrap:anywhere; word-break:break-word;">Started <strong style="color:#3f3f46; font-weight:650;">07 Aug 2026, 04:37 UTC</strong></span></p>
+</td></tr></table>
+</td>
+</tr>
+
+
+<tr>
+<td class="incident-rail" width="52" valign="top" style="width:52px; border-right:1px solid #d4d4d8; padding:0;">
+<table width="100%" cellpadding="0" cellspacing="0" role="presentation"><tr><td align="right" style="padding-top:14px; font-size:0; line-height:0;"><span style="display:inline-block; width:7px; height:7px; margin-right:-4px; border:1px solid #ffffff; background-color:#18181b; font-size:0; line-height:0;">&nbsp;</span></td></tr></table>
+</td>
+<td class="incident-pad" valign="top" style="padding:0 36px 30px 28px;">
+<table border="0" cellpadding="0" cellspacing="0" role="presentation"><tr><td bgcolor="#18181b" style="background-color:#18181b; mso-padding-alt:12px 16px;"><a href="https://launchctl.io/servers/server/sites/site/deployments/deployment" target="_blank" rel="noopener" style="display:inline-block; border:12px solid #18181b; background-color:#18181b; color:#ffffff; font-family:'JetBrains Mono','SFMono-Regular',Consolas,'Courier New',monospace; font-size:12px; font-weight:650; line-height:16px; text-decoration:none;">Open deployment <span style="color:#a1a1aa;">&#8594;</span></a></td></tr></table>
+</td>
+</tr>
+
+
+
+<tr>
+<td class="incident-rail" width="52" valign="top" style="width:52px; border-right:1px solid #d4d4d8; padding:0;">
+<table width="100%" cellpadding="0" cellspacing="0" role="presentation"><tr><td align="right" style="padding-top:17px; font-size:0; line-height:0;"><span style="display:inline-block; width:5px; height:5px; margin-right:-3px; border:1px solid #71717a; background-color:#ffffff; font-size:0; line-height:0;">&nbsp;</span></td></tr></table>
+</td>
+<td valign="top" style="padding:0 0 30px 28px;">
+<table class="trace-shell" width="100%" cellpadding="0" cellspacing="0" role="presentation" bgcolor="#fafafa" style="width:100%; table-layout:fixed; border-top:1px solid #27272a; border-bottom:1px solid #e4e4e7; background-color:#fafafa;">
+<tr><td class="trace-heading-pad" bgcolor="#ffffff" style="padding:13px 36px 11px 0; background-color:#ffffff;"><table width="100%" cellpadding="0" cellspacing="0" role="presentation"><tr><td align="left"><p style="margin:0; color:#71717a; font-family:'JetBrains Mono','SFMono-Regular',Consolas,'Courier New',monospace; font-size:9px; font-weight:700; letter-spacing:0.07em; line-height:15px; text-transform:uppercase;">Execution output</p></td><td align="right"><span style="color:#71717a; font-family:'JetBrains Mono','SFMono-Regular',Consolas,'Courier New',monospace; font-size:9px; line-height:15px;">last 10 lines</span></td></tr></table></td></tr>
+<tr><td bgcolor="#fafafa" style="padding:7px 0 11px; background-color:#fafafa;"><table class="deployment-trace" width="100%" cellpadding="0" cellspacing="0" role="presentation" bgcolor="#fafafa" style="width:100%; table-layout:fixed; background-color:#fafafa;">
+<tr class="trace-line">
+<td width="22" valign="top" align="center"  style="width:22px; padding:3px 0; color:#d4d4d8; font-family:'JetBrains Mono','SFMono-Regular',Consolas,'Courier New',monospace; font-size:10px; font-weight:700; line-height:17px;">&nbsp;</td>
+<td width="30" valign="top" align="right"  style="width:30px; padding:3px 7px 3px 0; color:#71717a; font-family:'JetBrains Mono','SFMono-Regular',Consolas,'Courier New',monospace; font-size:9px; line-height:17px;">01</td>
+<td class="trace-code" valign="top"  style="max-width:0; padding:3px 24px 3px 0; color:#3f3f46; font-family:'JetBrains Mono','SFMono-Regular',Consolas,'Courier New',monospace; font-size:10px; line-height:17px; overflow-wrap:anywhere; word-break:break-word; white-space:pre-wrap;">🔐 Setting up app-based</td>
+</tr><tr class="trace-line">
+<td width="22" valign="top" align="center"  style="width:22px; padding:3px 0; color:#d4d4d8; font-family:'JetBrains Mono','SFMono-Regular',Consolas,'Courier New',monospace; font-size:10px; font-weight:700; line-height:17px;">&nbsp;</td>
+<td width="30" valign="top" align="right"  style="width:30px; padding:3px 7px 3px 0; color:#71717a; font-family:'JetBrains Mono','SFMono-Regular',Consolas,'Courier New',monospace; font-size:9px; line-height:17px;">&nbsp;</td>
+<td class="trace-code" valign="top"  style="max-width:0; padding:3px 24px 3px 0; color:#3f3f46; font-family:'JetBrains Mono','SFMono-Regular',Consolas,'Courier New',monospace; font-size:10px; line-height:17px; overflow-wrap:anywhere; word-break:break-word; white-space:pre-wrap;">authentication for deployment</td>
+</tr><tr class="trace-line">
+<td width="22" valign="top" align="center"  style="width:22px; padding:3px 0; color:#d4d4d8; font-family:'JetBrains Mono','SFMono-Regular',Consolas,'Courier New',monospace; font-size:10px; font-weight:700; line-height:17px;">&nbsp;</td>
+<td width="30" valign="top" align="right"  style="width:30px; padding:3px 7px 3px 0; color:#71717a; font-family:'JetBrains Mono','SFMono-Regular',Consolas,'Courier New',monospace; font-size:9px; line-height:17px;">02</td>
+<td class="trace-code" valign="top"  style="max-width:0; padding:3px 24px 3px 0; color:#3f3f46; font-family:'JetBrains Mono','SFMono-Regular',Consolas,'Courier New',monospace; font-size:10px; line-height:17px; overflow-wrap:anywhere; word-break:break-word; white-space:pre-wrap;">✅ App-based authentication</td>
+</tr><tr class="trace-line">
+<td width="22" valign="top" align="center"  style="width:22px; padding:3px 0; color:#d4d4d8; font-family:'JetBrains Mono','SFMono-Regular',Consolas,'Courier New',monospace; font-size:10px; font-weight:700; line-height:17px;">&nbsp;</td>
+<td width="30" valign="top" align="right"  style="width:30px; padding:3px 7px 3px 0; color:#71717a; font-family:'JetBrains Mono','SFMono-Regular',Consolas,'Courier New',monospace; font-size:9px; line-height:17px;">&nbsp;</td>
+<td class="trace-code" valign="top"  style="max-width:0; padding:3px 24px 3px 0; color:#3f3f46; font-family:'JetBrains Mono','SFMono-Regular',Consolas,'Courier New',monospace; font-size:10px; line-height:17px; overflow-wrap:anywhere; word-break:break-word; white-space:pre-wrap;">configured successfully</td>
+</tr><tr class="trace-line">
+<td width="22" valign="top" align="center"  style="width:22px; padding:3px 0; color:#d4d4d8; font-family:'JetBrains Mono','SFMono-Regular',Consolas,'Courier New',monospace; font-size:10px; font-weight:700; line-height:17px;">&nbsp;</td>
+<td width="30" valign="top" align="right"  style="width:30px; padding:3px 7px 3px 0; color:#71717a; font-family:'JetBrains Mono','SFMono-Regular',Consolas,'Courier New',monospace; font-size:9px; line-height:17px;">03</td>
+<td class="trace-code" valign="top"  style="max-width:0; padding:3px 24px 3px 0; color:#3f3f46; font-family:'JetBrains Mono','SFMono-Regular',Consolas,'Courier New',monospace; font-size:10px; line-height:17px; overflow-wrap:anywhere; word-break:break-word; white-space:pre-wrap;">📦 Cloning/updating repository...</td>
+</tr><tr class="trace-line">
+<td width="22" valign="top" align="center"  style="width:22px; padding:3px 0; color:#d4d4d8; font-family:'JetBrains Mono','SFMono-Regular',Consolas,'Courier New',monospace; font-size:10px; font-weight:700; line-height:17px;">&nbsp;</td>
+<td width="30" valign="top" align="right"  style="width:30px; padding:3px 7px 3px 0; color:#71717a; font-family:'JetBrains Mono','SFMono-Regular',Consolas,'Courier New',monospace; font-size:9px; line-height:17px;">04</td>
+<td class="trace-code" valign="top"  style="max-width:0; padding:3px 24px 3px 0; color:#3f3f46; font-family:'JetBrains Mono','SFMono-Regular',Consolas,'Courier New',monospace; font-size:10px; line-height:17px; overflow-wrap:anywhere; word-break:break-word; white-space:pre-wrap;">✅ Repository cloned</td>
+</tr><tr class="trace-line">
+<td width="22" valign="top" align="center"  style="width:22px; padding:3px 0; color:#d4d4d8; font-family:'JetBrains Mono','SFMono-Regular',Consolas,'Courier New',monospace; font-size:10px; font-weight:700; line-height:17px;">&nbsp;</td>
+<td width="30" valign="top" align="right"  style="width:30px; padding:3px 7px 3px 0; color:#71717a; font-family:'JetBrains Mono','SFMono-Regular',Consolas,'Courier New',monospace; font-size:9px; line-height:17px;">05</td>
+<td class="trace-code" valign="top"  style="max-width:0; padding:3px 24px 3px 0; color:#3f3f46; font-family:'JetBrains Mono','SFMono-Regular',Consolas,'Courier New',monospace; font-size:10px; line-height:17px; overflow-wrap:anywhere; word-break:break-word; white-space:pre-wrap;">🔄 Fetching latest changes...</td>
+</tr><tr class="trace-line">
+<td width="22" valign="top" align="center"  style="width:22px; padding:3px 0; color:#d4d4d8; font-family:'JetBrains Mono','SFMono-Regular',Consolas,'Courier New',monospace; font-size:10px; font-weight:700; line-height:17px;">&nbsp;</td>
+<td width="30" valign="top" align="right"  style="width:30px; padding:3px 7px 3px 0; color:#71717a; font-family:'JetBrains Mono','SFMono-Regular',Consolas,'Courier New',monospace; font-size:9px; line-height:17px;">06</td>
+<td class="trace-code" valign="top"  style="max-width:0; padding:3px 24px 3px 0; color:#3f3f46; font-family:'JetBrains Mono','SFMono-Regular',Consolas,'Courier New',monospace; font-size:10px; line-height:17px; overflow-wrap:anywhere; word-break:break-word; white-space:pre-wrap;">HEAD is now at b1e6bb1 Change</td>
+</tr><tr class="trace-line">
+<td width="22" valign="top" align="center"  style="width:22px; padding:3px 0; color:#d4d4d8; font-family:'JetBrains Mono','SFMono-Regular',Consolas,'Courier New',monospace; font-size:10px; font-weight:700; line-height:17px;">&nbsp;</td>
+<td width="30" valign="top" align="right"  style="width:30px; padding:3px 7px 3px 0; color:#71717a; font-family:'JetBrains Mono','SFMono-Regular',Consolas,'Courier New',monospace; font-size:9px; line-height:17px;">&nbsp;</td>
+<td class="trace-code" valign="top"  style="max-width:0; padding:3px 24px 3px 0; color:#3f3f46; font-family:'JetBrains Mono','SFMono-Regular',Consolas,'Courier New',monospace; font-size:10px; line-height:17px; overflow-wrap:anywhere; word-break:break-word; white-space:pre-wrap;">contact email in README</td>
+</tr><tr class="trace-line">
+<td width="22" valign="top" align="center"  style="width:22px; padding:3px 0; color:#d4d4d8; font-family:'JetBrains Mono','SFMono-Regular',Consolas,'Courier New',monospace; font-size:10px; font-weight:700; line-height:17px;">&nbsp;</td>
+<td width="30" valign="top" align="right"  style="width:30px; padding:3px 7px 3px 0; color:#71717a; font-family:'JetBrains Mono','SFMono-Regular',Consolas,'Courier New',monospace; font-size:9px; line-height:17px;">07</td>
+<td class="trace-code" valign="top"  style="max-width:0; padding:3px 24px 3px 0; color:#3f3f46; font-family:'JetBrains Mono','SFMono-Regular',Consolas,'Courier New',monospace; font-size:10px; line-height:17px; overflow-wrap:anywhere; word-break:break-word; white-space:pre-wrap;">✅ Updated to latest: main</td>
+</tr><tr class="trace-line">
+<td width="22" valign="top" align="center"  style="width:22px; padding:3px 0; color:#d4d4d8; font-family:'JetBrains Mono','SFMono-Regular',Consolas,'Courier New',monospace; font-size:10px; font-weight:700; line-height:17px;">&nbsp;</td>
+<td width="30" valign="top" align="right"  style="width:30px; padding:3px 7px 3px 0; color:#71717a; font-family:'JetBrains Mono','SFMono-Regular',Consolas,'Courier New',monospace; font-size:9px; line-height:17px;">08</td>
+<td class="trace-code" valign="top"  style="max-width:0; padding:3px 24px 3px 0; color:#3f3f46; font-family:'JetBrains Mono','SFMono-Regular',Consolas,'Courier New',monospace; font-size:10px; line-height:17px; overflow-wrap:anywhere; word-break:break-word; white-space:pre-wrap;">Running hook after updating</td>
+</tr><tr class="trace-line">
+<td width="22" valign="top" align="center"  style="width:22px; padding:3px 0; color:#d4d4d8; font-family:'JetBrains Mono','SFMono-Regular',Consolas,'Courier New',monospace; font-size:10px; font-weight:700; line-height:17px;">&nbsp;</td>
+<td width="30" valign="top" align="right"  style="width:30px; padding:3px 7px 3px 0; color:#71717a; font-family:'JetBrains Mono','SFMono-Regular',Consolas,'Courier New',monospace; font-size:9px; line-height:17px;">&nbsp;</td>
+<td class="trace-code" valign="top"  style="max-width:0; padding:3px 24px 3px 0; color:#3f3f46; font-family:'JetBrains Mono','SFMono-Regular',Consolas,'Courier New',monospace; font-size:10px; line-height:17px; overflow-wrap:anywhere; word-break:break-word; white-space:pre-wrap;">repository</td>
+</tr><tr class="trace-line trace-error">
+<td width="22" valign="top" align="center" bgcolor="#fef2f2" style="width:22px; padding:3px 0; background-color:#fef2f2; color:#b91c1c; font-family:'JetBrains Mono','SFMono-Regular',Consolas,'Courier New',monospace; font-size:10px; font-weight:700; line-height:17px;">✗</td>
+<td width="30" valign="top" align="right" bgcolor="#fef2f2" style="width:30px; padding:3px 7px 3px 0; background-color:#fef2f2; color:#b91c1c; font-family:'JetBrains Mono','SFMono-Regular',Consolas,'Courier New',monospace; font-size:9px; line-height:17px;">09</td>
+<td class="trace-code" valign="top" bgcolor="#fef2f2" style="max-width:0; padding:3px 24px 3px 0; background-color:#fef2f2; color:#991b1b; font-weight:600; font-family:'JetBrains Mono','SFMono-Regular',Consolas,'Courier New',monospace; font-size:10px; line-height:17px; overflow-wrap:anywhere; word-break:break-word; white-space:pre-wrap;">/home/launcher/.launch/task.sh:</td>
+</tr><tr class="trace-line trace-error">
+<td width="22" valign="top" align="center" bgcolor="#fef2f2" style="width:22px; padding:3px 0; background-color:#fef2f2; color:#b91c1c; font-family:'JetBrains Mono','SFMono-Regular',Consolas,'Courier New',monospace; font-size:10px; font-weight:700; line-height:17px;">&nbsp;</td>
+<td width="30" valign="top" align="right" bgcolor="#fef2f2" style="width:30px; padding:3px 7px 3px 0; background-color:#fef2f2; color:#b91c1c; font-family:'JetBrains Mono','SFMono-Regular',Consolas,'Courier New',monospace; font-size:9px; line-height:17px;">&nbsp;</td>
+<td class="trace-code" valign="top" bgcolor="#fef2f2" style="max-width:0; padding:3px 24px 3px 0; background-color:#fef2f2; color:#991b1b; font-weight:600; font-family:'JetBrains Mono','SFMono-Regular',Consolas,'Courier New',monospace; font-size:10px; line-height:17px; overflow-wrap:anywhere; word-break:break-word; white-space:pre-wrap;">line 102: submodule: command not</td>
+</tr><tr class="trace-line trace-error">
+<td width="22" valign="top" align="center" bgcolor="#fef2f2" style="width:22px; padding:3px 0; background-color:#fef2f2; color:#b91c1c; font-family:'JetBrains Mono','SFMono-Regular',Consolas,'Courier New',monospace; font-size:10px; font-weight:700; line-height:17px;">&nbsp;</td>
+<td width="30" valign="top" align="right" bgcolor="#fef2f2" style="width:30px; padding:3px 7px 3px 0; background-color:#fef2f2; color:#b91c1c; font-family:'JetBrains Mono','SFMono-Regular',Consolas,'Courier New',monospace; font-size:9px; line-height:17px;">&nbsp;</td>
+<td class="trace-code" valign="top" bgcolor="#fef2f2" style="max-width:0; padding:3px 24px 3px 0; background-color:#fef2f2; color:#991b1b; font-weight:600; font-family:'JetBrains Mono','SFMono-Regular',Consolas,'Courier New',monospace; font-size:10px; line-height:17px; overflow-wrap:anywhere; word-break:break-word; white-space:pre-wrap;">found</td>
+</tr><tr class="trace-line trace-cleanup">
+<td width="22" valign="top" align="center"  style="width:22px; padding:3px 0; color:#d4d4d8; font-family:'JetBrains Mono','SFMono-Regular',Consolas,'Courier New',monospace; font-size:10px; font-weight:700; line-height:17px;">&nbsp;</td>
+<td width="30" valign="top" align="right"  style="width:30px; padding:3px 7px 3px 0; color:#71717a; font-family:'JetBrains Mono','SFMono-Regular',Consolas,'Courier New',monospace; font-size:9px; line-height:17px;">10</td>
+<td class="trace-code" valign="top"  style="max-width:0; padding:3px 24px 3px 0; color:#71717a; font-family:'JetBrains Mono','SFMono-Regular',Consolas,'Courier New',monospace; font-size:10px; line-height:17px; overflow-wrap:anywhere; word-break:break-word; white-space:pre-wrap;">🧹 Cleaned up deployment credentials</td>
+</tr>
+</table></td></tr></table>
+</td>
+</tr>
+
+<tr><td width="52" style="width:52px; padding:0; font-size:0; line-height:0;">&nbsp;</td><td style="height:1px; padding:0; font-size:0; line-height:0;">&nbsp;</td></tr>
+</table>
+</td></tr>
+
+
+<tr><td class="sheet-footer" style="padding:18px 28px; border-top:1px solid #e4e4e7;">
+<table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="width:100%;"><tr>
+<td align="left"><p style="margin:0; color:#71717a; font-family:'JetBrains Mono','SFMono-Regular',Consolas,'Courier New',monospace; font-size:9px; line-height:15px; text-transform:uppercase;">Deployment alerts are enabled for your team.</p></td>
+<td align="right"><p style="margin:0; color:#71717a; font-size:10px; line-height:15px;">launchctl</p></td>
+</tr></table>
+</td></tr>
+</table>
+
+</td></tr></table>
+</body>
+</html>

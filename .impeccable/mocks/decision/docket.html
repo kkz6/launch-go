@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Operations Docket — launchctl email direction</title>
+  <link rel="stylesheet" href="decision.css">
+</head>
+<body>
+  <main class="canvas">
+    <div class="decision-label"><strong>Operations Docket</strong><span>system direction A</span></div>
+    <article class="mail">
+      <header class="mail-header"><span class="brand">launchctl</span><span class="route">deployments / run</span></header>
+      <section class="docket-hero">
+        <div class="docket-state"><span class="status status-failed">FAILED</span><span class="time">07 AUG 2026 · 04:37 UTC</span></div>
+        <h1>The deployment did not complete.</h1>
+        <p class="docket-resource">karti.dev <span>/</span> Indigital Server</p>
+      </section>
+      <section class="docket-error"><p>submodule: command not found</p></section>
+      <section class="ledger">
+        <div class="ledger-row"><span class="ledger-label">Commit</span><span class="ledger-value"><span class="mono">b1e6bb1</span> · Change contact email in README</span></div>
+        <div class="ledger-row"><span class="ledger-label">Triggered by</span><span class="ledger-value">Karthick S</span></div>
+        <div class="ledger-row"><span class="ledger-label">Destination</span><span class="ledger-value mono">production / main</span></div>
+      </section>
+      <div class="docket-action"><a class="button" href="#">Open deployment <span class="mono">→</span></a></div>
+      <div class="trace-title"><strong>Run output</strong><span>LAST 12 LINES</span></div>
+      <div class="trace">
+        <div class="trace-row"><span class="number">01</span><span>Setting up app-based authentication</span></div>
+        <div class="trace-row"><span class="number">02</span><span>Repository cloned</span></div>
+        <div class="trace-row"><span class="number">03</span><span>Fetching latest changes...</span></div>
+        <div class="trace-row"><span class="number">04</span><span>Updated to latest: main</span></div>
+        <div class="trace-row"><span class="number">05</span><span>Running hook after updating repository</span></div>
+        <div class="trace-row error"><span class="number">06</span><span>line 102: submodule: command not found</span></div>
+        <div class="trace-row"><span class="number">07</span><span>Cleaned up deployment credentials</span></div>
+      </div>
+      <footer class="mail-footer"><strong>launchctl</strong> sent this because deployment alerts are enabled for your team.</footer>
+    </article>
+    <section class="adaptations" aria-label="System adaptations">
+      <article class="adaptation"><h3>Verify your email</h3><p>A short docket collapses to one sentence, one action, and the link fallback—no empty metadata furniture.</p><span class="tiny-action">VERIFY EMAIL →</span></article>
+      <article class="adaptation"><h3>Server provisioned</h3><p>Success uses the same ledger for IP, user, and database credentials with the password treated as sensitive data.</p><span class="tiny-action status-success">OPEN SERVER →</span></article>
+    </section>
+  </main>
+</body>
+</html>

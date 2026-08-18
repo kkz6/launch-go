@@ -36,6 +36,8 @@ func (n *ServerConnectionLostNotification) WithServerURL(url string) *ServerConn
 // ToEmail returns the email message content
 func (n *ServerConnectionLostNotification) ToEmail() *channels.EmailMessage {
 	builder := templates.NewEmail().
+		WithContext("lctl / server").
+		WithState("CONNECTION LOST", "error").
 		WithGreeting("Server Connection Lost").
 		WithIntro(fmt.Sprintf("Connection lost to server **%s**.", n.ServerName)).
 		WithIntro("We were unable to connect to the server via SSH. This could be due to:")

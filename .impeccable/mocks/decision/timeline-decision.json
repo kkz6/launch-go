@@ -1,0 +1,8 @@
+{
+  "seedKey": "47c85962",
+  "scope": "transactional email system",
+  "mode": "operate",
+  "direction": "Execution Timeline",
+  "approved": true,
+  "composition": "A chronological handoff: completed states establish context, the current state carries severity and action, and supporting metadata closes the run. Simple emails reduce to one or two states."
+}

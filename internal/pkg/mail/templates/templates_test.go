@@ -2,6 +2,7 @@ package templates
 
 import (
 	"errors"
+	"html/template"
 	"strings"
 	"testing"
 	"time"
@@ -53,6 +54,58 @@ func TestEmailBuilder_BuildPlainText(t *testing.T) {
 	assert.Contains(t, text, "This is a test.")
 	assert.Contains(t, text, "View: https://example.com")
 	assert.Contains(t, text, "Thanks!")
+}
+
+func TestEmailBuilder_PreservesBlockOrder(t *testing.T) {
+	Initialize("Launch", "https://launch.io")
+
+	html, err := NewEmail().
+		WithGreeting("Ordered event").
+		WithPanel("Evidence first").
+		WithAction("Act second", "https://launch.io/action", "primary").
+		WithOutro("Closure last").
+		Build()
+
+	require.NoError(t, err)
+	assert.Less(t, strings.Index(html, "Evidence first"), strings.Index(html, "Act second"))
+	assert.Less(t, strings.Index(html, "Act second"), strings.Index(html, "Closure last"))
+}
+
+func TestEmailBuilder_UsesExecutionTimelineContract(t *testing.T) {
+	Initialize("Launch", "https://launch.io")
+
+	html, err := NewEmail().WithGreeting("Event recorded").Build()
+
+	require.NoError(t, err)
+	assert.Contains(t, html, "class=\"timeline\"")
+	assert.Contains(t, html, "seed 47c85962")
+	assert.NotContains(t, html, "border-radius:8px")
+}
+
+func TestEmailBuilder_RendersMarkdownTableAndDefaultActionInOrder(t *testing.T) {
+	Initialize("Launch", "https://launch.io")
+
+	builder := NewEmail().
+		WithGreeting("Run ledger").
+		WithMarkdownContent("**Context first**").
+		WithTable([]string{"Resource", "State"}, [][]string{{"api", "ready"}}).
+		WithAction("Open resource", "https://launch.io/resources/api", "")
+
+	html, err := builder.Build()
+	require.NoError(t, err)
+	assert.Contains(t, html, "button-primary")
+	assert.Less(t, strings.Index(html, "Context first"), strings.Index(html, "Resource"))
+	assert.Less(t, strings.Index(html, "Resource"), strings.Index(html, "Open resource"))
+
+	plain := builder.BuildPlainText()
+	assert.Contains(t, plain, "Resource | State")
+	assert.Contains(t, plain, "api | ready")
+}
+
+func TestRenderMarkdown_DoesNotAllowRawHTML(t *testing.T) {
+	result := renderMarkdown(`<img src=x onerror=alert(1)>`)
+
+	assert.NotContains(t, result, "<img")
 }
 
 func TestTeamDeletedEmail(t *testing.T) {
@@ -138,7 +191,7 @@ func TestDeploymentFailedEmail(t *testing.T) {
 	assert.Contains(t, html, "John Doe")
 	assert.Contains(t, html, "07 Aug 2026, 04:37 UTC")
 	assert.Contains(t, html, "lctl / deploy")
-	assert.Contains(t, html, "Last actionable error")
+	assert.Contains(t, html, "Current failure")
 	assert.Contains(t, html, "submodule: command not found")
 	assert.Contains(t, html, `class="deployment-trace"`)
 	assert.Contains(t, html, `trace-error`)
@@ -146,7 +199,7 @@ func TestDeploymentFailedEmail(t *testing.T) {
 	assert.NotContains(t, html, ">Deployment alert<")
 	assert.NotContains(t, html, "Failure reason")
 	assert.Less(t, strings.Index(html, "Run context"), strings.Index(html, "Open deployment"))
-	assert.Less(t, strings.Index(html, "Open deployment"), strings.Index(html, "Run output"))
+	assert.Less(t, strings.Index(html, "Open deployment"), strings.Index(html, "Execution output"))
 
 	// Repository-controlled metadata and output stay text, not markup.
 	assert.NotContains(t, html, "<img src=x")
@@ -217,6 +270,30 @@ func TestDeploymentFailedEmail_UsesDashboardFallback(t *testing.T) {
 	assert.Contains(t, html, `href="https://launch.io"`)
 	assert.Contains(t, html, "Open Launch")
 	assert.Contains(t, plainText, "Open Launch: https://launch.io")
+}
+
+func TestDeploymentFailedEmailReturnsTemplateErrors(t *testing.T) {
+	Initialize("Launch", "https://launch.io")
+	originalTemplate := deploymentTimelineContentTemplate
+	deploymentTimelineContentTemplate = template.Must(template.New("invalid-deployment").Parse(`{{ .MissingField }}`))
+	t.Cleanup(func() { deploymentTimelineContentTemplate = originalTemplate })
+
+	html, plain, err := DeploymentFailedEmail(
+		"myapp.com",
+		"production",
+		"Failed",
+		"abc1234",
+		"Deploy release",
+		"Karthick",
+		"Karthick",
+		time.Date(2026, 8, 18, 0, 0, 0, 0, time.UTC),
+		"command failed",
+		"https://launch.io/deployments/1",
+	)
+
+	require.Error(t, err)
+	assert.Empty(t, html)
+	assert.Empty(t, plain)
 }
 
 func TestGenericFailureEmail(t *testing.T) {
@@ -301,4 +378,39 @@ func TestConnectionTestEmail(t *testing.T) {
 
 	assert.Contains(t, html, "Email Connection Successful")
 	assert.Contains(t, strings.ToLower(plainText), "connection")
+}
+
+func TestTransactionalEmailCatalogUsesSemanticTimelineStates(t *testing.T) {
+	Initialize("Launch", "https://launch.io")
+
+	tests := []struct {
+		name  string
+		build func() (string, string, error)
+		want  string
+	}{
+		{"team invitation", func() (string, string, error) {
+			return TeamInvitationEmail("Platform", "https://launch.io/accept", "https://launch.io/register", true)
+		}, "lctl / team"},
+		{"platform invitation", func() (string, string, error) {
+			return PlatformInvitationEmail("https://launch.io/invite", time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC))
+		}, "lctl / access"},
+		{"password reset", func() (string, string, error) { return PasswordResetEmail("https://launch.io/reset", 60) }, "ACTION REQUIRED"},
+		{"email verification", func() (string, string, error) { return EmailVerificationEmail("https://launch.io/verify") }, "lctl / account"},
+		{"threshold alert", func() (string, string, error) {
+			return ServerThresholdExceededEmail("production", "CPU", 80, 92, "https://launch.io/server")
+		}, "THRESHOLD EXCEEDED"},
+		{"vulnerability issues", func() (string, string, error) {
+			return VulnerabilityAuditEmail("production", 2, "https://launch.io/report")
+		}, "lctl / security"},
+		{"vulnerability clear", func() (string, string, error) { return VulnerabilityAuditEmail("production", 0, "") }, "AUDIT COMPLETE"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			html, plain, err := tt.build()
+			require.NoError(t, err)
+			assert.Contains(t, html, tt.want)
+			assert.NotEmpty(t, plain)
+		})
+	}
 }

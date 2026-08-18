@@ -13,6 +13,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/notification/channels"
 	"github.com/kkz6/launch-go/internal/modules/notification/models"
 	notificationtypes "github.com/kkz6/launch-go/internal/modules/notification/types"
+	mailtemplates "github.com/kkz6/launch-go/internal/pkg/mail/templates"
 )
 
 // DatabaseBackupSucceededNotification is dispatched when a backup run
@@ -95,11 +96,7 @@ func (n *DatabaseBackupSucceededNotification) WithDashboardURL(url string) *Data
 	return n
 }
 
-// ToEmail builds an HTML-style email. We don't have a custom template
-// for backup success yet (the existing mail/templates package only
-// wires server/deploy/php notifications), so we fall back to plain
-// text — the rest of the platform does the same when a template's
-// missing. Slack/Discord/Telegram get the same message via formatChat.
+// ToEmail renders backup success in the shared transactional timeline.
 func (n *DatabaseBackupSucceededNotification) ToEmail() *channels.EmailMessage {
 	body := fmt.Sprintf(`Backup of database '%s' (%s) on server '%s' completed successfully.
 
@@ -123,6 +120,45 @@ Details:
 	)
 	if n.DashboardURL != "" {
 		body += fmt.Sprintf("\nDashboard: %s\n", n.DashboardURL)
+	}
+
+	details := fmt.Sprintf(`**Project:** %s
+
+**Engine:** %s
+
+**Storage:** %s
+
+**Object:** `+"`%s`"+`
+
+**Size:** %s
+
+**Finished:** %s
+
+**Triggered by:** %s`,
+		fallback(n.ProjectName, "—"),
+		n.Engine,
+		fallback(n.StorageProvider, "—"),
+		fallback(n.ObjectKey, "—"),
+		humanSize(n.SizeBytes),
+		n.FinishedAt.Format(time.RFC1123),
+		fallback(n.Source, "schedule"),
+	)
+	builder := mailtemplates.NewEmail().
+		WithContext("lctl / database").
+		WithState("BACKUP COMPLETE", "success").
+		WithGreeting("Database backup completed").
+		WithIntro(fmt.Sprintf("Backup of **%s** on **%s** completed successfully.", n.DatabaseName, n.ServerName)).
+		WithPanel(details)
+	if n.DashboardURL != "" {
+		builder.WithAction("Open backup history", n.DashboardURL, "primary")
+	}
+	html, err := builder.Build()
+	if err == nil {
+		return &channels.EmailMessage{
+			Subject: fmt.Sprintf("Backup succeeded: %s", n.DatabaseName),
+			Body:    html,
+			IsHTML:  true,
+		}
 	}
 	return &channels.EmailMessage{
 		Subject: fmt.Sprintf("Backup succeeded: %s", n.DatabaseName),

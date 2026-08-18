@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Command Brief — launchctl email direction</title>
+  <link rel="stylesheet" href="decision.css">
+</head>
+<body>
+  <main class="canvas">
+    <div class="decision-label"><strong>Command Brief</strong><span>system direction C</span></div>
+    <article class="mail">
+      <header class="mail-header"><span class="brand">launchctl</span><span class="route">notification / deploy</span></header>
+      <div class="command-bar"><span>$</span> lctl deploy karti.dev <span>--server</span> indigital</div>
+      <section class="brief-hero">
+        <div><h1>Deployment stopped at the post-update hook.</h1><p>Everything before this step completed successfully.</p></div>
+        <div class="brief-status">EXIT 127<br><span>FAILED</span></div>
+      </section>
+      <section class="brief-section">
+        <strong>What failed</strong>
+        <div><h2>Hook after updating repository</h2><p class="brief-error">submodule: command not found</p></div>
+      </section>
+      <section class="brief-section">
+        <strong>Run context</strong>
+        <div><h2><span class="mono">b1e6bb1</span> · Change contact email in README</h2><p>Triggered by Karthick S · 07 Aug 2026, 04:37 UTC · <span class="mono">main</span></p></div>
+      </section>
+      <section class="brief-section">
+        <strong>Next action</strong>
+        <div><h2>Inspect the hook and rerun the deployment.</h2><p>The full log and deployment controls are available in launchctl.</p><div class="brief-action"><a class="button" href="#">Open deployment <span class="mono">→</span></a></div></div>
+      </section>
+      <div class="brief-output">Repository cloned
+Fetching latest changes...
+Updated to latest: main
+Running hook after updating repository
+<span class="bad">line 102: submodule: command not found</span>
+Cleaned up deployment credentials</div>
+      <footer class="mail-footer"><strong>launchctl</strong> · You receive operational alerts for karti.dev</footer>
+    </article>
+    <section class="adaptations" aria-label="System adaptations">
+      <article class="adaptation"><h3>Password reset</h3><p>The brief becomes action-first: request context, expiry, reset action. No simulated command appears for account workflows.</p><span class="tiny-action">RESET PASSWORD →</span></article>
+      <article class="adaptation"><h3>Threshold exceeded</h3><p>What changed, current value, configured threshold, and next action keep the same explicit runbook order.</p><span class="tiny-action status-failed">VIEW SERVER →</span></article>
+    </section>
+  </main>
+</body>
+</html>

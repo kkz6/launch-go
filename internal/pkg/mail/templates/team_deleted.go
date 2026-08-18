@@ -8,6 +8,8 @@ var renderTeamDeletedEmail = func(builder *EmailBuilder) (string, error) {
 
 func TeamDeletedEmail(teamName, destinationName string) (htmlContent string, plainText string, err error) {
 	builder := NewEmail().
+		WithContext("lctl / team").
+		WithState("DELETED", "neutral").
 		WithGreeting("Team Deleted").
 		WithIntro(fmt.Sprintf("The **%s** team has been deleted.", teamName)).
 		WithIntro(fmt.Sprintf("Its resources were transferred to **%s**.", destinationName)).

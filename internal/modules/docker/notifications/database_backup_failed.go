@@ -7,6 +7,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/notification/channels"
 	"github.com/kkz6/launch-go/internal/modules/notification/models"
 	notificationtypes "github.com/kkz6/launch-go/internal/modules/notification/types"
+	mailtemplates "github.com/kkz6/launch-go/internal/pkg/mail/templates"
 )
 
 // DatabaseBackupFailedNotification is dispatched when a backup run
@@ -82,11 +83,7 @@ func (n *DatabaseBackupFailedNotification) WithDashboardURL(url string) *Databas
 	return n
 }
 
-// ToEmail returns a plain-text email message. No HTML template yet
-// (same reason as Succeeded: the mail/templates package doesn't know
-// about backup events). Failures are higher-stakes so we include the
-// last lines of output verbatim — the user wants to triage in the
-// email, not click through to find what broke.
+// ToEmail renders backup failure in the shared transactional timeline.
 func (n *DatabaseBackupFailedNotification) ToEmail() *channels.EmailMessage {
 	body := fmt.Sprintf(`Backup of database '%s' (%s) on server '%s' failed.
 
@@ -109,6 +106,43 @@ Details:
 	}
 	if n.DashboardURL != "" {
 		body += fmt.Sprintf("\nDashboard: %s\n", n.DashboardURL)
+	}
+
+	details := fmt.Sprintf(`**Project:** %s
+
+**Engine:** %s
+
+**Storage:** %s
+
+**Failed:** %s
+
+**Triggered by:** %s`,
+		fallback(n.ProjectName, "—"),
+		n.Engine,
+		fallback(n.StorageProvider, "—"),
+		n.FailedAt.Format(time.RFC1123),
+		fallback(n.Source, "schedule"),
+	)
+	builder := mailtemplates.NewEmail().
+		WithContext("lctl / database").
+		WithState("BACKUP FAILED", "error").
+		WithGreeting("Database backup failed").
+		WithIntro(fmt.Sprintf("Backup of **%s** on **%s** did not complete.", n.DatabaseName, n.ServerName)).
+		WithPanel(details)
+	if n.ErrorOutput != "" {
+		builder.WithIntro("The backup process returned this output:").
+			WithPanel("```\n" + n.ErrorOutput + "\n```")
+	}
+	if n.DashboardURL != "" {
+		builder.WithAction("Open backup history", n.DashboardURL, "error")
+	}
+	html, err := builder.Build()
+	if err == nil {
+		return &channels.EmailMessage{
+			Subject: fmt.Sprintf("Backup FAILED: %s", n.DatabaseName),
+			Body:    html,
+			IsHTML:  true,
+		}
 	}
 	return &channels.EmailMessage{
 		Subject: fmt.Sprintf("Backup FAILED: %s", n.DatabaseName),

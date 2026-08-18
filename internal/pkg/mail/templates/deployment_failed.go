@@ -50,95 +50,6 @@ var (
 	shellFailureLinePattern = regexp.MustCompile(`(?i)^.*:\s*line\s+\d+:\s*(.+)$`)
 )
 
-var deploymentFailedContentTemplate = template.Must(template.New("deployment-failed-content").Parse(`
-<table class="incident-hero" width="100%" cellpadding="0" cellspacing="0" role="presentation" style="width:100%; table-layout:fixed;">
-<tr>
-<td class="incident-pad" style="padding:40px 36px 30px;">
-<p style="margin:0 0 10px; color:#b91c1c; font-family:'JetBrains Mono','SFMono-Regular',Consolas,'Courier New',monospace; font-size:12px; font-weight:700; letter-spacing:0.08em; line-height:18px; mso-line-height-rule:exactly;">&#10007; {{ .StatusLabel }}</p>
-<h1 class="incident-title" style="margin:0; color:#18181b; font-family:'Plus Jakarta Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif; font-size:32px; font-weight:700; letter-spacing:-0.04em; line-height:40px; mso-line-height-rule:exactly;">{{ .StatusHeading }}</h1>
-<p class="incident-route" style="margin:12px 0 0; color:#18181b; font-size:17px; font-weight:600; line-height:25px; mso-line-height-rule:exactly; overflow-wrap:anywhere;">{{ .SiteAddress }}{{ if .HasServer }} <span style="color:#a1a1aa; font-family:'JetBrains Mono','SFMono-Regular',Consolas,'Courier New',monospace; font-weight:400;">&#8594;</span> {{ .ServerName }}{{ end }}</p>
-<p style="margin:8px 0 0; color:#71717a; font-size:14px; line-height:22px; mso-line-height-rule:exactly;">The deployment stopped before it completed. Start with the last actionable error.</p>
-</td>
-</tr>
-</table>
-
-{{ if .FailureSummary }}
-<table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="width:100%; table-layout:fixed;">
-<tr>
-<td class="incident-pad" style="padding:0 36px 30px;">
-<table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="width:100%; border-top:2px solid #ef4444;">
-<tr>
-<td style="padding:14px 0 0;">
-<p style="margin:0 0 5px; color:#71717a; font-size:12px; font-weight:700; line-height:18px; mso-line-height-rule:exactly;">Last actionable error</p>
-<p style="margin:0; color:#991b1b; font-family:'JetBrains Mono','SFMono-Regular',Consolas,'Courier New',monospace; font-size:13px; font-weight:600; line-height:20px; mso-line-height-rule:exactly; overflow-wrap:anywhere; word-break:break-word;">{{ .FailureSummary }}</p>
-</td>
-</tr>
-</table>
-</td>
-</tr>
-</table>
-{{ end }}
-
-<table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="width:100%; table-layout:fixed;">
-<tr>
-<td class="incident-pad" style="padding:0 36px 34px;">
-<table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="width:100%; border-top:1px solid #18181b;">
-<tr>
-<td style="padding:18px 0 0;">
-<p style="margin:0 0 10px; color:#27272a; font-size:13px; font-weight:700; line-height:19px; mso-line-height-rule:exactly;">Run context</p>
-{{ if .HasCommit }}
-<p style="margin:0; color:#27272a; font-size:15px; font-weight:600; line-height:23px; mso-line-height-rule:exactly; overflow-wrap:anywhere;">
-{{ if .ShortGitHash }}<span style="color:#71717a; font-family:'JetBrains Mono','SFMono-Regular',Consolas,'Courier New',monospace; font-size:12px; font-weight:500;">{{ .ShortGitHash }}</span>{{ end }}{{ if and .ShortGitHash .CommitMessage }} <span style="color:#d4d4d8;">/</span> {{ end }}{{ .CommitMessage }}
-</p>
-{{ end }}
-<p style="margin:{{ if .HasCommit }}9px{{ else }}0{{ end }} 0 0; color:#71717a; font-size:12px; line-height:20px; mso-line-height-rule:exactly;">
-{{ range $index, $item := .RunMeta }}{{ if $index }} <span style="color:#d4d4d8;">&middot;</span> {{ end }}<span>{{ $item.Label }}</span> <strong style="color:#3f3f46; font-weight:600;">{{ $item.Value }}</strong>{{ end }}
-</p>
-{{ if .ActionURL }}
-<table class="incident-action" width="100%" border="0" cellpadding="0" cellspacing="0" role="presentation" bgcolor="#18181b" style="width:100%; margin:22px 0 0; background-color:#18181b;">
-<tr>
-<td align="left" bgcolor="#18181b" style="background-color:#18181b; mso-padding-alt:13px 16px;">
-<a href="{{ .ActionURL }}" target="_blank" rel="noopener" style="display:block; border:13px solid #18181b; background-color:#18181b; color:#ffffff; font-family:'JetBrains Mono','SFMono-Regular',Consolas,'Courier New',monospace; font-size:13px; font-weight:600; line-height:18px; text-decoration:none; -webkit-text-size-adjust:none;">{{ .ActionText }} <span style="color:#a1a1aa;">&#8594;</span></a>
-</td>
-</tr>
-</table>
-{{ end }}
-</td>
-</tr>
-</table>
-</td>
-</tr>
-</table>
-
-{{ if .OutputLines }}
-<table class="trace-shell" width="100%" cellpadding="0" cellspacing="0" role="presentation" bgcolor="#fafafa" style="width:100%; table-layout:fixed; border-top:1px solid #18181b; background-color:#fafafa;">
-<tr>
-<td class="trace-heading-pad" bgcolor="#ffffff" style="padding:18px 36px 12px; background-color:#ffffff;">
-<table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="width:100%;">
-<tr>
-<td align="left"><h2 style="margin:0; color:#27272a; font-size:13px; font-weight:700; line-height:19px; mso-line-height-rule:exactly;">Run output</h2></td>
-<td align="right"><span class="output-label" style="color:#a1a1aa; font-family:'JetBrains Mono','SFMono-Regular',Consolas,'Courier New',monospace; font-size:10px; line-height:16px; mso-line-height-rule:exactly;">{{ .OutputLabel }}</span></td>
-</tr>
-</table>
-</td>
-</tr>
-<tr>
-<td bgcolor="#fafafa" style="padding:0 0 18px; background-color:#fafafa;">
-<table class="deployment-trace" width="100%" cellpadding="0" cellspacing="0" role="presentation" bgcolor="#fafafa" style="width:100%; table-layout:fixed; background-color:#fafafa;">
-{{ range .OutputLines }}
-<tr class="trace-line{{ if .IsFailure }} trace-error{{ else if .IsCleanup }} trace-cleanup{{ end }}">
-<td width="24" valign="top" align="center" {{ if .IsFailure }}bgcolor="#fef2f2"{{ else }}bgcolor="#f4f4f5"{{ end }} style="width:24px; padding:3px 0; {{ if .IsFailure }}background-color:#fef2f2; color:#b91c1c;{{ else }}background-color:#f4f4f5; color:#d4d4d8;{{ end }} font-family:'JetBrains Mono','SFMono-Regular',Consolas,'Courier New',monospace; font-size:11px; font-weight:700; line-height:18px; mso-line-height-rule:exactly;">{{ if .Marker }}{{ .Marker }}{{ else }}&nbsp;{{ end }}</td>
-<td width="34" valign="top" align="right" {{ if .IsFailure }}bgcolor="#fef2f2"{{ else }}bgcolor="#fafafa"{{ end }} style="width:34px; padding:3px 8px 3px 0; {{ if .IsFailure }}background-color:#fef2f2; color:#b91c1c;{{ else }}background-color:#fafafa; color:#a1a1aa;{{ end }} font-family:'JetBrains Mono','SFMono-Regular',Consolas,'Courier New',monospace; font-size:10px; line-height:18px; mso-line-height-rule:exactly;">{{ if .Number }}{{ .Number }}{{ else }}&nbsp;{{ end }}</td>
-<td class="trace-code" valign="top" {{ if .IsFailure }}bgcolor="#fef2f2"{{ else }}bgcolor="#fafafa"{{ end }} style="padding:3px 24px 3px 0; {{ if .IsFailure }}background-color:#fef2f2; color:#991b1b; font-weight:600;{{ else if .IsCleanup }}background-color:#fafafa; color:#a1a1aa;{{ else }}background-color:#fafafa; color:#3f3f46;{{ end }} font-family:'JetBrains Mono','SFMono-Regular',Consolas,'Courier New',monospace; font-size:11px; line-height:18px; mso-line-height-rule:exactly; overflow-wrap:anywhere; word-break:break-all; white-space:pre-wrap;">{{ .Text }}</td>
-</tr>
-{{ end }}
-</table>
-</td>
-</tr>
-</table>
-{{ end }}
-`))
-
 // DeploymentFailedEmail creates a branded, structured email for deployment failures.
 func DeploymentFailedEmail(siteAddress, serverName, statusLabel, gitHash, commitMessage, commitAuthor, triggeredBy string, deploymentTime time.Time, output string, siteURL string) (htmlContent string, plainText string, err error) {
 	view := newDeploymentFailedEmailView(
@@ -155,7 +66,7 @@ func DeploymentFailedEmail(siteAddress, serverName, statusLabel, gitHash, commit
 	)
 
 	var content bytes.Buffer
-	if err := deploymentFailedContentTemplate.Execute(&content, view); err != nil {
+	if err := deploymentTimelineContentTemplate.Execute(&content, view); err != nil {
 		return "", "", err
 	}
 

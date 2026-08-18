@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Execution Timeline — launchctl email direction</title>
+  <link rel="stylesheet" href="decision.css">
+</head>
+<body>
+  <main class="canvas">
+    <div class="decision-label"><strong>Execution Timeline</strong><span>system direction B</span></div>
+    <article class="mail">
+      <header class="mail-header"><span class="brand">launchctl</span><span class="route">karti.dev / deployment</span></header>
+      <section class="timeline-hero">
+        <h1>Deployment failed on Indigital Server.</h1>
+        <p>The run reached the post-update hook, then stopped. The completed steps are kept here so the failure has context.</p>
+      </section>
+      <section class="timeline-list">
+        <article class="timeline-item">
+          <span class="timeline-dot"></span>
+          <div class="timeline-kicker"><span>REPOSITORY</span><span>04:36:51</span></div>
+          <h2>Source updated to <span class="mono">b1e6bb1</span></h2>
+          <p>Change contact email in README · branch <span class="mono">main</span></p>
+        </article>
+        <article class="timeline-item">
+          <span class="timeline-dot"></span>
+          <div class="timeline-kicker"><span>AUTHENTICATION</span><span>04:37:02</span></div>
+          <h2>Deployment credentials configured</h2>
+          <p>App-based GitHub authentication completed successfully.</p>
+        </article>
+        <article class="timeline-item failed">
+          <span class="timeline-dot"></span>
+          <div class="timeline-kicker"><span class="status-failed">POST-UPDATE HOOK · FAILED</span><span>04:37:18</span></div>
+          <h2>The configured hook could not run.</h2>
+          <div class="timeline-code">line 102: submodule: command not found</div>
+          <div class="timeline-action"><a class="button" href="#">Inspect deployment <span class="mono">→</span></a></div>
+        </article>
+      </section>
+      <section class="timeline-context"><p><span class="mono">Karthick S</span> triggered this deployment at 04:36 UTC. Credentials were cleaned up after the failure.</p></section>
+      <footer class="mail-footer"><strong>launchctl</strong> · Deployment activity for your team</footer>
+    </article>
+    <section class="adaptations" aria-label="System adaptations">
+      <article class="adaptation"><h3>Team invitation</h3><p>The timeline becomes a simple two-state handoff: invitation sent, membership begins after acceptance.</p><span class="tiny-action">JOIN TEAM →</span></article>
+      <article class="adaptation"><h3>Vulnerability audit</h3><p>Audit start, scan completion, and findings appear as a short event history with the report action at the current state.</p><span class="tiny-action status-failed">REVIEW FINDINGS →</span></article>
+    </section>
+  </main>
+</body>
+</html>
