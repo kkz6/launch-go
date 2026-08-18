@@ -2,6 +2,7 @@ package templates
 
 import (
 	"errors"
+	"html/template"
 	"strings"
 	"testing"
 	"time"
@@ -269,6 +270,30 @@ func TestDeploymentFailedEmail_UsesDashboardFallback(t *testing.T) {
 	assert.Contains(t, html, `href="https://launch.io"`)
 	assert.Contains(t, html, "Open Launch")
 	assert.Contains(t, plainText, "Open Launch: https://launch.io")
+}
+
+func TestDeploymentFailedEmailReturnsTemplateErrors(t *testing.T) {
+	Initialize("Launch", "https://launch.io")
+	originalTemplate := deploymentTimelineContentTemplate
+	deploymentTimelineContentTemplate = template.Must(template.New("invalid-deployment").Parse(`{{ .MissingField }}`))
+	t.Cleanup(func() { deploymentTimelineContentTemplate = originalTemplate })
+
+	html, plain, err := DeploymentFailedEmail(
+		"myapp.com",
+		"production",
+		"Failed",
+		"abc1234",
+		"Deploy release",
+		"Karthick",
+		"Karthick",
+		time.Date(2026, 8, 18, 0, 0, 0, 0, time.UTC),
+		"command failed",
+		"https://launch.io/deployments/1",
+	)
+
+	require.Error(t, err)
+	assert.Empty(t, html)
+	assert.Empty(t, plain)
 }
 
 func TestGenericFailureEmail(t *testing.T) {
