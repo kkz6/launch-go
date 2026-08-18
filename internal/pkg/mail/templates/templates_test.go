@@ -81,6 +81,26 @@ func TestEmailBuilder_UsesExecutionTimelineContract(t *testing.T) {
 	assert.NotContains(t, html, "border-radius:8px")
 }
 
+func TestEmailBuilder_RendersMarkdownTableAndDefaultActionInOrder(t *testing.T) {
+	Initialize("Launch", "https://launch.io")
+
+	builder := NewEmail().
+		WithGreeting("Run ledger").
+		WithMarkdownContent("**Context first**").
+		WithTable([]string{"Resource", "State"}, [][]string{{"api", "ready"}}).
+		WithAction("Open resource", "https://launch.io/resources/api", "")
+
+	html, err := builder.Build()
+	require.NoError(t, err)
+	assert.Contains(t, html, "button-primary")
+	assert.Less(t, strings.Index(html, "Context first"), strings.Index(html, "Resource"))
+	assert.Less(t, strings.Index(html, "Resource"), strings.Index(html, "Open resource"))
+
+	plain := builder.BuildPlainText()
+	assert.Contains(t, plain, "Resource | State")
+	assert.Contains(t, plain, "api | ready")
+}
+
 func TestRenderMarkdown_DoesNotAllowRawHTML(t *testing.T) {
 	result := renderMarkdown(`<img src=x onerror=alert(1)>`)
 
@@ -333,4 +353,39 @@ func TestConnectionTestEmail(t *testing.T) {
 
 	assert.Contains(t, html, "Email Connection Successful")
 	assert.Contains(t, strings.ToLower(plainText), "connection")
+}
+
+func TestTransactionalEmailCatalogUsesSemanticTimelineStates(t *testing.T) {
+	Initialize("Launch", "https://launch.io")
+
+	tests := []struct {
+		name  string
+		build func() (string, string, error)
+		want  string
+	}{
+		{"team invitation", func() (string, string, error) {
+			return TeamInvitationEmail("Platform", "https://launch.io/accept", "https://launch.io/register", true)
+		}, "lctl / team"},
+		{"platform invitation", func() (string, string, error) {
+			return PlatformInvitationEmail("https://launch.io/invite", time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC))
+		}, "lctl / access"},
+		{"password reset", func() (string, string, error) { return PasswordResetEmail("https://launch.io/reset", 60) }, "ACTION REQUIRED"},
+		{"email verification", func() (string, string, error) { return EmailVerificationEmail("https://launch.io/verify") }, "lctl / account"},
+		{"threshold alert", func() (string, string, error) {
+			return ServerThresholdExceededEmail("production", "CPU", 80, 92, "https://launch.io/server")
+		}, "THRESHOLD EXCEEDED"},
+		{"vulnerability issues", func() (string, string, error) {
+			return VulnerabilityAuditEmail("production", 2, "https://launch.io/report")
+		}, "lctl / security"},
+		{"vulnerability clear", func() (string, string, error) { return VulnerabilityAuditEmail("production", 0, "") }, "AUDIT COMPLETE"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			html, plain, err := tt.build()
+			require.NoError(t, err)
+			assert.Contains(t, html, tt.want)
+			assert.NotEmpty(t, plain)
+		})
+	}
 }
