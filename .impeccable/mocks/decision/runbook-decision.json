@@ -1,0 +1,8 @@
+{
+  "seedKey": "47c85962",
+  "scope": "transactional email system",
+  "mode": "operate",
+  "direction": "Command Brief",
+  "approved": false,
+  "composition": "A diagnostic brief organized by what failed, run context, next action, and raw evidence. CLI language appears only for operational events; account messages keep the explicit hierarchy without simulated commands."
+}

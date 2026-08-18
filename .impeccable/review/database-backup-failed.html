@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<title>Launch</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<meta name="color-scheme" content="light">
+<meta name="supported-color-schemes" content="light">
+<style>
+body, table, td, a, p, span, h1, h2, h3 { box-sizing:border-box; font-family:'Plus Jakarta Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; }
+body { margin:0; padding:0; width:100% !important; background:#f4f4f5; color:#3f3f46; -webkit-text-size-adjust:none; }
+table { border-collapse:separate; }
+p, ul, ol, blockquote { margin-top:0; color:#52525b; font-size:14px; line-height:1.65; text-align:left; }
+p { margin-bottom:14px; }
+.prose p:last-child, .evidence-content p:last-child { margin-bottom:0; }
+h1 { margin:0; color:#09090b; font-size:30px; font-weight:700; letter-spacing:-0.045em; line-height:1.27; }
+h2 { margin:0 0 9px; color:#27272a; font-size:14px; font-weight:700; line-height:1.45; }
+h3 { margin:0 0 7px; color:#27272a; font-size:12px; font-weight:700; line-height:1.45; }
+a { color:#18181b; }
+strong { color:#27272a; font-weight:650; }
+code { padding:2px 5px; background:#f4f4f5; color:#27272a; font-family:'JetBrains Mono','SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace; font-size:88%; }
+pre { box-sizing:border-box; width:100%; max-width:100%; margin:0; padding:0; overflow:hidden; background:transparent; color:#3f3f46; font-family:'JetBrains Mono','SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace; font-size:11px; line-height:1.7; white-space:pre-wrap; overflow-wrap:anywhere; word-break:break-word; }
+pre code { display:block; padding:0; background:transparent; color:inherit; font-size:inherit; line-height:inherit; white-space:inherit; }
+.sheet a:not(.button) { overflow-wrap:anywhere; }
+.data-table th { padding:10px 8px 8px 0; border-bottom:1px solid #e4e4e7; color:#71717a; font-family:'JetBrains Mono','SFMono-Regular',Consolas,monospace; font-size:9px; font-weight:700; letter-spacing:.06em; text-align:left; text-transform:uppercase; }
+.data-table td { padding:10px 8px 10px 0; border-bottom:1px solid #e4e4e7; color:#52525b; font-size:12px; line-height:18px; }
+@media only screen and (max-width:620px) {
+  .wrapper-cell { padding:12px 6px !important; }
+  .sheet-header, .sheet-footer { padding-left:20px !important; padding-right:20px !important; }
+  .timeline-pad { padding:28px 18px 8px !important; }
+  .incident-pad { padding-left:18px !important; padding-right:18px !important; }
+  .trace-heading-pad { padding-left:18px !important; padding-right:18px !important; }
+  .trace-code { padding-right:14px !important; }
+}
+@media only screen and (max-width:420px) {
+  .header-route { font-size:9px !important; }
+  .hero-copy h1, .incident-title { font-size:25px !important; line-height:32px !important; }
+  .timeline-copy { padding-left:18px !important; }
+  .button { display:block !important; text-align:center !important; }
+  .detail-label { width:88px !important; }
+}
+</style>
+</head>
+<body style="margin:0; padding:0; width:100% !important; background-color:#f4f4f5; color:#3f3f46; -webkit-text-size-adjust:none;">
+<!--
+THESIS: Transactional email is an execution timeline, not a stack of notification cards.
+OWN-WORLD: White operational sheet, zinc ink, one-pixel lifecycle lines, square state nodes, Plus Jakarta Sans interface text, JetBrains Mono for identifiers and output, status color only.
+STORY: The recipient sees what happened, which resource changed, and the next useful action before supporting evidence.
+FIRST VIEWPORT: launchctl header, decisive event title, affected resource, current state and primary action; context follows on the same line.
+FORM: Execution Timeline, candidate 4 in the grounded set, seed 47c85962.
+FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance
+-->
+
+<table class="wrapper" width="100%" cellpadding="0" cellspacing="0" role="presentation" bgcolor="#f4f4f5" style="width:100%; margin:0; padding:0; background-color:#f4f4f5;">
+<tr><td class="wrapper-cell" align="center" style="padding:36px 12px;">
+
+<table class="sheet" width="100%" cellpadding="0" cellspacing="0" role="presentation" bgcolor="#ffffff" style="width:100%; max-width:600px; margin:0 auto; table-layout:fixed; background-color:#ffffff; border:1px solid #d4d4d8;">
+
+<tr><td class="sheet-header" style="padding:22px 28px; border-bottom:1px solid #e4e4e7;">
+<table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="width:100%;"><tr>
+<td align="left"><a href="https://launchctl.io" class="brand" style="display:inline-block; color:#09090b; font-family:'Plus Jakarta Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif; font-size:20px; font-weight:800; letter-spacing:-0.045em; text-decoration:none;">launchctl</a></td>
+<td align="right"><span class="header-route" style="color:#71717a; font-family:'JetBrains Mono','SFMono-Regular',Consolas,'Courier New',monospace; font-size:10px; font-weight:600; letter-spacing:0.05em; line-height:16px; text-transform:uppercase;">lctl / database</span></td>
+</tr></table>
+</td></tr>
+
+
+<tr><td class="timeline-pad" style="padding:36px 28px 10px;">
+<table class="timeline" width="100%" cellpadding="0" cellspacing="0" role="presentation" style="width:100%; table-layout:fixed;">
+<tr>
+<td class="timeline-rail" width="28" valign="top" style="width:28px; border-right:1px solid #d4d4d8; padding:0;">
+<table width="100%" cellpadding="0" cellspacing="0" role="presentation"><tr><td align="right" style="padding-top:5px; font-size:0; line-height:0;"><span class="state-node state-error" style="display:inline-block; width:9px; height:9px; margin-right:-5px; border:2px solid #ffffff; background-color:#ef4444; font-size:0; line-height:0;">&nbsp;</span></td></tr></table>
+</td>
+<td class="timeline-copy hero-copy" valign="top" style="padding:0 0 24px 24px;">
+<p class="state-label state-label-error" style="margin:0 0 8px; color:#b91c1c; font-family:'JetBrains Mono','SFMono-Regular',Consolas,'Courier New',monospace; font-size:10px; font-weight:700; letter-spacing:0.08em; line-height:16px; text-transform:uppercase;">BACKUP FAILED</p>
+<h1 style="margin:0; color:#09090b; font-family:'Plus Jakarta Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif; font-size:30px; font-weight:700; letter-spacing:-0.045em; line-height:38px;">Database backup failed</h1>
+</td>
+</tr>
+
+
+<tr class="timeline-block timeline-intro">
+<td class="timeline-rail" width="28" valign="top" style="width:28px; border-right:1px solid #d4d4d8; padding:0;">
+
+
+</td>
+<td class="timeline-copy" valign="top" style="padding:0 0 8px 24px; overflow:hidden;">
+<div class="prose prose-intro"><p>Backup of <strong>launch_production</strong> on <strong>Indigital Server</strong> did not complete.</p>
+</div>
+
+
+
+</td>
+</tr>
+
+<tr class="timeline-block timeline-panel">
+<td class="timeline-rail" width="28" valign="top" style="width:28px; border-right:1px solid #d4d4d8; padding:0;">
+
+<table width="100%" cellpadding="0" cellspacing="0" role="presentation"><tr><td align="right" style="padding-top:15px; font-size:0; line-height:0;"><span style="display:inline-block; width:5px; height:5px; margin-right:-3px; border:1px solid #71717a; background-color:#ffffff; font-size:0; line-height:0;">&nbsp;</span></td></tr></table>
+</td>
+<td class="timeline-copy" valign="top" style="padding:0 0 22px 24px; overflow:hidden;">
+
+
+<table class="evidence" width="100%" cellpadding="0" cellspacing="0" role="presentation" bgcolor="#fafafa" style="width:100%; border-top:1px solid #27272a; border-bottom:1px solid #e4e4e7; background-color:#fafafa;"><tr><td class="evidence-content" style="padding:16px 18px; color:#52525b;"><p><strong>Project:</strong> Launch</p>
+<p><strong>Engine:</strong> PostgreSQL</p>
+<p><strong>Storage:</strong> Contabo Object Storage</p>
+<p><strong>Failed:</strong> Tue, 18 Aug 2026 03:15:00 UTC</p>
+<p><strong>Triggered by:</strong> schedule</p>
+</td></tr></table>
+
+</td>
+</tr>
+
+<tr class="timeline-block timeline-intro">
+<td class="timeline-rail" width="28" valign="top" style="width:28px; border-right:1px solid #d4d4d8; padding:0;">
+
+
+</td>
+<td class="timeline-copy" valign="top" style="padding:0 0 8px 24px; overflow:hidden;">
+<div class="prose prose-intro"><p>The backup process returned this output:</p>
+</div>
+
+
+
+</td>
+</tr>
+
+<tr class="timeline-block timeline-panel">
+<td class="timeline-rail" width="28" valign="top" style="width:28px; border-right:1px solid #d4d4d8; padding:0;">
+
+<table width="100%" cellpadding="0" cellspacing="0" role="presentation"><tr><td align="right" style="padding-top:15px; font-size:0; line-height:0;"><span style="display:inline-block; width:5px; height:5px; margin-right:-3px; border:1px solid #71717a; background-color:#ffffff; font-size:0; line-height:0;">&nbsp;</span></td></tr></table>
+</td>
+<td class="timeline-copy" valign="top" style="padding:0 0 22px 24px; overflow:hidden;">
+
+
+<table class="evidence" width="100%" cellpadding="0" cellspacing="0" role="presentation" bgcolor="#fafafa" style="width:100%; border-top:1px solid #27272a; border-bottom:1px solid #e4e4e7; background-color:#fafafa;"><tr><td class="evidence-content" style="padding:16px 18px; color:#52525b;"><pre><code>pg_dump: error: connection to server failed: timeout expired
+</code></pre>
+</td></tr></table>
+
+</td>
+</tr>
+
+<tr class="timeline-block timeline-action">
+<td class="timeline-rail" width="28" valign="top" style="width:28px; border-right:1px solid #d4d4d8; padding:0;">
+<table width="100%" cellpadding="0" cellspacing="0" role="presentation"><tr><td align="right" style="padding-top:17px; font-size:0; line-height:0;"><span style="display:inline-block; width:7px; height:7px; margin-right:-4px; border:1px solid #ffffff; background-color:#18181b; font-size:0; line-height:0;">&nbsp;</span></td></tr></table>
+
+</td>
+<td class="timeline-copy" valign="top" style="padding:0 0 26px 24px; overflow:hidden;">
+
+
+<table class="action" border="0" cellpadding="0" cellspacing="0" role="presentation"><tr><td bgcolor="#b91c1c" style="background-color:#b91c1c; mso-padding-alt:12px 16px;"><a href="https://launchctl.io/projects/project/databases/database/backups" class="button button-error" target="_blank" rel="noopener" style="display:inline-block; border:12px solid #b91c1c; background-color:#b91c1c; color:#ffffff; font-family:'JetBrains Mono','SFMono-Regular',Consolas,'Courier New',monospace; font-size:12px; font-weight:650; line-height:16px; text-decoration:none; -webkit-text-size-adjust:none;">Open backup history <span style="color:#d4d4d8;">&#8594;</span></a></td></tr></table>
+
+
+
+</td>
+</tr>
+
+
+
+<tr><td width="28" style="width:28px; padding:0; font-size:0; line-height:0;">&nbsp;</td><td style="height:1px; padding:0; font-size:0; line-height:0;">&nbsp;</td></tr>
+</table>
+</td></tr>
+
+
+<tr><td class="sheet-footer" style="padding:18px 28px; border-top:1px solid #e4e4e7;">
+<table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="width:100%;"><tr>
+<td align="left"><p style="margin:0; color:#a1a1aa; font-family:'JetBrains Mono','SFMono-Regular',Consolas,'Courier New',monospace; font-size:9px; line-height:15px; text-transform:uppercase;">transaction recorded / 2026</p></td>
+<td align="right"><p style="margin:0; color:#71717a; font-size:10px; line-height:15px;">launchctl</p></td>
+</tr></table>
+</td></tr>
+</table>
+
+</td></tr></table>
+</body>
+</html>

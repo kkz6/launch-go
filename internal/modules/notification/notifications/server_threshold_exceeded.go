@@ -81,6 +81,8 @@ func (n *ServerThresholdExceededNotification) metricLabel(metric MetricType) str
 func (n *ServerThresholdExceededNotification) ToEmail() *channels.EmailMessage {
 	// Build HTML email using templates
 	builder := templates.NewEmail().
+		WithContext("lctl / server").
+		WithState("THRESHOLD EXCEEDED", "error").
 		WithGreeting("Server Threshold Alert").
 		WithIntro(fmt.Sprintf("Server **%s** (%s) has exceeded one or more resource thresholds.", n.ServerName, n.ServerIP))
 

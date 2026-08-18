@@ -70,6 +70,8 @@ func (n *SiteInstallationFailedNotification) ShortGitHash() string {
 // ToEmail returns the email message content
 func (n *SiteInstallationFailedNotification) ToEmail() *channels.EmailMessage {
 	builder := templates.NewEmail().
+		WithContext("lctl / site").
+		WithState("INSTALLATION FAILED", "error").
 		WithGreeting("Site Installation Failed").
 		WithIntro(fmt.Sprintf("Site installation failed for **%s** on server **%s**.", n.SiteAddress, n.ServerName))
 

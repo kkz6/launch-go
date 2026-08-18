@@ -31,6 +31,8 @@ func NewFailedToDeleteServerNotification(serverName, provider, errorMessage stri
 // ToEmail returns the email message content
 func (n *FailedToDeleteServerNotification) ToEmail() *channels.EmailMessage {
 	builder := templates.NewEmail().
+		WithContext("lctl / server").
+		WithState("DELETE FAILED", "error").
 		WithGreeting("Failed to Delete Server from Provider").
 		WithIntro(fmt.Sprintf("Failed to delete server **%s** from **%s**.", n.ServerName, n.Provider)).
 		WithIntro(fmt.Sprintf("The server has been removed from Launch, but we were unable to delete it from your cloud provider. You may need to manually delete it from your %s account to avoid additional charges.", n.Provider))

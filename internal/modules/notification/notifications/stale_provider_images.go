@@ -58,6 +58,8 @@ func (n *StaleProviderImagesNotification) findingsTable() string {
 // ToEmail returns the email message content
 func (n *StaleProviderImagesNotification) ToEmail() *channels.EmailMessage {
 	builder := templates.NewEmail().
+		WithContext("lctl / provider").
+		WithState("CONFIGURATION STALE", "warning").
 		WithGreeting("Cloud-provider image configuration needs attention").
 		WithIntro(fmt.Sprintf("Launch's daily image-validation check found **%d** configured cloud-provider image(s) that the upstream provider no longer serves.", len(n.Findings))).
 		WithIntro("Until the configuration is updated, new servers on the affected providers may fail to provision with a generic \"image not available\" error.").

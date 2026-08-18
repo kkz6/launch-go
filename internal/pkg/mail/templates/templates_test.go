@@ -55,6 +55,38 @@ func TestEmailBuilder_BuildPlainText(t *testing.T) {
 	assert.Contains(t, text, "Thanks!")
 }
 
+func TestEmailBuilder_PreservesBlockOrder(t *testing.T) {
+	Initialize("Launch", "https://launch.io")
+
+	html, err := NewEmail().
+		WithGreeting("Ordered event").
+		WithPanel("Evidence first").
+		WithAction("Act second", "https://launch.io/action", "primary").
+		WithOutro("Closure last").
+		Build()
+
+	require.NoError(t, err)
+	assert.Less(t, strings.Index(html, "Evidence first"), strings.Index(html, "Act second"))
+	assert.Less(t, strings.Index(html, "Act second"), strings.Index(html, "Closure last"))
+}
+
+func TestEmailBuilder_UsesExecutionTimelineContract(t *testing.T) {
+	Initialize("Launch", "https://launch.io")
+
+	html, err := NewEmail().WithGreeting("Event recorded").Build()
+
+	require.NoError(t, err)
+	assert.Contains(t, html, "class=\"timeline\"")
+	assert.Contains(t, html, "seed 47c85962")
+	assert.NotContains(t, html, "border-radius:8px")
+}
+
+func TestRenderMarkdown_DoesNotAllowRawHTML(t *testing.T) {
+	result := renderMarkdown(`<img src=x onerror=alert(1)>`)
+
+	assert.NotContains(t, result, "<img")
+}
+
 func TestTeamDeletedEmail(t *testing.T) {
 	html, plain, err := TeamDeletedEmail("Legacy Team", "Personal Team")
 	require.NoError(t, err)
@@ -138,7 +170,7 @@ func TestDeploymentFailedEmail(t *testing.T) {
 	assert.Contains(t, html, "John Doe")
 	assert.Contains(t, html, "07 Aug 2026, 04:37 UTC")
 	assert.Contains(t, html, "lctl / deploy")
-	assert.Contains(t, html, "Last actionable error")
+	assert.Contains(t, html, "Current failure")
 	assert.Contains(t, html, "submodule: command not found")
 	assert.Contains(t, html, `class="deployment-trace"`)
 	assert.Contains(t, html, `trace-error`)
@@ -146,7 +178,7 @@ func TestDeploymentFailedEmail(t *testing.T) {
 	assert.NotContains(t, html, ">Deployment alert<")
 	assert.NotContains(t, html, "Failure reason")
 	assert.Less(t, strings.Index(html, "Run context"), strings.Index(html, "Open deployment"))
-	assert.Less(t, strings.Index(html, "Open deployment"), strings.Index(html, "Run output"))
+	assert.Less(t, strings.Index(html, "Open deployment"), strings.Index(html, "Execution output"))
 
 	// Repository-controlled metadata and output stay text, not markup.
 	assert.NotContains(t, html, "<img src=x")
@@ -187,7 +219,7 @@ func TestDeploymentOutputLines_MarksAndWrapsFailures(t *testing.T) {
 	output := strings.Repeat("x", 72) + ": command not found"
 	lines := deploymentOutputLines(output)
 
-	require.Len(t, lines, 2)
+	require.Len(t, lines, 3)
 	assert.Equal(t, "01", lines[0].Number)
 	assert.Equal(t, "✗", lines[0].Marker)
 	assert.True(t, lines[0].IsFailure)

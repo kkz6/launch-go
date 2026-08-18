@@ -8,6 +8,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/notification/channels"
 	"github.com/kkz6/launch-go/internal/modules/notification/models"
 	notificationtypes "github.com/kkz6/launch-go/internal/modules/notification/types"
+	mailtemplates "github.com/kkz6/launch-go/internal/pkg/mail/templates"
 )
 
 // GHAPermissionsMissingNotification fires when the gha:bootstrap_workflow
@@ -94,9 +95,7 @@ func (n *GHAPermissionsMissingNotification) WithDashboardURL(url string) *GHAPer
 	return n
 }
 
-// ToEmail returns a plain-text email message. Includes the
-// step-by-step recovery path so the recipient doesn't have to read
-// docs to figure out the fix.
+// ToEmail renders the recovery path in the shared transactional timeline.
 func (n *GHAPermissionsMissingNotification) ToEmail() *channels.EmailMessage {
 	var perms strings.Builder
 	for _, p := range requiredPermissions {
@@ -142,6 +141,48 @@ To unblock builds:
 	}
 	if n.DashboardURL != "" {
 		body += fmt.Sprintf("Launch dashboard:    %s\n", n.DashboardURL)
+	}
+
+	details := fmt.Sprintf(`**Workload:** %s
+
+**Project:** %s
+
+**Server:** %s
+
+**Repository:** `+"`%s`"+`
+
+**Detected:** %s`,
+		fallback(n.WorkloadName, "—"),
+		fallback(n.ProjectName, "—"),
+		fallback(n.ServerName, "—"),
+		fallback(n.Repository, "—"),
+		n.DetectedAt.Format(time.RFC1123),
+	)
+	permissions := "**Required repository permissions**\n\n"
+	for _, permission := range requiredPermissions {
+		permissions += "- " + permission + "\n"
+	}
+	builder := mailtemplates.NewEmail().
+		WithContext("lctl / github").
+		WithState("ACTION REQUIRED", "warning").
+		WithGreeting("GitHub Actions builds are blocked").
+		WithIntro(fmt.Sprintf("GitHub rejected workflow setup for this **%s** because the connected App is missing repository permissions.", n.WorkloadKind)).
+		WithPanel(details).
+		WithPanel(permissions).
+		WithIntro("1. Update the GitHub App permissions.\n2. Save and approve the new permission set.\n3. Re-sync the workflow from the GHA tab in Launch.")
+	if n.AppSettings != "" {
+		builder.WithAction("Open GitHub App settings", n.AppSettings, "primary")
+	}
+	if n.DashboardURL != "" {
+		builder.WithAction("Open GHA workflow", n.DashboardURL, "primary")
+	}
+	html, err := builder.Build()
+	if err == nil {
+		return &channels.EmailMessage{
+			Subject: fmt.Sprintf("Action required: GitHub App permissions for %s", n.WorkloadName),
+			Body:    html,
+			IsHTML:  true,
+		}
 	}
 	return &channels.EmailMessage{
 		Subject: fmt.Sprintf("Action required: GitHub App permissions for %s", n.WorkloadName),

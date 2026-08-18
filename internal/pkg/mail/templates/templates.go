@@ -16,16 +16,24 @@ type EmailBuilder struct {
 	appURL          string
 	preheader       string
 	greeting        string
-	intros          []string
-	content         string
+	context         string
+	stateLabel      string
+	stateTone       string
+	blocks          []emailBlock
 	renderedContent template.HTML
 	layoutVariant   string
-	actions         []Action
-	panels          []Panel
-	tables          []Table
-	outros          []string
 	subcopy         string
 	footerText      string
+}
+
+// emailBlock preserves the sequence in which content is added to an email.
+// Transactional messages are event traces, so order is part of their meaning.
+type emailBlock struct {
+	Kind    string
+	Content template.HTML
+	Plain   string
+	Action  Action
+	Table   Table
 }
 
 // Action represents a call-to-action button
@@ -49,9 +57,12 @@ type Table struct {
 // NewEmailBuilder creates a new email builder
 func NewEmailBuilder(appName, appURL string) *EmailBuilder {
 	return &EmailBuilder{
-		appName:  appName,
-		appURL:   appURL,
-		greeting: "Hello",
+		appName:    appName,
+		appURL:     appURL,
+		greeting:   "Hello",
+		context:    "lctl / notification",
+		stateLabel: "EVENT",
+		stateTone:  "neutral",
 	}
 }
 
@@ -67,16 +78,35 @@ func (b *EmailBuilder) WithPreheader(preheader string) *EmailBuilder {
 	return b
 }
 
+// WithContext sets the compact product route shown above the event title.
+func (b *EmailBuilder) WithContext(context string) *EmailBuilder {
+	b.context = context
+	return b
+}
+
+// WithState sets the event state and semantic tone. Supported tones are
+// neutral, success, warning, and error.
+func (b *EmailBuilder) WithState(label, tone string) *EmailBuilder {
+	b.stateLabel = label
+	switch tone {
+	case "success", "warning", "error":
+		b.stateTone = tone
+	default:
+		b.stateTone = "neutral"
+	}
+	return b
+}
+
 // WithIntro adds an intro paragraph
 func (b *EmailBuilder) WithIntro(text string) *EmailBuilder {
-	b.intros = append(b.intros, text)
+	b.blocks = append(b.blocks, markdownBlock("intro", text))
 	return b
 }
 
 // WithMarkdownContent sets markdown content that will be rendered as HTML
 func (b *EmailBuilder) WithMarkdownContent(markdown string) *EmailBuilder {
-	b.content = markdown
 	b.renderedContent = ""
+	b.blocks = append(b.blocks, markdownBlock("content", markdown))
 	return b
 }
 
@@ -84,7 +114,7 @@ func (b *EmailBuilder) WithMarkdownContent(markdown string) *EmailBuilder {
 // It stays private so callers cannot bypass contextual escaping with arbitrary HTML.
 func (b *EmailBuilder) withRenderedContent(content template.HTML) *EmailBuilder {
 	b.renderedContent = content
-	b.content = ""
+	b.blocks = nil
 	return b
 }
 
@@ -101,25 +131,32 @@ func (b *EmailBuilder) WithAction(text, url, color string) *EmailBuilder {
 	if color == "" {
 		color = "primary"
 	}
-	b.actions = append(b.actions, Action{Text: text, URL: url, Color: color})
+	b.blocks = append(b.blocks, emailBlock{
+		Kind:   "action",
+		Plain:  text + ": " + url,
+		Action: Action{Text: text, URL: url, Color: color},
+	})
 	return b
 }
 
 // WithPanel adds an info panel
 func (b *EmailBuilder) WithPanel(content string) *EmailBuilder {
-	b.panels = append(b.panels, Panel{Content: content})
+	b.blocks = append(b.blocks, markdownBlock("panel", content))
 	return b
 }
 
 // WithTable adds a data table
 func (b *EmailBuilder) WithTable(headers []string, rows [][]string) *EmailBuilder {
-	b.tables = append(b.tables, Table{Headers: headers, Rows: rows})
+	b.blocks = append(b.blocks, emailBlock{
+		Kind:  "table",
+		Table: Table{Headers: headers, Rows: rows},
+	})
 	return b
 }
 
 // WithOutro adds an outro paragraph
 func (b *EmailBuilder) WithOutro(text string) *EmailBuilder {
-	b.outros = append(b.outros, text)
+	b.blocks = append(b.blocks, markdownBlock("outro", text))
 	return b
 }
 
@@ -138,20 +175,20 @@ func (b *EmailBuilder) WithFooter(text string) *EmailBuilder {
 // Build generates the HTML email
 func (b *EmailBuilder) Build() (string, error) {
 	data := templateData{
-		AppName:       b.appName,
-		BrandName:     emailBrandName(b.appName),
-		AppURL:        b.appURL,
-		LayoutVariant: b.layoutVariant,
-		Preheader:     b.preheader,
-		Greeting:      b.greeting,
-		Intros:        b.buildIntros(),
-		Content:       b.buildContent(),
-		Actions:       b.actions,
-		Panels:        b.buildPanels(),
-		Tables:        b.tables,
-		Outros:        b.buildOutros(),
-		Subcopy:       b.subcopy,
-		FooterText:    b.footerText,
+		AppName:           b.appName,
+		BrandName:         emailBrandName(b.appName),
+		AppURL:            b.appURL,
+		LayoutVariant:     b.layoutVariant,
+		Preheader:         b.preheader,
+		Greeting:          b.greeting,
+		Context:           b.context,
+		StateLabel:        b.stateLabel,
+		StateTone:         b.stateTone,
+		Blocks:            b.blocks,
+		Content:           b.renderedContent,
+		Subcopy:           b.subcopy,
+		FooterText:        b.footerText,
+		DirectionContract: template.HTML(directionContract),
 	}
 
 	tmpl, err := template.New("email").Parse(baseLayout)
@@ -167,14 +204,6 @@ func (b *EmailBuilder) Build() (string, error) {
 	return buf.String(), nil
 }
 
-func (b *EmailBuilder) buildContent() template.HTML {
-	if b.renderedContent != "" {
-		return b.renderedContent
-	}
-
-	return template.HTML(renderMarkdown(b.content))
-}
-
 // BuildPlainText generates a plain text version of the email
 func (b *EmailBuilder) BuildPlainText() string {
 	var buf bytes.Buffer
@@ -183,24 +212,17 @@ func (b *EmailBuilder) BuildPlainText() string {
 		_, _ = buf.WriteString(b.greeting + "\n\n")
 	}
 
-	for _, intro := range b.intros {
-		_, _ = buf.WriteString(intro + "\n\n")
-	}
-
-	if b.content != "" {
-		_, _ = buf.WriteString(b.content + "\n\n")
-	}
-
-	for _, action := range b.actions {
-		_, _ = buf.WriteString(action.Text + ": " + action.URL + "\n\n")
-	}
-
-	for _, panel := range b.panels {
-		_, _ = buf.WriteString("---\n" + panel.Content + "\n---\n\n")
-	}
-
-	for _, outro := range b.outros {
-		_, _ = buf.WriteString(outro + "\n\n")
+	for _, block := range b.blocks {
+		switch block.Kind {
+		case "panel":
+			_, _ = buf.WriteString("---\n" + block.Plain + "\n---\n\n")
+		case "table":
+			writePlainTextTable(&buf, block.Table)
+		default:
+			if block.Plain != "" {
+				_, _ = buf.WriteString(block.Plain + "\n\n")
+			}
+		}
 	}
 
 	if b.subcopy != "" {
@@ -210,45 +232,39 @@ func (b *EmailBuilder) BuildPlainText() string {
 	return buf.String()
 }
 
-func (b *EmailBuilder) buildIntros() []template.HTML {
-	intros := make([]template.HTML, len(b.intros))
-	for i, text := range b.intros {
-		intros[i] = template.HTML(renderMarkdown(text))
+func markdownBlock(kind, content string) emailBlock {
+	return emailBlock{
+		Kind:    kind,
+		Content: template.HTML(renderMarkdown(content)),
+		Plain:   content,
 	}
-	return intros
 }
 
-func (b *EmailBuilder) buildOutros() []template.HTML {
-	outros := make([]template.HTML, len(b.outros))
-	for i, text := range b.outros {
-		outros[i] = template.HTML(renderMarkdown(text))
+func writePlainTextTable(buf *bytes.Buffer, table Table) {
+	if len(table.Headers) > 0 {
+		_, _ = buf.WriteString(strings.Join(table.Headers, " | ") + "\n")
 	}
-	return outros
-}
-
-func (b *EmailBuilder) buildPanels() []template.HTML {
-	panels := make([]template.HTML, len(b.panels))
-	for i, p := range b.panels {
-		panels[i] = template.HTML(renderMarkdown(p.Content))
+	for _, row := range table.Rows {
+		_, _ = buf.WriteString(strings.Join(row, " | ") + "\n")
 	}
-	return panels
+	_, _ = buf.WriteString("\n")
 }
 
 type templateData struct {
-	AppName       string
-	BrandName     string
-	AppURL        string
-	LayoutVariant string
-	Preheader     string
-	Greeting      string
-	Intros        []template.HTML
-	Content       template.HTML
-	Actions       []Action
-	Panels        []template.HTML
-	Tables        []Table
-	Outros        []template.HTML
-	Subcopy       string
-	FooterText    string
+	AppName           string
+	BrandName         string
+	AppURL            string
+	LayoutVariant     string
+	Preheader         string
+	Greeting          string
+	Context           string
+	StateLabel        string
+	StateTone         string
+	Blocks            []emailBlock
+	Content           template.HTML
+	Subcopy           string
+	FooterText        string
+	DirectionContract template.HTML
 }
 
 func emailBrandName(appName string) string {
@@ -262,9 +278,7 @@ func emailBrandName(appName string) string {
 
 var md = goldmark.New(
 	goldmark.WithExtensions(extension.GFM),
-	goldmark.WithRendererOptions(
-		html.WithUnsafe(),
-	),
+	goldmark.WithRendererOptions(html.WithXHTML()),
 )
 
 func renderMarkdown(content string) string {

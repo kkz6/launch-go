@@ -1,0 +1,12 @@
+{
+  "name": "Execution Timeline",
+  "seed": "47c85962",
+  "surface": "transactional-email",
+  "sheet": { "maxWidth": 600, "background": "#ffffff", "canvas": "#f4f4f5" },
+  "fonts": { "interface": "Plus Jakarta Sans", "operational": "JetBrains Mono" },
+  "structure": ["preheader", "header", "state", "ordered-blocks", "subcopy", "footer"],
+  "variants": ["generic", "incident"],
+  "tones": ["neutral", "success", "warning", "error"],
+  "motifs": ["continuous-sheet", "hairline-rail", "square-nodes", "ruled-evidence"],
+  "constraints": ["table-layout", "critical-inline-styles", "outlook-mso-wrapper", "mobile-wrap", "raw-html-disabled", "dynamic-values-escaped", "plain-text-parity", "no-nested-card-stacks"]
+}
