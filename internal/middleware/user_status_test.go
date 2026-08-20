@@ -9,8 +9,11 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
 
 	authtypes "github.com/kkz6/launch-go/internal/modules/auth/types"
+	"github.com/kkz6/launch-go/internal/pkg/i18n"
 )
 
 // statusLoader returns suspended for "u1" and active for everyone else.
@@ -105,4 +108,28 @@ func TestAuth_ActiveUserAllowed(t *testing.T) {
 	resp, err := app.Test(req)
 	require.NoError(t, err)
 	assert.Equal(t, fiber.StatusOK, resp.StatusCode)
+}
+
+func TestAuth_PersistedLocaleOverridesAcceptLanguage(t *testing.T) {
+	const secret = "test-secret"
+	InitUserStatus(nil)
+
+	db, err := gorm.Open(sqlite.Open("file:auth-locale?mode=memory&cache=shared"), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, db.Exec("CREATE TABLE users (id TEXT PRIMARY KEY, locale TEXT NULL)").Error)
+	require.NoError(t, db.Exec("INSERT INTO users (id, locale) VALUES (?, ?)", "u-ja", "ja").Error)
+
+	app := fiber.New()
+	app.Use(Locale(i18n.LocaleEnglish))
+	app.Get("/guarded", Auth(secret, db), func(c *fiber.Ctx) error {
+		return c.SendString(i18n.Locale(c))
+	})
+
+	req := httptest.NewRequest("GET", "/guarded", nil)
+	req.Header.Set("Authorization", "Bearer "+mintAccessToken(t, secret, "u-ja"))
+	req.Header.Set("Accept-Language", "en-US")
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	assert.Equal(t, fiber.StatusOK, resp.StatusCode)
+	assert.Equal(t, i18n.LocaleJapanese, resp.Header.Get("Content-Language"))
 }

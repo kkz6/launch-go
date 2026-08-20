@@ -216,6 +216,7 @@ func (s *AuthService) Login(ctx context.Context, req *dto.LoginRequest) (*dto.Lo
 		return &dto.LoginResult{
 			TwoFactorRequired: true,
 			ChallengeToken:    challengeToken,
+			PreferredLocale:   user.Locale,
 		}, nil
 	}
 
@@ -230,7 +231,7 @@ func (s *AuthService) Login(ctx context.Context, req *dto.LoginRequest) (*dto.Lo
 		return nil, err
 	}
 
-	return &dto.LoginResult{AuthResponse: authResp}, nil
+	return &dto.LoginResult{PreferredLocale: user.Locale, AuthResponse: authResp}, nil
 }
 
 // createTwoFactorChallenge generates a challenge token and stores the pending

@@ -6,6 +6,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 
 	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
+	"github.com/kkz6/launch-go/internal/pkg/i18n"
 )
 
 // Mount registers /meta, /data, /action, /bulk-action, /views/* onto the
@@ -58,7 +59,7 @@ func (s fiberRequestSource) Query(key string, def ...string) string {
 func (s fiberRequestSource) Queries() map[string]string { return s.c.Queries() }
 
 func (h *handler) meta(c *fiber.Ctx) error {
-	return fiberctx.OK(c, "Table meta", Render(h.table))
+	return fiberctx.OK(c, "Table meta", localizeTableMeta(c, Render(h.table)))
 }
 
 func (h *handler) data(c *fiber.Ctx) error {
@@ -67,7 +68,81 @@ func (h *handler) data(c *fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
-	return fiberctx.OK(c, "Table data", res)
+	if res == nil {
+		return fiberctx.OK(c, "Table data", nil)
+	}
+	localized := *res
+	localized.Meta = localizeTableMeta(c, res.Meta)
+	return fiberctx.OK(c, "Table data", &localized)
+}
+
+// localizeTableMeta copies and translates only server-owned display copy.
+// Machine identifiers, option values, URLs, icons, formats, and arbitrary row
+// or user content remain untouched.
+func localizeTableMeta(c *fiber.Ctx, meta TableMeta) TableMeta {
+	localized := meta
+
+	localized.Columns = append([]ColumnSerialized(nil), meta.Columns...)
+	for index := range localized.Columns {
+		column := &localized.Columns[index]
+		column.Header = i18n.T(c, column.Header)
+		column.TrueLabel = localizedString(c, column.TrueLabel)
+		column.FalseLabel = localizedString(c, column.FalseLabel)
+	}
+
+	localized.Filters = append([]FilterSerialized(nil), meta.Filters...)
+	for index := range localized.Filters {
+		filter := &localized.Filters[index]
+		filter.Label = i18n.T(c, filter.Label)
+		filter.Options = append([]FilterOption(nil), filter.Options...)
+		for optionIndex := range filter.Options {
+			filter.Options[optionIndex].Label = i18n.T(c, filter.Options[optionIndex].Label)
+		}
+	}
+
+	localized.Actions.Row = localizeActions(c, meta.Actions.Row)
+	localized.Actions.Bulk = localizeActions(c, meta.Actions.Bulk)
+	localized.Search.Placeholder = i18n.T(c, meta.Search.Placeholder)
+
+	if meta.EmptyState != nil {
+		empty := *meta.EmptyState
+		empty.Title = i18n.T(c, empty.Title)
+		empty.Message = i18n.T(c, empty.Message)
+		if meta.EmptyState.Action != nil {
+			action := *meta.EmptyState.Action
+			action.Label = i18n.T(c, action.Label)
+			empty.Action = &action
+		}
+		localized.EmptyState = &empty
+	}
+
+	return localized
+}
+
+func localizeActions(c *fiber.Ctx, actions []ActionSerialized) []ActionSerialized {
+	localized := append([]ActionSerialized(nil), actions...)
+	for index := range localized {
+		action := &localized[index]
+		action.Label = i18n.T(c, action.Label)
+		action.Tooltip = localizedString(c, action.Tooltip)
+		if action.Confirm != nil {
+			confirm := *action.Confirm
+			confirm.Title = i18n.T(c, confirm.Title)
+			confirm.Message = i18n.T(c, confirm.Message)
+			confirm.ConfirmLabel = i18n.T(c, confirm.ConfirmLabel)
+			confirm.CancelLabel = i18n.T(c, confirm.CancelLabel)
+			action.Confirm = &confirm
+		}
+	}
+	return localized
+}
+
+func localizedString(c *fiber.Ctx, value *string) *string {
+	if value == nil {
+		return nil
+	}
+	localized := i18n.T(c, *value)
+	return &localized
 }
 
 // actionRequest is the body shape for both row and bulk actions: provide
@@ -97,10 +172,10 @@ func (h *handler) action(c *fiber.Ctx) error {
 		}
 	}
 	if target == nil {
-		return fiber.NewError(fiber.StatusNotFound, "Action not found: "+name)
+		return fiber.NewError(fiber.StatusNotFound, i18n.T(c, "Action not found: %s", name))
 	}
 	if target.Handler() == nil {
-		return fiber.NewError(fiber.StatusBadRequest, "Action "+name+" has no handler")
+		return fiber.NewError(fiber.StatusBadRequest, i18n.T(c, "Action %s has no handler", name))
 	}
 	userID, _ := fiberctx.GetUserID(c)
 	actionCtx := WithActorID(c.Context(), userID)

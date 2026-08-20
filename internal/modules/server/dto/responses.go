@@ -541,6 +541,7 @@ type ProvisionStatusResponse struct {
 	CurrentStep  *ProvisionStatusStep  `json:"current_step,omitempty"`
 	LatestTask   *TaskResponse         `json:"latest_task,omitempty"`
 	Failed       bool                  `json:"failed"`
+	ErrorCode    string                `json:"error_code,omitempty"`
 	ErrorMessage string                `json:"error_message,omitempty"`
 }
 
@@ -656,7 +657,7 @@ func BuildProvisionStatus(server *models.Server, latestTask *models.Task) Provis
 		Failed:      serverFailed,
 	}
 	if serverFailed {
-		resp.ErrorMessage = provisionErrorMessage(server, latestTask)
+		resp.ErrorCode, resp.ErrorMessage = provisionError(server, latestTask)
 	}
 
 	if latestTask != nil {
@@ -667,7 +668,7 @@ func BuildProvisionStatus(server *models.Server, latestTask *models.Task) Provis
 	return resp
 }
 
-// provisionErrorMessage picks the most informative error string we have for
+// provisionError picks the most informative error string we have for
 // a failed server. Order of preference:
 //  1. server.provision_error — friendly, classified message set by the failing
 //     job/task callbacks (see providers.FriendlyError).
@@ -680,16 +681,17 @@ func BuildProvisionStatus(server *models.Server, latestTask *models.Task) Provis
 //
 // Never surface raw HTTP bodies / stack traces / shell output from here —
 // those belong in the worker logs and Sentry, not the SaaS UI.
-func provisionErrorMessage(server *models.Server, latestTask *models.Task) string {
+func provisionError(server *models.Server, latestTask *models.Task) (string, string) {
 	if server != nil && server.ProvisionError != nil && *server.ProvisionError != "" {
-		return *server.ProvisionError
+		return "reported_error", *server.ProvisionError
 	}
 	if latestTask != nil && latestTask.Status == string(types.TaskStatusFailed) {
 		if out := latestTask.Output.String(); out != "" {
-			return classifyTaskFailure(out)
+			classified := classifyTaskFailureDetails(out)
+			return classified.Code, classified.Message
 		}
 	}
-	return "We couldn't finish provisioning this server. Please try again, or contact support if it keeps happening."
+	return "provision_failed", "We couldn't finish provisioning this server. Please try again, or contact support if it keeps happening."
 }
 
 // stripLaunchMarkers removes our internal `::LAUNCH::<type>::<value>` lines
@@ -711,42 +713,51 @@ func stripLaunchMarkers(s string) string {
 // The patterns here are all motivated by actual production failures we've
 // seen. Don't add speculative ones — if a class of failure isn't surfacing
 // in tickets, leaving it on the generic fallback is fine.
-func classifyTaskFailure(rawOutput string) string {
+type provisionFailureDetails struct {
+	Code    string
+	Message string
+}
+
+func classifyTaskFailureDetails(rawOutput string) provisionFailureDetails {
 	out := stripLaunchMarkers(rawOutput)
 	low := strings.ToLower(out)
 
 	switch {
 	case strings.Contains(low, "could not get lock /var/lib/dpkg") ||
 		strings.Contains(low, "unable to acquire the dpkg frontend lock"):
-		return "Another package manager is still running on the server. This usually clears up within a few minutes — please try again shortly."
+		return provisionFailureDetails{"package_manager_busy", "Another package manager is still running on the server. This usually clears up within a few minutes — please try again shortly."}
 
 	case strings.Contains(low, "unable to locate package") ||
 		strings.Contains(low, "has no installation candidate"):
-		return "A required package isn't available in the server's repositories. Please contact support so we can investigate."
+		return provisionFailureDetails{"package_unavailable", "A required package isn't available in the server's repositories. Please contact support so we can investigate."}
 
 	case strings.Contains(low, "permission denied") && strings.Contains(low, "sudo"):
-		return "We don't have permission to run setup commands on this server. Please verify the SSH user has sudo access without a password prompt."
+		return provisionFailureDetails{"sudo_permission", "We don't have permission to run setup commands on this server. Please verify the SSH user has sudo access without a password prompt."}
 
 	case strings.Contains(low, "no space left on device"):
-		return "The server ran out of disk space during setup. Please resize it or use a larger plan and try again."
+		return provisionFailureDetails{"disk_space", "The server ran out of disk space during setup. Please resize it or use a larger plan and try again."}
 
 	case strings.Contains(low, "temporary failure resolving") ||
 		strings.Contains(low, "could not resolve host"):
-		return "The server couldn't reach the internet to download packages. Please check the server's DNS and outbound network access, then retry."
+		return provisionFailureDetails{"dns_unreachable", "The server couldn't reach the internet to download packages. Please check the server's DNS and outbound network access, then retry."}
 
 	case strings.Contains(low, "connection timed out") ||
 		strings.Contains(low, "connection refused"):
-		return "We couldn't reach the server while installing required software. Please verify the server is online and reachable, then retry."
+		return provisionFailureDetails{"server_unreachable", "We couldn't reach the server while installing required software. Please verify the server is online and reachable, then retry."}
 
 	case strings.Contains(low, "ssl certificate problem") ||
 		strings.Contains(low, "certificate has expired"):
-		return "An SSL certificate verification error stopped the installation. This is usually a server-side clock issue — set the server's time correctly and retry."
+		return provisionFailureDetails{"ssl_verification", "An SSL certificate verification error stopped the installation. This is usually a server-side clock issue — set the server's time correctly and retry."}
 
 	case strings.Contains(low, "killed") && strings.Contains(low, "out of memory"):
-		return "The server ran out of memory during setup. Please use a plan with more RAM and try again."
+		return provisionFailureDetails{"out_of_memory", "The server ran out of memory during setup. Please use a plan with more RAM and try again."}
 	}
 
-	return "Setup didn't complete on this server. Please try again, or contact support if it keeps happening."
+	return provisionFailureDetails{"setup_incomplete", "Setup didn't complete on this server. Please try again, or contact support if it keeps happening."}
+}
+
+func classifyTaskFailure(rawOutput string) string {
+	return classifyTaskFailureDetails(rawOutput).Message
 }
 
 // TaskResponse represents the response for a task

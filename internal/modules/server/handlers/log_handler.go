@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/gofiber/fiber/v2"
@@ -9,6 +10,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/server/types"
 	"github.com/kkz6/launch-go/internal/modules/site/support"
 	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
+	"github.com/kkz6/launch-go/internal/pkg/i18n"
 )
 
 // LogInfo represents available log information
@@ -17,6 +19,16 @@ type LogInfo struct {
 	Software  string `json:"software"`
 	Path      string `json:"path"`
 	ShowRoute string `json:"show_route"`
+}
+
+// localizedSoftwareLogName translates application-owned display metadata
+// while keeping the stable software value and log path unchanged.
+func localizedSoftwareLogName(ctx context.Context, software types.Software) string {
+	name := fmt.Sprintf("%s Log", software.Label())
+	if !software.IsValid() || !software.HasLogPath() {
+		return name
+	}
+	return i18n.TContext(ctx, name)
 }
 
 // ListLogs returns available logs for a server based on installed services
@@ -43,7 +55,7 @@ func (h *Handler) ListLogs(c *fiber.Ctx) error {
 			showRoute, _ := support.EncodeFileRouteParam(logPath, "log")
 
 			logs = append(logs, LogInfo{
-				Name:      fmt.Sprintf("%s Log", software.Label()),
+				Name:      localizedSoftwareLogName(c.Context(), software),
 				Software:  software.String(),
 				Path:      logPath,
 				ShowRoute: showRoute,
@@ -100,7 +112,7 @@ func (h *Handler) GetLogContent(c *fiber.Ctx) error {
 		AsRoot().
 		Run(c.Context())
 	if err != nil {
-		return fiberctx.RespondInternalError(c, "Failed to read log: "+err.Error())
+		return fiberctx.RespondInternalError(c, i18n.T(c, "Failed to read log: %s", err.Error()))
 	}
 
 	return fiberctx.OK(c, "Log content retrieved", map[string]string{

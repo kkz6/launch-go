@@ -13,9 +13,11 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 
+	"github.com/kkz6/launch-go/internal/middleware"
 	"github.com/kkz6/launch-go/internal/modules/auth/handlers"
 	"github.com/kkz6/launch-go/internal/modules/auth/services"
 	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
+	"github.com/kkz6/launch-go/internal/pkg/i18n"
 	"github.com/kkz6/launch-go/internal/pkg/security"
 )
 
@@ -163,6 +165,71 @@ func TestUserHandler_UpdateProfile_EmailConflict(t *testing.T) {
 
 	r := parseResponse(resp)
 	assert.False(t, r.Success)
+}
+
+// ============================================================================
+// UpdateLocale
+// ============================================================================
+
+func TestUserHandler_UpdateLocale_AppliesNewLanguageToResponse(t *testing.T) {
+	app, reg, handler := setupUserHandlerWithAuth(t, "user_001")
+	app.Use(middleware.Locale(i18n.LocaleEnglish))
+	app.Patch("/auth/locale", fiberutil.Validate(handler.UpdateLocale))
+
+	user := newTestUser("user_001", "John Doe", "john@example.com", "hashed")
+	reg.user.users[user.ID] = user
+
+	req := makeJSONRequest(http.MethodPatch, "/auth/locale", map[string]string{"locale": "ja"})
+	req.Header.Set("Accept-Language", "en-US")
+	resp, err := app.Test(req, testTimeout)
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	assert.Equal(t, i18n.LocaleJapanese, resp.Header.Get("Content-Language"))
+
+	r := parseResponse(resp)
+	assert.NotEqual(t, "Locale updated", r.Message)
+	require.NotNil(t, reg.user.users[user.ID].Locale)
+	assert.Equal(t, i18n.LocaleJapanese, *reg.user.users[user.ID].Locale)
+
+	var data map[string]any
+	require.NoError(t, json.Unmarshal(r.Data, &data))
+	assert.Equal(t, i18n.LocaleJapanese, data["locale"])
+}
+
+func TestUserHandler_UpdateLocale_AutoRestoresDetection(t *testing.T) {
+	app, reg, handler := setupUserHandlerWithAuth(t, "user_001")
+	app.Use(middleware.Locale(i18n.LocaleEnglish))
+	app.Patch("/auth/locale", fiberutil.Validate(handler.UpdateLocale))
+
+	user := newTestUser("user_001", "John Doe", "john@example.com", "hashed")
+	preferred := i18n.LocaleJapanese
+	user.Locale = &preferred
+	reg.user.users[user.ID] = user
+
+	req := makeJSONRequest(http.MethodPatch, "/auth/locale", map[string]string{"locale": "auto"})
+	req.Header.Set("Accept-Language", "en-US")
+	resp, err := app.Test(req, testTimeout)
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	assert.Equal(t, i18n.LocaleEnglish, resp.Header.Get("Content-Language"))
+	assert.Nil(t, reg.user.users[user.ID].Locale)
+	assert.Equal(t, "Locale updated", parseResponse(resp).Message)
+}
+
+func TestUserHandler_UpdateLocale_RejectsUnsupportedLocale(t *testing.T) {
+	app, reg, handler := setupUserHandlerWithAuth(t, "user_001")
+	app.Use(middleware.Locale(i18n.LocaleEnglish))
+	app.Patch("/auth/locale", fiberutil.Validate(handler.UpdateLocale))
+
+	user := newTestUser("user_001", "John Doe", "john@example.com", "hashed")
+	reg.user.users[user.ID] = user
+
+	for _, unsupported := range []string{"jp", "fr"} {
+		resp, err := app.Test(makeJSONRequest(http.MethodPatch, "/auth/locale", map[string]string{"locale": unsupported}), testTimeout)
+		require.NoError(t, err)
+		assert.Equal(t, http.StatusUnprocessableEntity, resp.StatusCode)
+	}
+	assert.Nil(t, reg.user.users[user.ID].Locale)
 }
 
 // ============================================================================

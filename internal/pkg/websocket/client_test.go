@@ -14,6 +14,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/stretchr/testify/require"
 
+	"github.com/kkz6/launch-go/internal/pkg/i18n"
 	launchcache "github.com/kkz6/launch-go/internal/pkg/launch/cache"
 )
 
@@ -132,6 +133,25 @@ func TestClientRejectsSubscriptionWithoutAuthorizer(t *testing.T) {
 		require.Equal(t, "subscription.error", message.Event)
 	case <-time.After(time.Second):
 		t.Fatal("expected protocol message")
+	}
+}
+
+func TestClientLocalizesSubscriptionErrors(t *testing.T) {
+	client := NewClient(NewHub(), nil, "user-a", "team-a")
+	client.Locale = "ja"
+	client.sendProtocolMessage("subscription.error", "server.srv-a", map[string]string{
+		"message": i18n.Translate(client.Locale, "channel access denied"),
+	})
+
+	select {
+	case payload := <-client.Send:
+		var message Message
+		require.NoError(t, json.Unmarshal(payload, &message))
+		data, err := json.Marshal(message.Data)
+		require.NoError(t, err)
+		require.JSONEq(t, `{"message":"チャンネルへのアクセスが拒否されました"}`, string(data))
+	case <-time.After(time.Second):
+		t.Fatal("expected localized protocol message")
 	}
 }
 

@@ -105,6 +105,7 @@ func (m *Module) registerProtectedRoutes(router fiber.Router, handler *handlers.
 	// User Management
 	router.Get("/user", handler.User.User)
 	router.Put("/profile", fiberutil.Validate(handler.User.UpdateProfile))
+	router.Patch("/locale", fiberutil.Validate(handler.User.UpdateLocale))
 	router.Put("/password", fiberutil.Validate(handler.User.ChangePassword))
 	router.Post("/reset-onboarding", handler.User.ResetOnboarding)
 	router.Delete("/account", fiberutil.Validate(handler.User.DeleteAccount))

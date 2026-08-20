@@ -6,23 +6,34 @@ import (
 	"github.com/gofiber/fiber/v2"
 
 	"github.com/kkz6/launch-go/internal/pkg/dto"
+	"github.com/kkz6/launch-go/internal/pkg/i18n"
 )
 
 // Success sends a successful JSON response with the given status code.
 func Success(c *fiber.Ctx, status int, message string, data any) error {
-	return c.Status(status).JSON(dto.NewSuccessResponse(message, data))
+	return c.Status(status).JSON(dto.NewSuccessResponse(i18n.T(c, message), data))
 }
 
 // SuccessWithMeta sends a successful JSON response with pagination metadata.
 func SuccessWithMeta(c *fiber.Ctx, status int, message string, data any, meta dto.PaginationMeta) error {
-	return c.Status(status).JSON(dto.NewSuccessResponseWithMeta(message, data, meta))
+	return c.Status(status).JSON(dto.NewSuccessResponseWithMeta(i18n.T(c, message), data, meta))
 }
 
 // Error sends an error JSON response with the given status code.
 func Error(c *fiber.Ctx, status int, message string) error {
 	return c.Status(status).JSON(dto.APIResponse{
 		Success: false,
-		Message: message,
+		Message: i18n.T(c, message),
+	})
+}
+
+// ErrorWithCode sends an error response with a stable machine-readable code.
+// Human copy is localized; callers must branch on Code, never Message.
+func ErrorWithCode(c *fiber.Ctx, status int, code, message string) error {
+	return c.Status(status).JSON(ErrorResponse{
+		Success: false,
+		Code:    code,
+		Message: i18n.T(c, message),
 	})
 }
 
@@ -30,8 +41,8 @@ func Error(c *fiber.Ctx, status int, message string) error {
 func RespondValidationError(c *fiber.Ctx, errs map[string][]string) error {
 	return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{
 		"success": false,
-		"message": MsgValidation,
-		"errors":  errs,
+		"message": i18n.T(c, MsgValidation),
+		"errors":  i18n.TranslateErrors(c, errs),
 	})
 }
 
@@ -91,11 +102,7 @@ func HandleError(c *fiber.Ctx, err error) error {
 	// Check for validation errors first
 	var validationErr *ValidationError
 	if errors.As(err, &validationErr) {
-		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{
-			"success": false,
-			"message": MsgValidation,
-			"errors":  validationErr.Errors,
-		})
+		return RespondValidationError(c, validationErr.LocalizedErrors(c))
 	}
 
 	code := fiber.StatusInternalServerError

@@ -23,6 +23,7 @@ type User struct {
 	CurrentTeamID          *string               `gorm:"column:current_team_id;type:char(26)" json:"current_team_id,omitempty"`
 	ProfilePhotoPath       *string               `gorm:"column:profile_photo_path;type:varchar(2048)" json:"profile_photo_path,omitempty"`
 	Timezone               *string               `gorm:"type:varchar(255);default:'UTC'" json:"timezone,omitempty"`
+	Locale                 *string               `gorm:"type:varchar(10)" json:"locale"`
 	Onboarded              bool                  `gorm:"type:tinyint(1);not null;default:0" json:"onboarded"`
 	StaffRole              *stafftypes.StaffRole `gorm:"column:staff_role;type:varchar(20)" json:"staff_role,omitempty"`
 	Status                 authtypes.UserStatus  `gorm:"column:status;type:varchar(20);default:active" json:"status"`

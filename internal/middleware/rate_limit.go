@@ -9,6 +9,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 
 	"github.com/kkz6/launch-go/internal/pkg/cache"
+	"github.com/kkz6/launch-go/internal/pkg/i18n"
 )
 
 // rateLimitMiddleware holds the shared cache for rate limiting
@@ -143,7 +144,7 @@ func rateLimitByKey(c *fiber.Ctx, store cache.Cache, maxRequests int, window tim
 		c.Set("Retry-After", strconv.Itoa(retryAfter))
 		return c.Status(fiber.StatusTooManyRequests).JSON(fiber.Map{
 			"success": false,
-			"message": "Too many requests. Please try again later.",
+			"message": i18n.T(c, "Too many requests. Please try again later."),
 		})
 	}
 

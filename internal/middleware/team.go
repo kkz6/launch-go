@@ -30,6 +30,7 @@ func InitTeamMiddleware(membershipCache *launchcache.TeamMembershipCache) {
 type teamScopeResult struct {
 	teamID string
 	role   string
+	code   string
 	err    error
 }
 
@@ -38,7 +39,7 @@ type teamScopeResult struct {
 func validateTeamScope(c *fiber.Ctx) teamScopeResult {
 	teamID := c.Get("X-Team-ID")
 	if teamID == "" {
-		return teamScopeResult{err: fiber.NewError(fiber.StatusBadRequest, "X-Team-ID header is required")}
+		return teamScopeResult{code: "team.context_required", err: fiber.NewError(fiber.StatusBadRequest, "X-Team-ID header is required")}
 	}
 
 	userID, ok := c.Locals(fiberctx.KeyUserID).(string)
@@ -56,7 +57,7 @@ func validateTeamScope(c *fiber.Ctx) teamScopeResult {
 	}
 
 	if !membership.IsMember {
-		return teamScopeResult{err: fiber.NewError(fiber.StatusForbidden, "You are not a member of this team")}
+		return teamScopeResult{code: "team.not_member", err: fiber.NewError(fiber.StatusForbidden, "You are not a member of this team")}
 	}
 
 	return teamScopeResult{teamID: teamID, role: membership.Role}
@@ -81,6 +82,9 @@ func TeamScope() fiber.Handler {
 			fiberErr, ok := result.err.(*fiber.Error)
 			if !ok {
 				return fiberctx.Error(c, fiber.StatusInternalServerError, result.err.Error())
+			}
+			if result.code != "" {
+				return fiberctx.ErrorWithCode(c, fiberErr.Code, result.code, fiberErr.Message)
 			}
 
 			switch fiberErr.Code {
@@ -166,7 +170,7 @@ func TeamContext(membershipCache *launchcache.TeamMembershipCache) fiber.Handler
 	return func(c *fiber.Ctx) error {
 		teamID := c.Get("X-Team-ID")
 		if teamID == "" {
-			return fiberctx.Error(c, fiber.StatusBadRequest, "X-Team-ID header is required")
+			return fiberctx.ErrorWithCode(c, fiber.StatusBadRequest, "team.context_required", "X-Team-ID header is required")
 		}
 
 		userID, ok := c.Locals(fiberctx.KeyUserID).(string)
@@ -180,7 +184,7 @@ func TeamContext(membershipCache *launchcache.TeamMembershipCache) fiber.Handler
 		}
 
 		if !membership.IsMember {
-			return fiberctx.RespondForbidden(c, "You are not a member of this team")
+			return fiberctx.ErrorWithCode(c, fiber.StatusForbidden, "team.not_member", "You are not a member of this team")
 		}
 
 		fiberctx.SetTeamContext(c, teamID, membership.Role)

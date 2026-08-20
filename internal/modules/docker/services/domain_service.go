@@ -13,6 +13,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/docker/models"
 	"github.com/kkz6/launch-go/internal/pkg/certificatecheck"
 	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
+	"github.com/kkz6/launch-go/internal/pkg/i18n"
 	pkgservice "github.com/kkz6/launch-go/internal/pkg/service"
 )
 
@@ -343,11 +344,12 @@ func (s *DomainService) checkDomainCertificate(
 		return certificatecheck.Result{
 			Host:      domain.Host,
 			Status:    certificatecheck.StatusNotIssued,
-			Message:   "HTTPS is disabled for this domain.",
+			Reason:    certificatecheck.ReasonHTTPSDisabled,
+			Message:   i18n.TContext(ctx, "HTTPS is disabled for this domain."),
 			CheckedAt: time.Now().UTC(),
 		}
 	}
-	return s.certificateChecker.Check(ctx, domain.Host)
+	return certificatecheck.Localize(ctx, s.certificateChecker.Check(ctx, domain.Host))
 }
 
 // validateDNSAgainstServer is the shared core behind ValidateDNS and
@@ -363,7 +365,7 @@ func (s *DomainService) validateDNSAgainstServer(
 		if strings.HasSuffix(host, suffix) {
 			resp.OK = true
 			resp.Wildcard = true
-			resp.Message = "Wildcard DNS hostname — already routable, no validation needed."
+			resp.Message = i18n.TContext(ctx, "Wildcard DNS hostname — already routable, no validation needed.")
 			return resp, nil
 		}
 	}
@@ -385,7 +387,14 @@ func (s *DomainService) validateDNSAgainstServer(
 	ips, err := s.dnsLookuper.LookupIPAddr(lookupCtx, host)
 	if err != nil {
 		resp.OK = false
-		resp.Message = fmt.Sprintf("DNS lookup failed: %v", err)
+		if i18n.LocaleFromContext(ctx) == i18n.LocaleJapanese {
+			// Resolver errors are implementation details and are commonly
+			// English-only. Keep them out of localized customer responses.
+			resp.Message = i18n.TContext(ctx, "DNS lookup failed.")
+		} else {
+			// Preserve the established English diagnostic for API clients.
+			resp.Message = fmt.Sprintf("DNS lookup failed: %v", err)
+		}
 		return resp, nil
 	}
 	for _, ip := range ips {
@@ -402,9 +411,10 @@ func (s *DomainService) validateDNSAgainstServer(
 	}
 	switch {
 	case resp.OK:
-		resp.Message = fmt.Sprintf("Resolves to %s ✓", expectedIP)
+		resp.Message = i18n.TContext(ctx, "Resolves to %s ✓", expectedIP)
 	case resp.Proxied:
-		resp.Message = fmt.Sprintf(
+		resp.Message = i18n.TContext(
+			ctx,
 			"Proxied through Cloudflare (resolves to %s). The origin IP is "+
 				"hidden behind Cloudflare's proxy, so this can't be checked "+
 				"directly — confirm in your Cloudflare DNS settings that the "+
@@ -413,9 +423,10 @@ func (s *DomainService) validateDNSAgainstServer(
 			expectedIP,
 		)
 	case len(resp.ResolvedIPs) == 0:
-		resp.Message = "Hostname doesn't resolve to any A record yet."
+		resp.Message = i18n.TContext(ctx, "Hostname doesn't resolve to any A record yet.")
 	default:
-		resp.Message = fmt.Sprintf(
+		resp.Message = i18n.TContext(
+			ctx,
 			"Resolves to %s — expected %s",
 			strings.Join(resp.ResolvedIPs, ", "),
 			expectedIP,

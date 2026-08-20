@@ -5,6 +5,8 @@ import (
 	"strings"
 
 	"github.com/go-playground/validator/v10"
+
+	"github.com/kkz6/launch-go/internal/pkg/i18n"
 )
 
 var validate *validator.Validate
@@ -24,6 +26,12 @@ func init() {
 
 // ValidateStruct validates a struct and returns field-specific errors.
 func ValidateStruct(s interface{}) map[string][]string {
+	return ValidateStructForLocale(s, i18n.DefaultLocale)
+}
+
+// ValidateStructForLocale validates a struct and renders field errors in the
+// requested locale.
+func ValidateStructForLocale(s interface{}, locale string) map[string][]string {
 	err := validate.Struct(s)
 	if err == nil {
 		return nil
@@ -33,45 +41,45 @@ func ValidateStruct(s interface{}) map[string][]string {
 
 	for _, err := range err.(validator.ValidationErrors) {
 		field := err.Field()
-		errors[field] = append(errors[field], getValidationErrorMessage(err))
+		errors[field] = append(errors[field], getValidationErrorMessage(locale, err))
 	}
 
 	return errors
 }
 
-func getValidationErrorMessage(err validator.FieldError) string {
+func getValidationErrorMessage(locale string, err validator.FieldError) string {
 	switch err.Tag() {
 	case "required":
-		return "This field is required"
+		return i18n.Translate(locale, "This field is required")
 	case "email":
-		return "Must be a valid email address"
+		return i18n.Translate(locale, "Must be a valid email address")
 	case "min":
-		return "Must be at least " + err.Param() + " characters"
+		return i18n.Translate(locale, "Must be at least %s characters", err.Param())
 	case "max":
-		return "Must be at most " + err.Param() + " characters"
+		return i18n.Translate(locale, "Must be at most %s characters", err.Param())
 	case "oneof":
-		return "Must be one of: " + err.Param()
+		return i18n.Translate(locale, "Must be one of: %s", err.Param())
 	case "url":
-		return "Must be a valid URL"
+		return i18n.Translate(locale, "Must be a valid URL")
 	case "uuid":
-		return "Must be a valid UUID"
+		return i18n.Translate(locale, "Must be a valid UUID")
 	case "len":
-		return "Must be exactly " + err.Param() + " characters"
+		return i18n.Translate(locale, "Must be exactly %s characters", err.Param())
 	case "ulid":
-		return "Must be a valid ULID"
+		return i18n.Translate(locale, "Must be a valid ULID")
 	case "eqfield":
-		return "Must match the " + err.Param() + " field"
+		return i18n.Translate(locale, "Must match the %s field", err.Param())
 	case "fqdn":
-		return "Must be a valid domain name"
+		return i18n.Translate(locale, "Must be a valid domain name")
 	case "ip":
-		return "Must be a valid IP address"
+		return i18n.Translate(locale, "Must be a valid IP address")
 	case "cidr":
-		return "Must be a valid CIDR notation"
+		return i18n.Translate(locale, "Must be a valid CIDR notation")
 	case "required_if", "required_unless", "required_without", "required_with":
-		return "This field is required"
+		return i18n.Translate(locale, "This field is required")
 	case "eq":
-		return "Must equal " + err.Param()
+		return i18n.Translate(locale, "Must equal %s", err.Param())
 	default:
-		return "Invalid value"
+		return i18n.Translate(locale, "Invalid value")
 	}
 }

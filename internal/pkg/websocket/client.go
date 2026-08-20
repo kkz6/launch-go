@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/gofiber/contrib/websocket"
+
+	"github.com/kkz6/launch-go/internal/pkg/i18n"
 )
 
 const (
@@ -29,6 +31,7 @@ type Client struct {
 	ID         string
 	UserID     string
 	TeamID     string
+	Locale     string
 	Conn       *websocket.Conn
 	Channels   map[string]bool
 	Send       chan []byte
@@ -49,6 +52,7 @@ func NewClient(hub *Hub, conn *websocket.Conn, userID, teamID string, authorizer
 		ID:         userID,
 		UserID:     userID,
 		TeamID:     teamID,
+		Locale:     i18n.DefaultLocale,
 		Conn:       conn,
 		Channels:   make(map[string]bool),
 		Send:       make(chan []byte, clientSendQueue),
@@ -117,7 +121,9 @@ func (c *Client) ReadPump() {
 		case "subscribe":
 			channel := strings.TrimSpace(msg.Channel)
 			if c.authorizer == nil || !c.authorizer.AuthorizeChannel(c.UserID, c.TeamID, channel) {
-				c.sendProtocolMessage("subscription.error", channel, map[string]string{"message": "channel access denied"})
+				c.sendProtocolMessage("subscription.error", channel, map[string]string{
+					"message": i18n.Translate(c.Locale, "channel access denied"),
+				})
 				continue
 			}
 			c.hub.Subscribe(c, channel)

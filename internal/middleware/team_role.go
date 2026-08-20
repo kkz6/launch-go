@@ -40,7 +40,7 @@ func TeamMember(service TeamService) fiber.Handler {
 		}
 
 		if teamID == "" {
-			return fiberctx.RespondForbidden(c, "Team context required")
+			return fiberctx.ErrorWithCode(c, fiber.StatusForbidden, "team.context_required", "Team context required")
 		}
 
 		isMember, err := service.IsTeamMember(c.Context(), teamID, userID)
@@ -49,7 +49,7 @@ func TeamMember(service TeamService) fiber.Handler {
 		}
 
 		if !isMember {
-			return fiberctx.RespondForbidden(c, "You are not a member of this team")
+			return fiberctx.ErrorWithCode(c, fiber.StatusForbidden, "team.not_member", "You are not a member of this team")
 		}
 
 		return c.Next()

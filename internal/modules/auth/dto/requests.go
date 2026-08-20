@@ -1,6 +1,8 @@
 package dto
 
 import (
+	"strings"
+
 	pkgdto "github.com/kkz6/launch-go/internal/pkg/dto"
 )
 
@@ -54,6 +56,17 @@ type UpdateProfileRequest struct {
 func (r *UpdateProfileRequest) Normalize() {
 	pkgdto.NormalizeEmail(&r.Email)
 	pkgdto.NormalizeTrim(&r.Name)
+}
+
+// UpdateLocaleRequest changes the user's explicit language preference.
+// "auto" clears the stored preference and restores Accept-Language detection.
+type UpdateLocaleRequest struct {
+	Locale string `json:"locale" validate:"required,oneof=auto en ja"`
+}
+
+// Normalize canonicalizes the menu value before validation.
+func (r *UpdateLocaleRequest) Normalize() {
+	r.Locale = strings.ToLower(strings.TrimSpace(r.Locale))
 }
 
 // ChangePasswordRequest represents a password change request

@@ -18,6 +18,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/site/repositories"
 	sitetypes "github.com/kkz6/launch-go/internal/modules/site/types"
 	"github.com/kkz6/launch-go/internal/pkg/certificatecheck"
+	"github.com/kkz6/launch-go/internal/pkg/i18n"
 	basemodels "github.com/kkz6/launch-go/internal/pkg/models"
 	"github.com/kkz6/launch-go/internal/pkg/service"
 )
@@ -67,6 +68,53 @@ func TestCheckCertificateExplainsDisabledTLSWithoutNetworkCall(t *testing.T) {
 	assert.Equal(t, certificatecheck.StatusNotIssued, result.Status)
 	assert.Contains(t, result.Message, "disabled")
 	assert.Empty(t, checker.hosts)
+}
+
+func TestCheckCertificateLocalizesJapaneseCertificateBranches(t *testing.T) {
+	ctx := i18n.WithLocale(context.Background(), i18n.LocaleJapanese)
+
+	t.Run("public checker", func(t *testing.T) {
+		sslService, _, site := sslLifecycleFixture(t)
+		checker := &fakeCertificateChecker{result: certificatecheck.Result{
+			Host: site.Address, Status: certificatecheck.StatusInvalid,
+			Reason:  certificatecheck.ReasonUntrusted,
+			Message: "The served certificate is not trusted: x509 upstream diagnostic",
+		}}
+		sslService.SetCertificateChecker(checker)
+
+		result, err := sslService.CheckCertificate(ctx, site.ID, site.ServerID, site.TeamID)
+
+		require.NoError(t, err)
+		assert.Equal(t, certificatecheck.ReasonUntrusted, result.Reason)
+		assert.Equal(t, "提供されている証明書は信頼されていません。", result.Message)
+		assert.NotContains(t, result.Message, "upstream diagnostic")
+	})
+
+	t.Run("disabled public HTTPS", func(t *testing.T) {
+		sslService, db, site := sslLifecycleFixture(t)
+		require.NoError(t, db.Model(&models.Site{}).
+			Where("id = ?", site.ID).
+			Update("tls_setting", sitetypes.TLSSettingOff).Error)
+
+		result, err := sslService.CheckCertificate(ctx, site.ID, site.ServerID, site.TeamID)
+
+		require.NoError(t, err)
+		assert.Equal(t, certificatecheck.ReasonHTTPSDisabled, result.Reason)
+		assert.Equal(t, "このサイトでは公開HTTPSが無効です。", result.Message)
+	})
+
+	t.Run("internal CA", func(t *testing.T) {
+		sslService, db, site := sslLifecycleFixture(t)
+		require.NoError(t, db.Model(&models.Site{}).
+			Where("id = ?", site.ID).
+			Update("tls_setting", sitetypes.TLSSettingInternal).Error)
+
+		result, err := sslService.CheckCertificate(ctx, site.ID, site.ServerID, site.TeamID)
+
+		require.NoError(t, err)
+		assert.Equal(t, certificatecheck.ReasonInternalCA, result.Reason)
+		assert.Contains(t, result.Message, "Caddyの内部認証局")
+	})
 }
 
 func TestUpdateSSLRequiresQueueBeforeReservingTLSState(t *testing.T) {

@@ -80,8 +80,8 @@ func (h *MetricsHandler) Handler() fiber.Handler {
 	})
 }
 
-func (h *MetricsHandler) sendError(c *websocket.Conn, msg string) {
-	_ = SendErrorEvent(c, msg)
+func (h *MetricsHandler) sendError(c *websocket.Conn, msg string, args ...any) {
+	h.SendError(c, msg, args...)
 	c.Close()
 }
 
@@ -103,7 +103,7 @@ func (h *MetricsHandler) streamMetrics(c *websocket.Conn, server *serverModels.S
 	conn, err := sshConfig.Dial(10 * time.Second)
 	if err != nil {
 		h.LogError(err, "Failed to connect to SSH", "host", sshConfig.Host)
-		h.sendError(c, fmt.Sprintf("SSH connection failed: %s", err.Error()))
+		h.sendError(c, "SSH connection failed: %s", err.Error())
 		return
 	}
 	defer conn.Close()

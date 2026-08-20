@@ -64,4 +64,16 @@ func TestMigrationsApplyCleanlyOnPostgres(t *testing.T) {
 	if len(pending) != 0 {
 		t.Fatalf("expected 0 pending migrations after migrate, got %d", len(pending))
 	}
+
+	var localeNullable string
+	if err := db.Raw(`
+		SELECT is_nullable
+		FROM information_schema.columns
+		WHERE table_schema = 'public' AND table_name = 'users' AND column_name = 'locale'
+	`).Scan(&localeNullable).Error; err != nil {
+		t.Fatalf("inspect users.locale: %v", err)
+	}
+	if localeNullable != "YES" {
+		t.Fatalf("expected nullable users.locale column, got is_nullable=%q", localeNullable)
+	}
 }

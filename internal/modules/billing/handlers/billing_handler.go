@@ -6,11 +6,34 @@ import (
 	"github.com/gofiber/fiber/v2"
 
 	"github.com/kkz6/launch-go/internal/modules/billing/dto"
+	"github.com/kkz6/launch-go/internal/modules/billing/models"
 	"github.com/kkz6/launch-go/internal/modules/billing/services"
 	billingtypes "github.com/kkz6/launch-go/internal/modules/billing/types"
 	pkgdto "github.com/kkz6/launch-go/internal/pkg/dto"
 	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
+	"github.com/kkz6/launch-go/internal/pkg/i18n"
 )
+
+func localizePlan(c *fiber.Ctx, plan models.Plan) models.Plan {
+	plan.Name = i18n.T(c, plan.Name)
+	plan.Description = i18n.T(c, plan.Description)
+	plan.Features = append([]string(nil), plan.Features...)
+	for index := range plan.Features {
+		plan.Features[index] = i18n.T(c, plan.Features[index])
+	}
+	return plan
+}
+
+func localizePlanResponses(c *fiber.Ctx, plans []dto.PlanResponse) []dto.PlanResponse {
+	for index := range plans {
+		plans[index].Name = i18n.T(c, plans[index].Name)
+		plans[index].Features = append([]string(nil), plans[index].Features...)
+		for featureIndex := range plans[index].Features {
+			plans[index].Features[featureIndex] = i18n.T(c, plans[index].Features[featureIndex])
+		}
+	}
+	return plans
+}
 
 // BillingHandler handles HTTP requests for billing
 type BillingHandler struct {
@@ -42,6 +65,17 @@ func (h *BillingHandler) Index(r *fiberctx.Request) error {
 	if err != nil {
 		return fiberctx.HandleError(r.Ctx, err)
 	}
+	localizedPlans := make([]models.Plan, len(data.SubscriptionPlans))
+	for index := range data.SubscriptionPlans {
+		localizedPlans[index] = localizePlan(r.Ctx, data.SubscriptionPlans[index])
+	}
+	data.SubscriptionPlans = localizedPlans
+	for index := range data.Subscriptions {
+		if data.Subscriptions[index].Plan != nil {
+			localized := localizePlan(r.Ctx, *data.Subscriptions[index].Plan)
+			data.Subscriptions[index].Plan = &localized
+		}
+	}
 
 	return fiberctx.OK(r.Ctx, "Billing data retrieved", data)
 }
@@ -50,7 +84,7 @@ func (h *BillingHandler) Index(r *fiberctx.Request) error {
 func (h *BillingHandler) GetPlans(c *fiber.Ctx) error {
 	plans := h.service.GetPlans()
 
-	planResponses := pkgdto.TransformSlice(plans, dto.ToPlanResponse)
+	planResponses := localizePlanResponses(c, pkgdto.TransformSlice(plans, dto.ToPlanResponse))
 
 	return fiberctx.OK(c, "Plans retrieved", planResponses)
 }
@@ -171,7 +205,7 @@ func (h *BillingHandler) RegisterSubscription(r *fiberctx.Request) error {
 	}
 
 	plans := h.service.GetPlans()
-	planResponses := pkgdto.TransformSlice(plans, dto.ToPlanResponse)
+	planResponses := localizePlanResponses(r.Ctx, pkgdto.TransformSlice(plans, dto.ToPlanResponse))
 
 	return fiberctx.OK(r.Ctx, "Registration subscription plans", planResponses)
 }

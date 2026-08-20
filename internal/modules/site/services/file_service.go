@@ -10,6 +10,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/site/models"
 	"github.com/kkz6/launch-go/internal/modules/site/support"
 	sitetypes "github.com/kkz6/launch-go/internal/modules/site/types"
+	"github.com/kkz6/launch-go/internal/pkg/i18n"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 )
 
@@ -51,7 +52,7 @@ func (s *FileService) ListFiles(ctx context.Context, serverID, siteID string) ([
 		return nil, fmt.Errorf("site not found: %w", err)
 	}
 
-	return s.getEditableFiles(site), nil
+	return s.getEditableFiles(ctx, site), nil
 }
 
 // ListLogFiles returns the list of log files for a site
@@ -62,36 +63,49 @@ func (s *FileService) ListLogFiles(ctx context.Context, serverID, siteID string)
 		return nil, fmt.Errorf("site not found: %w", err)
 	}
 
-	return s.getLogFiles(site), nil
+	return s.getLogFiles(ctx, site), nil
 }
 
 // getEditableFiles returns the list of editable files based on site type
-func (s *FileService) getEditableFiles(site *models.Site) []FileOnServer {
+func (s *FileService) getEditableFiles(ctx context.Context, site *models.Site) []FileOnServer {
 	fileTypes := sitetypes.EditableFilesForSiteType(site.Type)
-	return s.buildFileList(site, fileTypes, true)
+	return s.buildFileList(ctx, site, fileTypes, true)
 }
 
 // getLogFiles returns the list of log files based on site type
-func (s *FileService) getLogFiles(site *models.Site) []FileOnServer {
+func (s *FileService) getLogFiles(ctx context.Context, site *models.Site) []FileOnServer {
 	fileTypes := sitetypes.LogFilesForSiteType(site.Type)
-	return s.buildFileList(site, fileTypes, false)
+	return s.buildFileList(ctx, site, fileTypes, false)
+}
+
+// localizedFileMetadata translates only metadata owned by a stable file-type
+// enum. Unknown values retain their existing fallback text.
+func localizedFileMetadata(ctx context.Context, fileType sitetypes.SiteFileType) (string, string) {
+	name := fileType.Name()
+	description := fileType.Description()
+	if !fileType.IsValid() {
+		return name, description
+	}
+
+	return i18n.TContext(ctx, name), i18n.TContext(ctx, description)
 }
 
 // buildFileList builds a list of FileOnServer from file types
 // includeUpdateRoute determines if the update route should be included (false for log files)
-func (s *FileService) buildFileList(site *models.Site, fileTypes []sitetypes.SiteFileType, includeUpdateRoute bool) []FileOnServer {
+func (s *FileService) buildFileList(ctx context.Context, site *models.Site, fileTypes []sitetypes.SiteFileType, includeUpdateRoute bool) []FileOnServer {
 	files := make([]FileOnServer, 0, len(fileTypes))
 
 	for _, ft := range fileTypes {
 		path := ft.GetPath(site.Path, site.ZeroDowntimeDeployment)
 		fileType := ft.FileType()
+		name, description := localizedFileMetadata(ctx, ft)
 
 		// Generate encrypted route parameters
 		showRoute, _ := support.EncodeFileRouteParam(path, fileType)
 
 		file := FileOnServer{
-			Name:        ft.Name(),
-			Description: ft.Description(),
+			Name:        name,
+			Description: description,
 			Path:        path,
 			Context:     site.Address,
 			Type:        fileType,
@@ -119,7 +133,7 @@ func (s *FileService) GetFileContent(ctx context.Context, serverID, siteID, file
 	}
 
 	// Verify the file path is in the allowed list
-	if !s.isAllowedFilePath(site, filePath) {
+	if !s.isAllowedFilePath(ctx, site, filePath) {
 		return "", fmt.Errorf("file path not allowed")
 	}
 
@@ -165,7 +179,7 @@ func (s *FileService) UpdateFileContent(ctx context.Context, serverID, siteID st
 	}
 
 	// Verify the file path is in the allowed list (only editable files, not logs)
-	if !s.isEditableFilePath(site, opts.FilePath) {
+	if !s.isEditableFilePath(ctx, site, opts.FilePath) {
 		return fmt.Errorf("file path not allowed for editing")
 	}
 
@@ -227,9 +241,9 @@ func (s *FileService) runConfigCache(ctx context.Context, server *servermodels.S
 }
 
 // isAllowedFilePath checks if the file path is in the allowed list (editable or log files)
-func (s *FileService) isAllowedFilePath(site *models.Site, filePath string) bool {
+func (s *FileService) isAllowedFilePath(ctx context.Context, site *models.Site, filePath string) bool {
 	// Check editable files
-	editableFiles := s.getEditableFiles(site)
+	editableFiles := s.getEditableFiles(ctx, site)
 	for _, f := range editableFiles {
 		if f.Path == filePath {
 			return true
@@ -237,7 +251,7 @@ func (s *FileService) isAllowedFilePath(site *models.Site, filePath string) bool
 	}
 
 	// Check log files
-	logFiles := s.getLogFiles(site)
+	logFiles := s.getLogFiles(ctx, site)
 	for _, f := range logFiles {
 		if f.Path == filePath {
 			return true
@@ -248,8 +262,8 @@ func (s *FileService) isAllowedFilePath(site *models.Site, filePath string) bool
 }
 
 // isEditableFilePath checks if the file path is in the editable files list (not logs)
-func (s *FileService) isEditableFilePath(site *models.Site, filePath string) bool {
-	editableFiles := s.getEditableFiles(site)
+func (s *FileService) isEditableFilePath(ctx context.Context, site *models.Site, filePath string) bool {
+	editableFiles := s.getEditableFiles(ctx, site)
 	for _, f := range editableFiles {
 		if f.Path == filePath {
 			return true
