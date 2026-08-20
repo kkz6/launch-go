@@ -7,6 +7,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/auth/services"
 	"github.com/kkz6/launch-go/internal/pkg/dto"
 	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
+	"github.com/kkz6/launch-go/internal/pkg/i18n"
 )
 
 // PasskeyHandler handles passkey-related HTTP requests
@@ -127,6 +128,7 @@ func (h *PasskeyHandler) FinishLogin(c *fiber.Ctx) error {
 		return fiberctx.HandleError(c, err)
 	}
 
+	i18n.ApplyPreference(c, authResponse.User.Locale)
 	return c.JSON(authResponse)
 }
 

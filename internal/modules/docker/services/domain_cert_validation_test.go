@@ -8,6 +8,7 @@ import (
 
 	"github.com/kkz6/launch-go/internal/modules/docker/models"
 	"github.com/kkz6/launch-go/internal/pkg/certificatecheck"
+	"github.com/kkz6/launch-go/internal/pkg/i18n"
 )
 
 // strptr is a tiny helper for the pointer-y request fields.
@@ -79,4 +80,28 @@ func TestCheckDomainCertificateReflectsHTTPSConfiguration(t *testing.T) {
 	assert.Equal(t, certificatecheck.StatusNotIssued, result.Status)
 	assert.Contains(t, result.Message, "disabled")
 	assert.Equal(t, []string{"app.example.com"}, checker.hosts)
+}
+
+func TestCheckDomainCertificateLocalizesJapaneseMessages(t *testing.T) {
+	ctx := i18n.WithLocale(context.Background(), i18n.LocaleJapanese)
+	checker := &fakeDomainCertificateChecker{result: certificatecheck.Result{
+		Host:    "app.example.com",
+		Status:  certificatecheck.StatusValid,
+		Reason:  certificatecheck.ReasonValid,
+		Valid:   true,
+		Message: "A valid certificate is being served for app.example.com.",
+	}}
+	service := &DomainService{certificateChecker: checker}
+
+	result := service.checkDomainCertificate(ctx, &models.ApplicationDomain{
+		Host: "app.example.com", HTTPS: true,
+	})
+	assert.Equal(t, certificatecheck.ReasonValid, result.Reason)
+	assert.Contains(t, result.Message, "有効な証明書")
+
+	result = service.checkDomainCertificate(ctx, &models.ApplicationDomain{
+		Host: "plain.example.com", HTTPS: false,
+	})
+	assert.Equal(t, certificatecheck.ReasonHTTPSDisabled, result.Reason)
+	assert.Equal(t, "このドメインではHTTPSが無効です。", result.Message)
 }

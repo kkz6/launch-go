@@ -9,6 +9,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/server/services"
 	"github.com/kkz6/launch-go/internal/modules/server/tasks"
 	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
+	"github.com/kkz6/launch-go/internal/pkg/i18n"
 )
 
 // SiteCounter interface for counting sites by server.
@@ -56,7 +57,62 @@ func (h *Handler) GetProvisionStatus(c *fiber.Ctx) error {
 		return err
 	}
 	latestTask, _ := h.service.GetLatestTaskRaw(c.Context(), serverID, teamID)
-	return fiberctx.OK(c, "Provision status retrieved", dto.BuildProvisionStatus(server, latestTask))
+	status := dto.BuildProvisionStatus(server, latestTask)
+	localizeProvisionStatus(c, &status)
+	return fiberctx.OK(c, "Provision status retrieved", status)
+}
+
+var provisionStepNames = map[string]struct{}{
+	"connecting_server":          {},
+	"detect_os":                  {},
+	"configure_firewall":         {},
+	"configure_swap":             {},
+	"install_essential_packages": {},
+	"setup_default_user":         {},
+	"setup_root":                 {},
+	"ssh_security":               {},
+	"validate_ports":             {},
+	"install_docker":             {},
+	"setup_docker_network":       {},
+	"setup_launch_dirs":          {},
+	"install_traefik":            {},
+	"setup_swarm_network":        {},
+}
+
+func localizeProvisionStep(c *fiber.Ctx, step *dto.ProvisionStatusStep) {
+	if step == nil {
+		return
+	}
+	if _, fixed := provisionStepNames[step.Name]; fixed {
+		step.Description = i18n.T(c, step.Description)
+		return
+	}
+	if step.Status == "completed" {
+		step.Description = i18n.T(c, "Installed %s", step.Name)
+		return
+	}
+	step.Description = i18n.T(c, "Installing %s", step.Name)
+}
+
+func localizeProvisionStatus(c *fiber.Ctx, status *dto.ProvisionStatusResponse) {
+	if status == nil {
+		return
+	}
+	for index := range status.Steps {
+		localizeProvisionStep(c, &status.Steps[index])
+	}
+	localizeProvisionStep(c, status.CurrentStep)
+	if status.ErrorMessage == "" {
+		return
+	}
+	translated := i18n.T(c, status.ErrorMessage)
+	// Stored provider errors contain provider names and sometimes status
+	// values, so old rows cannot be exact catalog keys. Never leak English into
+	// a Japanese response; use the stable, actionable fallback instead.
+	if i18n.Locale(c) == i18n.LocaleJapanese && translated == status.ErrorMessage {
+		translated = i18n.T(c, "We couldn't finish provisioning this server. Please try again, or contact support if it keeps happening.")
+	}
+	status.ErrorMessage = translated
 }
 
 // RunVulnerabilityAudit queues a security audit. POST with a body

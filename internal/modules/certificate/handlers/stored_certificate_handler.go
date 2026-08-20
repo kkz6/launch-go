@@ -13,6 +13,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/certificate/dto"
 	"github.com/kkz6/launch-go/internal/modules/certificate/services"
 	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
+	"github.com/kkz6/launch-go/internal/pkg/i18n"
 )
 
 // StoredCertificateHandler binds the certificate service to HTTP.
@@ -89,7 +90,7 @@ func (h *StoredCertificateHandler) Delete(r *fiberutil.Request) error {
 		var inUseErr services.ErrInUse
 		if errors.As(err, &inUseErr) {
 			return r.Status(gofiber.StatusConflict).JSON(gofiber.Map{
-				"message": "Stored certificate is still in use",
+				"message": i18n.T(r.Ctx, "Stored certificate is still in use"),
 				"usages":  inUseErr.Usages,
 			})
 		}
@@ -126,7 +127,7 @@ func mapCreateOrUpdateError(c *gofiber.Ctx, err error) error {
 	var dupErr services.ErrDuplicateFingerprint
 	if errors.As(err, &dupErr) {
 		body := gofiber.Map{
-			"message": "Certificate already exists in this team",
+			"message": i18n.T(c, "Certificate already exists in this team"),
 		}
 		if dupErr.Existing != nil {
 			body["existing"] = gofiber.Map{
@@ -138,26 +139,26 @@ func mapCreateOrUpdateError(c *gofiber.Ctx, err error) error {
 	}
 	if errors.Is(err, services.ErrPartialCertKeyUpdate) {
 		return c.Status(gofiber.StatusUnprocessableEntity).JSON(gofiber.Map{
-			"message": "certificate and private_key must be updated together",
+			"message": i18n.T(c, "certificate and private_key must be updated together"),
 			"errors": gofiber.Map{
-				"certificate": "must be sent together with private_key",
-				"private_key": "must be sent together with certificate",
+				"certificate": i18n.T(c, "must be sent together with private_key"),
+				"private_key": i18n.T(c, "must be sent together with certificate"),
 			},
 		})
 	}
 	if errors.Is(err, services.ErrInvalidCertificatePEM) {
 		return c.Status(gofiber.StatusUnprocessableEntity).JSON(gofiber.Map{
-			"message": "Invalid certificate PEM",
+			"message": i18n.T(c, "Invalid certificate PEM"),
 			"errors": gofiber.Map{
-				"certificate": "not a valid PEM-encoded certificate",
+				"certificate": i18n.T(c, "not a valid PEM-encoded certificate"),
 			},
 		})
 	}
 	if errors.Is(err, services.ErrPrivateKeyMismatch) {
 		return c.Status(gofiber.StatusUnprocessableEntity).JSON(gofiber.Map{
-			"message": "Private key does not match certificate",
+			"message": i18n.T(c, "Private key does not match certificate"),
 			"errors": gofiber.Map{
-				"private_key": "does not match the certificate",
+				"private_key": i18n.T(c, "does not match the certificate"),
 			},
 		})
 	}

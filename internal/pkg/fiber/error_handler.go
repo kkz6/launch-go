@@ -6,6 +6,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 
 	"github.com/kkz6/launch-go/internal/pkg/apperror"
+	"github.com/kkz6/launch-go/internal/pkg/i18n"
 )
 
 // ErrorResponse is the standard error response format. Code is optional and
@@ -47,8 +48,8 @@ func NewErrorHandler() fiber.ErrorHandler {
 		if errors.As(err, &validationErr) {
 			return c.Status(fiber.StatusUnprocessableEntity).JSON(ValidationErrorResponse{
 				Success: false,
-				Message: MsgValidation,
-				Errors:  validationErr.Errors,
+				Message: i18n.T(c, MsgValidation),
+				Errors:  validationErr.LocalizedErrors(c),
 			})
 		}
 
@@ -57,7 +58,7 @@ func NewErrorHandler() fiber.ErrorHandler {
 			return c.Status(appErr.HTTPStatus).JSON(ErrorResponse{
 				Success: false,
 				Code:    appErr.Code,
-				Message: appErr.Message,
+				Message: i18n.T(c, appErr.Message),
 			})
 		}
 
@@ -72,7 +73,7 @@ func NewErrorHandler() fiber.ErrorHandler {
 
 		return c.Status(code).JSON(ErrorResponse{
 			Success: false,
-			Message: message,
+			Message: i18n.T(c, message),
 		})
 	}
 }

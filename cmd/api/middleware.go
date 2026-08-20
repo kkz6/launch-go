@@ -17,10 +17,12 @@ func (a *Application) registerMiddleware() {
 	}
 
 	a.fiber.Use(recover.New())
+	a.fiber.Use(middleware.Locale(a.config.App.DefaultLocale))
 	a.fiber.Use(cors.New(cors.Config{
 		AllowOrigins:     a.config.Cors.AllowedOrigins,
 		AllowMethods:     "GET,POST,PUT,PATCH,DELETE,OPTIONS",
-		AllowHeaders:     "Origin,Content-Type,Accept,Authorization,X-Team-ID",
+		AllowHeaders:     "Origin,Content-Type,Accept,Accept-Language,Authorization,X-Team-ID",
+		ExposeHeaders:    "Content-Language",
 		AllowCredentials: true,
 	}))
 	a.fiber.Use(middleware.Trace())

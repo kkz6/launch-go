@@ -2,11 +2,13 @@ package handlers
 
 import (
 	"encoding/json"
+	"fmt"
 
 	"github.com/gofiber/contrib/websocket"
 	"github.com/rs/zerolog"
 	"gorm.io/gorm"
 
+	"github.com/kkz6/launch-go/internal/pkg/i18n"
 	launchcache "github.com/kkz6/launch-go/internal/pkg/launch/cache"
 	ws "github.com/kkz6/launch-go/internal/pkg/websocket"
 )
@@ -55,9 +57,26 @@ func (b *Base) Authenticate(c *websocket.Conn) (*ws.Claims, error) {
 
 // SendError sends a structured JSON error message to the WebSocket client and logs it.
 // The message is formatted as {"event":"error","message":"..."}.
-func (b *Base) SendError(c *websocket.Conn, msg string) {
-	b.Logger.Warn().Msg(msg)
-	_ = SendEvent(c, "error", map[string]string{"message": msg})
+func (b *Base) SendError(c *websocket.Conn, msg string, args ...any) {
+	logMessage := msg
+	if len(args) > 0 {
+		logMessage = fmt.Sprintf(msg, args...)
+	}
+	b.Logger.Warn().Msg(logMessage)
+	_ = SendEvent(c, "error", map[string]string{"message": b.Translate(c, msg, args...)})
+}
+
+// Translate localizes dedicated WebSocket control messages using the
+// canonical locale supplied during the handshake. Raw terminal, log, and
+// command output is intentionally never passed through this method.
+func (b *Base) Translate(c *websocket.Conn, message string, args ...any) string {
+	locale := i18n.DefaultLocale
+	if c != nil {
+		if requested, ok := i18n.Normalize(c.Query("locale")); ok {
+			locale = requested
+		}
+	}
+	return i18n.Translate(locale, message, args...)
 }
 
 // SendJSON sends a JSON message to the WebSocket client.

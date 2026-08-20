@@ -6,6 +6,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/auth/dto"
 	"github.com/kkz6/launch-go/internal/modules/auth/services"
 	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
+	"github.com/kkz6/launch-go/internal/pkg/i18n"
 )
 
 // UserHandler handles user management HTTP requests
@@ -61,6 +62,25 @@ func (h *UserHandler) UpdateProfile(c *fiber.Ctx, req *dto.UpdateProfileRequest)
 	isSubscribed := h.Service().IsUserSubscribed(c.Context(), user)
 
 	return fiberctx.OK(c, "Profile updated", dto.ToUserResponseWithStatus(user, isSubscribed, user.Onboarded))
+}
+
+// UpdateLocale updates the user's language preference. The new locale is
+// applied before the response is serialized, so the confirmation itself uses
+// the newly selected language.
+func (h *UserHandler) UpdateLocale(c *fiber.Ctx, req *dto.UpdateLocaleRequest) error {
+	userID, err := fiberctx.MustGetUserID(c)
+	if err != nil {
+		return err
+	}
+
+	user, err := h.Service().User.UpdateLocale(c.Context(), userID, req)
+	if err != nil {
+		return fiberctx.HandleError(c, err)
+	}
+
+	i18n.ApplyPreference(c, user.Locale)
+	isSubscribed := h.Service().IsUserSubscribed(c.Context(), user)
+	return fiberctx.OK(c, "Locale updated", dto.ToUserResponseWithStatus(user, isSubscribed, user.Onboarded))
 }
 
 // ChangePassword changes the user's password

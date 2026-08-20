@@ -112,7 +112,7 @@ func (h *ScriptExecutionHandler) Handler() fiber.Handler {
 			// Already running elsewhere - just notify and close
 			h.sendJSON(c, map[string]any{
 				"type":    "error",
-				"message": "Execution is already running",
+				"message": h.Translate(c, "Execution is already running"),
 			})
 			c.Close()
 		}
@@ -156,7 +156,7 @@ func (h *ScriptExecutionHandler) executeScript(c *websocket.Conn, execution *scr
 	sshConfig.User = runAsUser
 	conn, err := sshConfig.Dial(10 * time.Second)
 	if err != nil {
-		h.finishWithError(c, execution, fmt.Sprintf("SSH connection failed: %s", err.Error()))
+		h.finishWithError(c, execution, "SSH connection failed: %s", err.Error())
 		return
 	}
 	defer conn.Close()
@@ -196,7 +196,7 @@ func (h *ScriptExecutionHandler) executeScript(c *websocket.Conn, execution *scr
 
 	// Start command
 	if err := session.Start(command); err != nil {
-		h.finishWithError(c, execution, fmt.Sprintf("Failed to start script: %s", err.Error()))
+		h.finishWithError(c, execution, "Failed to start script: %s", err.Error())
 		return
 	}
 
@@ -304,7 +304,8 @@ func (h *ScriptExecutionHandler) executeScript(c *websocket.Conn, execution *scr
 	c.Close()
 }
 
-func (h *ScriptExecutionHandler) finishWithError(c *websocket.Conn, execution *scriptModels.ScriptExecution, errMsg string) {
+func (h *ScriptExecutionHandler) finishWithError(c *websocket.Conn, execution *scriptModels.ScriptExecution, message string, args ...any) {
+	errMsg := fmt.Sprintf(message, args...)
 	h.LogError(nil, "Script execution failed",
 		"execution_id", execution.ID,
 		"error", errMsg,
@@ -322,7 +323,7 @@ func (h *ScriptExecutionHandler) finishWithError(c *websocket.Conn, execution *s
 
 	h.sendJSON(c, map[string]any{
 		"type":    "error",
-		"message": errMsg,
+		"message": h.Translate(c, message, args...),
 		"status":  "failed",
 	})
 	c.Close()
@@ -332,7 +333,7 @@ func (h *ScriptExecutionHandler) sendError(c *websocket.Conn, msg string) {
 	h.LogWarn(msg)
 	_ = h.SendJSON(c, map[string]any{
 		"type":    "error",
-		"message": msg,
+		"message": h.Translate(c, msg),
 	})
 	c.Close()
 }

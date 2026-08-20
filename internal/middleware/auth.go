@@ -13,6 +13,7 @@ import (
 	"gorm.io/gorm"
 
 	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
+	"github.com/kkz6/launch-go/internal/pkg/i18n"
 
 	"github.com/kkz6/launch-go/internal/pkg/security"
 )
@@ -122,6 +123,30 @@ func tryAuthenticate(c *fiber.Ctx, jwtSecret string, db *gorm.DB) bool {
 	return false
 }
 
+// applyAuthenticatedLocale replaces header detection with the persisted user
+// preference. Querying at the auth chokepoint covers JWTs, PATs, helper chains,
+// and routes that mount the auth middleware directly.
+func applyAuthenticatedLocale(c *fiber.Ctx, db *gorm.DB) {
+	if db == nil {
+		return
+	}
+	userID, err := fiberctx.GetUserID(c)
+	if err != nil || userID == "" {
+		return
+	}
+
+	var row struct {
+		Locale *string `gorm:"column:locale"`
+	}
+	if err := db.WithContext(c.UserContext()).
+		Table("users").
+		Select("locale").
+		Where("id = ?", userID).
+		Take(&row).Error; err == nil {
+		i18n.ApplyPreference(c, row.Locale)
+	}
+}
+
 // Auth middleware requires a valid JWT token or PAT in the Authorization header.
 // It sets userID and email in request context (c.Locals).
 //
@@ -129,6 +154,8 @@ func tryAuthenticate(c *fiber.Ctx, jwtSecret string, db *gorm.DB) bool {
 func Auth(jwtSecret string, db *gorm.DB) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		if tryAuthenticate(c, jwtSecret, db) {
+			applyAuthenticatedLocale(c, db)
+
 			// Enforce the read-only impersonation ("spectate") contract at the
 			// authentication chokepoint. This guarantees every authenticated
 			// route — whether wired via the AuthenticatedChain helpers or with a
@@ -157,7 +184,9 @@ func Auth(jwtSecret string, db *gorm.DB) fiber.Handler {
 // If no token or invalid token, it continues without user context.
 func OptionalAuth(jwtSecret string, db *gorm.DB) fiber.Handler {
 	return func(c *fiber.Ctx) error {
-		_ = tryAuthenticate(c, jwtSecret, db)
+		if tryAuthenticate(c, jwtSecret, db) {
+			applyAuthenticatedLocale(c, db)
+		}
 		return c.Next()
 	}
 }
@@ -198,7 +227,7 @@ func EmailVerified(service EmailVerifiedService) fiber.Handler {
 		if !user.HasVerifiedEmail() {
 			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
 				"success":               false,
-				"message":               "Email verification required",
+				"message":               i18n.T(c, "Email verification required"),
 				"email_verified":        false,
 				"requires_verification": true,
 			})
@@ -228,7 +257,7 @@ func TwoFactor(service TwoFactorService) fiber.Handler {
 
 		return c.Status(fiber.StatusLocked).JSON(fiber.Map{
 			"success":             false,
-			"message":             "Two-factor authentication required",
+			"message":             i18n.T(c, "Two-factor authentication required"),
 			"two_factor_required": true,
 		})
 	}

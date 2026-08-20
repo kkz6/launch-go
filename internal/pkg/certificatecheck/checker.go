@@ -8,9 +8,12 @@ import (
 	"net"
 	"strings"
 	"time"
+
+	"github.com/kkz6/launch-go/internal/pkg/i18n"
 )
 
 type Status string
+type Reason string
 
 const (
 	StatusValid       Status = "valid"
@@ -20,9 +23,24 @@ const (
 	StatusUnreachable Status = "unreachable"
 )
 
+const (
+	ReasonValid            Reason = "valid"
+	ReasonNoHostname       Reason = "no_hostname"
+	ReasonDNSLookupFailed  Reason = "dns_lookup_failed"
+	ReasonDNSNotPublic     Reason = "dns_not_public"
+	ReasonNoCertificate    Reason = "no_certificate"
+	ReasonNotActive        Reason = "not_active"
+	ReasonExpired          Reason = "expired"
+	ReasonHostnameMismatch Reason = "hostname_mismatch"
+	ReasonUntrusted        Reason = "untrusted"
+	ReasonHTTPSDisabled    Reason = "https_disabled"
+	ReasonInternalCA       Reason = "internal_ca"
+)
+
 type Result struct {
 	Host          string     `json:"host"`
 	Status        Status     `json:"status"`
+	Reason        Reason     `json:"reason"`
 	Valid         bool       `json:"valid"`
 	Message       string     `json:"message"`
 	Issuer        string     `json:"issuer,omitempty"`
@@ -73,8 +91,9 @@ func (c *NetworkChecker) Check(ctx context.Context, rawHost string) Result {
 	base := Result{Host: host, CheckedAt: now}
 	if host == "" {
 		base.Status = StatusNotIssued
+		base.Reason = ReasonNoHostname
 		base.Message = "No hostname is configured."
-		return base
+		return Localize(ctx, base)
 	}
 
 	checkCtx, cancel := context.WithTimeout(ctx, 8*time.Second)
@@ -83,15 +102,17 @@ func (c *NetworkChecker) Check(ctx context.Context, rawHost string) Result {
 	addresses, err := c.resolver.LookupIPAddr(checkCtx, host)
 	if err != nil {
 		base.Status = StatusNotIssued
+		base.Reason = ReasonDNSLookupFailed
 		base.Message = fmt.Sprintf("DNS lookup failed for %s: %v", host, err)
-		return base
+		return Localize(ctx, base)
 	}
 
 	publicIPs := uniquePublicIPs(addresses)
 	if len(publicIPs) == 0 {
 		base.Status = StatusUnreachable
+		base.Reason = ReasonDNSNotPublic
 		base.Message = "DNS does not resolve to a public IP address."
-		return base
+		return Localize(ctx, base)
 	}
 
 	var firstCertificateResult *Result
@@ -103,7 +124,7 @@ func (c *NetworkChecker) Check(ctx context.Context, rawHost string) Result {
 			continue
 		}
 		if result.Valid {
-			return result
+			return Localize(ctx, result)
 		}
 		if firstCertificateResult == nil {
 			candidate := result
@@ -112,16 +133,78 @@ func (c *NetworkChecker) Check(ctx context.Context, rawHost string) Result {
 	}
 
 	if firstCertificateResult != nil {
-		return *firstCertificateResult
+		return Localize(ctx, *firstCertificateResult)
 	}
 	base.Status = StatusNotIssued
+	base.Reason = ReasonNoCertificate
 	base.ResolvedIP = publicIPs[0].String()
 	if lastErr != nil {
 		base.Message = fmt.Sprintf("No TLS certificate could be retrieved from %s: %v", host, lastErr)
 	} else {
 		base.Message = fmt.Sprintf("No TLS certificate could be retrieved from %s.", host)
 	}
-	return base
+	return Localize(ctx, base)
+}
+
+// Localize returns a copy with only the customer-facing message translated.
+// Status, reason, host, IPs, certificate metadata, and timestamps remain stable
+// for API consumers. English responses are returned byte-for-byte so existing
+// clients retain detailed resolver/TLS diagnostics. Japanese responses are
+// rebuilt from the stable reason and structured fields, which avoids leaking
+// raw upstream errors that are not suitable for translation or display.
+func Localize(ctx context.Context, result Result) Result {
+	locale := i18n.LocaleFromContext(ctx)
+	if locale == i18n.LocaleEnglish {
+		return result
+	}
+
+	switch result.Reason {
+	case ReasonValid:
+		result.Message = i18n.Translate(locale, "A valid certificate is being served for %s.", result.Host)
+	case ReasonNoHostname:
+		result.Message = i18n.Translate(locale, "No hostname is configured.")
+	case ReasonDNSLookupFailed:
+		result.Message = i18n.Translate(locale, "DNS lookup failed for %s.", result.Host)
+	case ReasonDNSNotPublic:
+		result.Message = i18n.Translate(locale, "DNS does not resolve to a public IP address.")
+	case ReasonNoCertificate:
+		if result.Message == "The TLS endpoint did not present a certificate." {
+			result.Message = i18n.Translate(locale, result.Message)
+		} else {
+			result.Message = i18n.Translate(locale, "No TLS certificate could be retrieved from %s.", result.Host)
+		}
+	case ReasonNotActive:
+		if result.NotBefore != nil {
+			result.Message = i18n.Translate(locale, "The served certificate is not valid until %s.", result.NotBefore.UTC().Format(time.RFC3339))
+		} else {
+			result.Message = i18n.Translate(locale, "The served certificate is not valid yet.")
+		}
+	case ReasonExpired:
+		if result.ExpiresAt != nil {
+			result.Message = i18n.Translate(locale, "The served certificate expired on %s.", result.ExpiresAt.UTC().Format(time.RFC3339))
+		} else {
+			result.Message = i18n.Translate(locale, "The served certificate has expired.")
+		}
+	case ReasonHostnameMismatch:
+		result.Message = i18n.Translate(locale, "The server is not presenting a certificate for this hostname.")
+	case ReasonUntrusted:
+		result.Message = i18n.Translate(locale, "The served certificate is not trusted.")
+	case ReasonHTTPSDisabled:
+		source := "HTTPS is disabled."
+		switch result.Message {
+		case "HTTPS is disabled for this domain.":
+			source = result.Message
+		case "Public HTTPS is disabled for this site.":
+			source = result.Message
+		}
+		result.Message = i18n.Translate(locale, source)
+	case ReasonInternalCA:
+		result.Message = i18n.Translate(locale, "This site uses Caddy's internal CA, which is not publicly trusted.")
+	default:
+		result.Message = i18n.Translate(locale, "Certificate status could not be determined.")
+	}
+
+	return result
 }
 
 func (c *NetworkChecker) checkIP(
@@ -155,6 +238,7 @@ func evaluate(host string, certificates []*x509.Certificate, roots *x509.CertPoo
 	result := Result{Host: host, CheckedAt: now.UTC()}
 	if len(certificates) == 0 {
 		result.Status = StatusNotIssued
+		result.Reason = ReasonNoCertificate
 		result.Message = "The TLS endpoint did not present a certificate."
 		return result
 	}
@@ -173,16 +257,19 @@ func evaluate(host string, certificates []*x509.Certificate, roots *x509.CertPoo
 
 	if now.Before(leaf.NotBefore) {
 		result.Status = StatusInvalid
+		result.Reason = ReasonNotActive
 		result.Message = fmt.Sprintf("The served certificate is not valid until %s.", notBefore.Format(time.RFC3339))
 		return result
 	}
 	if !now.Before(leaf.NotAfter) {
 		result.Status = StatusExpired
+		result.Reason = ReasonExpired
 		result.Message = fmt.Sprintf("The served certificate expired on %s.", expiresAt.Format(time.RFC3339))
 		return result
 	}
 	if err := leaf.VerifyHostname(host); err != nil {
 		result.Status = StatusInvalid
+		result.Reason = ReasonHostnameMismatch
 		result.Message = "The server is not presenting a certificate for this hostname."
 		return result
 	}
@@ -198,11 +285,13 @@ func evaluate(host string, certificates []*x509.Certificate, roots *x509.CertPoo
 		CurrentTime:   now,
 	}); err != nil {
 		result.Status = StatusInvalid
+		result.Reason = ReasonUntrusted
 		result.Message = fmt.Sprintf("The served certificate is not trusted: %v", err)
 		return result
 	}
 
 	result.Status = StatusValid
+	result.Reason = ReasonValid
 	result.Valid = true
 	result.Message = fmt.Sprintf("A valid certificate is being served for %s.", host)
 	return result

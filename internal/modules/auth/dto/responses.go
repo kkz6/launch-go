@@ -29,8 +29,10 @@ type UserResponse struct {
 	// editor / member). Drives frontend UI gating; the backend remains
 	// the source of truth via middleware.Can(...). Omitted when the user
 	// has no current team.
-	Role             *string `json:"role,omitempty"`
-	Timezone         string  `json:"timezone"`
+	Role     *string `json:"role,omitempty"`
+	Timezone string  `json:"timezone"`
+	// Locale is nil when automatic Accept-Language detection is enabled.
+	Locale           *string `json:"locale"`
 	Onboarded        bool    `json:"onboarded"`
 	TwoFactorEnabled bool    `json:"two_factor_enabled"`
 	StaffRole        *string `json:"staff_role,omitempty"`
@@ -99,8 +101,9 @@ type TeamInvitationResponse struct {
 // If TwoFactorRequired is true, the client must complete the 2FA challenge
 // using the ChallengeToken before receiving auth tokens.
 type LoginResult struct {
-	TwoFactorRequired bool   `json:"two_factor_required"`
-	ChallengeToken    string `json:"challenge_token,omitempty"`
+	TwoFactorRequired bool    `json:"two_factor_required"`
+	ChallengeToken    string  `json:"challenge_token,omitempty"`
+	PreferredLocale   *string `json:"-"`
 	*AuthResponse     `json:",omitempty"`
 }
 
@@ -158,6 +161,7 @@ func ToUserResponseWithStatus(user *models.User, isSubscribed bool, onboarded bo
 		ProfilePhotoURL:  user.ProfilePhotoURL(),
 		CurrentTeamID:    user.CurrentTeamID,
 		Timezone:         timezone,
+		Locale:           user.Locale,
 		Onboarded:        onboarded,
 		TwoFactorEnabled: user.TwoFactorEnabled(),
 		CreatedAt:        pkgdto.FormatTimeOrEmpty(user.CreatedAt),

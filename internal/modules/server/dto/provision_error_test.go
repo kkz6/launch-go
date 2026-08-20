@@ -47,6 +47,13 @@ func TestClassifyTaskFailure_GenericFallback(t *testing.T) {
 	assert.Contains(t, strings.ToLower(got), "setup didn't complete")
 }
 
+func TestClassifyTaskFailureDetailsReturnsStableCode(t *testing.T) {
+	got := classifyTaskFailureDetails("E: Could not get lock /var/lib/dpkg/lock-frontend")
+
+	assert.Equal(t, "package_manager_busy", got.Code)
+	assert.NotEmpty(t, got.Message)
+}
+
 func TestStripLaunchMarkers(t *testing.T) {
 	in := "Configure swap\n::LAUNCH::progress::5\n::LAUNCH::step_completed::configure_swap\nSwap configured"
 	out := stripLaunchMarkers(in)

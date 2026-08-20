@@ -17,6 +17,7 @@ import (
 	"github.com/kkz6/launch-go/internal/pkg/certificatecheck"
 	"github.com/kkz6/launch-go/internal/pkg/dbtype"
 	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
+	"github.com/kkz6/launch-go/internal/pkg/i18n"
 	pkgservice "github.com/kkz6/launch-go/internal/pkg/service"
 )
 
@@ -67,18 +68,20 @@ func (s *SSLService) CheckCertificate(
 		return certificatecheck.Result{
 			Host:      site.Address,
 			Status:    certificatecheck.StatusNotIssued,
-			Message:   "Public HTTPS is disabled for this site.",
+			Reason:    certificatecheck.ReasonHTTPSDisabled,
+			Message:   i18n.TContext(ctx, "Public HTTPS is disabled for this site."),
 			CheckedAt: checkedAt,
 		}, nil
 	case sitetypes.TLSSettingInternal:
 		return certificatecheck.Result{
 			Host:      site.Address,
 			Status:    certificatecheck.StatusInvalid,
-			Message:   "This site uses Caddy's internal CA, which is not publicly trusted.",
+			Reason:    certificatecheck.ReasonInternalCA,
+			Message:   i18n.TContext(ctx, "This site uses Caddy's internal CA, which is not publicly trusted."),
 			CheckedAt: checkedAt,
 		}, nil
 	}
-	return s.certificateChecker.Check(ctx, site.Address), nil
+	return certificatecheck.Localize(ctx, s.certificateChecker.Check(ctx, site.Address)), nil
 }
 
 func (s *SSLService) RetryCertificate(

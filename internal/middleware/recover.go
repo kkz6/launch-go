@@ -5,6 +5,8 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/rs/zerolog"
+
+	"github.com/kkz6/launch-go/internal/pkg/i18n"
 )
 
 // RecoverConfig holds configuration for the recover middleware
@@ -73,7 +75,7 @@ func Recover(config ...RecoverConfig) fiber.Handler {
 				// Return internal server error
 				err = c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 					"success": false,
-					"message": "Internal server error",
+					"message": i18n.T(c, "Internal server error"),
 				})
 			}
 		}()

@@ -8,7 +8,14 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/auth/dto"
 	"github.com/kkz6/launch-go/internal/modules/auth/services"
 	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
+	"github.com/kkz6/launch-go/internal/pkg/i18n"
 )
+
+func applyAuthResponseLocale(c *fiber.Ctx, response *dto.AuthResponse) {
+	if response != nil {
+		i18n.ApplyPreference(c, response.User.Locale)
+	}
+}
 
 // AuthHandler handles authentication-related HTTP requests
 type AuthHandler struct {
@@ -30,6 +37,7 @@ func (h *AuthHandler) Register(c *fiber.Ctx, req *dto.RegisterRequest) error {
 		return fiberctx.HandleError(c, err)
 	}
 
+	applyAuthResponseLocale(c, result)
 	return fiberctx.Created(c, "Registration successful", result)
 }
 
@@ -43,6 +51,7 @@ func (h *AuthHandler) Login(c *fiber.Ctx, req *dto.LoginRequest) error {
 	if err != nil {
 		return fiberctx.RespondUnauthorized(c, fiberctx.MsgInvalidCredentials)
 	}
+	i18n.ApplyPreference(c, result.PreferredLocale)
 
 	if result.TwoFactorRequired {
 		return fiberctx.OK(c, "Two-factor authentication required", result)
@@ -74,6 +83,7 @@ func (h *AuthHandler) RefreshToken(c *fiber.Ctx, req *dto.RefreshTokenRequest) e
 		return fiberctx.RespondUnauthorized(c, fiberctx.MsgInvalidToken)
 	}
 
+	applyAuthResponseLocale(c, result)
 	return fiberctx.OK(c, "Token refreshed successfully", result)
 }
 
@@ -94,5 +104,6 @@ func (h *AuthHandler) TokenExchange(c *fiber.Ctx) error {
 		return fiberctx.RespondUnauthorized(c, fiberctx.MsgInvalidToken)
 	}
 
+	applyAuthResponseLocale(c, result)
 	return fiberctx.OK(c, "Token exchanged successfully", result)
 }

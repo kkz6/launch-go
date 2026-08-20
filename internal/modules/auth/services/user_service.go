@@ -12,6 +12,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/auth/dto"
 	"github.com/kkz6/launch-go/internal/modules/auth/models"
 	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
+	"github.com/kkz6/launch-go/internal/pkg/i18n"
 	"github.com/kkz6/launch-go/internal/pkg/launch/activity"
 	"github.com/kkz6/launch-go/internal/pkg/security"
 )
@@ -77,6 +78,37 @@ func (s *UserService) UpdateProfile(ctx context.Context, userID string, req *dto
 
 	activity.RecordWithLog(ctx, "auth", "updated", userID, user, "User profile was updated")
 
+	return user, nil
+}
+
+// UpdateLocale persists a user's explicit locale. Automatic mode is stored as
+// NULL so each request can continue to follow Accept-Language.
+func (s *UserService) UpdateLocale(ctx context.Context, userID string, req *dto.UpdateLocaleRequest) (*models.User, error) {
+	req.Normalize()
+	if req.Locale != i18n.LocaleAuto && req.Locale != i18n.LocaleEnglish && req.Locale != i18n.LocaleJapanese {
+		return nil, fiberutil.NewValidationError(map[string][]string{
+			"locale": {"Must be one of: auto en ja"},
+		})
+	}
+
+	user, err := s.repos.User().FindByID(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	if user == nil {
+		return nil, fiberutil.NotFound()
+	}
+
+	user.Locale = nil
+	if req.Locale != i18n.LocaleAuto {
+		locale := req.Locale
+		user.Locale = &locale
+	}
+	if err := s.repos.User().Update(ctx, user); err != nil {
+		return nil, err
+	}
+
+	activity.RecordWithLog(ctx, "auth", "locale_updated", userID, user, "User locale was updated")
 	return user, nil
 }
 

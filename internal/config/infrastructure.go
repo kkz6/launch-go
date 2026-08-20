@@ -25,6 +25,9 @@ type AppConfig struct {
 	FrontendURL string `env:"APP_FRONTEND_URL" default:""`
 	Key         string `env:"APP_KEY" default:""`
 	LocalMode   bool   `env:"APP_LOCAL_MODE" default:"false"`
+	// DefaultLocale is used when Accept-Language is empty or unsupported and
+	// the authenticated user has not selected a language preference.
+	DefaultLocale string `env:"APP_DEFAULT_LOCALE" default:"en"`
 }
 
 // IsLocal returns true if the application is running in local development mode

@@ -6,6 +6,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/auth/dto"
 	"github.com/kkz6/launch-go/internal/modules/auth/services"
 	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
+	"github.com/kkz6/launch-go/internal/pkg/i18n"
 )
 
 // TwoFactorHandler handles two-factor authentication HTTP requests
@@ -75,6 +76,7 @@ func (h *TwoFactorHandler) TwoFactorChallenge(c *fiber.Ctx, req *dto.TwoFactorCh
 		return fiberctx.HandleError(c, err)
 	}
 
+	i18n.ApplyPreference(c, result.User.Locale)
 	return fiberctx.OK(c, "Login successful", result)
 }
 

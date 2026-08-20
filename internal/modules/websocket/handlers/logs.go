@@ -154,13 +154,13 @@ func (h *LogsHandler) Handler() fiber.Handler {
 				// Fallback to old behavior using software parameter
 				sw := types.Software(software)
 				if !sw.HasLogPath() {
-					_ = SendErrorEvent(c, "Unknown software type")
+					h.SendError(c, "Unknown software type")
 					c.Close()
 					return
 				}
 				logFilePath = sw.LogPath()
 			} else {
-				_ = SendErrorEvent(c, "Missing route or software parameter")
+				h.SendError(c, "Missing route or software parameter")
 				c.Close()
 				return
 			}
@@ -192,7 +192,7 @@ func (h *LogsHandler) Handler() fiber.Handler {
 			// These entities have their own log paths stored in the database
 			logFilePath, err = h.getEntityLogPath(entity, entityID, serverID, logType)
 			if err != nil {
-				_ = SendErrorEvent(c, "Entity not found")
+				h.SendError(c, "Entity not found")
 				c.Close()
 				return
 			}
@@ -203,7 +203,7 @@ func (h *LogsHandler) Handler() fiber.Handler {
 			return
 
 		default:
-			_ = SendErrorEvent(c, "Unknown entity type")
+			h.SendError(c, "Unknown entity type")
 			c.Close()
 			return
 		}
@@ -361,7 +361,7 @@ func (h *LogsHandler) streamLogsWithWait(c logStreamSocket, server *serverModels
 	sshClient, err := h.dialLogStream(conn)
 	if err != nil {
 		h.LogError(err, "Failed to connect to SSH", "host", conn.Host, "port", conn.Port)
-		h.sendLogStreamError(c, fmt.Sprintf("SSH connection failed: %s", err.Error()))
+		h.sendLogStreamError(c, "SSH connection failed: %s", err.Error())
 		return
 	}
 	defer func() { _ = sshClient.Close() }()
@@ -460,11 +460,11 @@ func (h *LogsHandler) streamLogSession(c logStreamSocket, session logStreamSessi
 			_, _ = waitForLogStream(streamDone, h.logStreamShutdownTimeout)
 		}
 		if err != nil && socketOpen {
-			message := "Log stream ended unexpectedly"
 			if exitErr, ok := err.(exitStatusError); ok && exitErr.ExitStatus() == 42 {
-				message = "Task log file is not available on the server"
+				_ = h.sendLogStreamErrorEvent(c, "Task log file is not available on the server")
+			} else {
+				_ = h.sendLogStreamErrorEvent(c, "Log stream ended unexpectedly")
 			}
-			_ = h.sendLogStreamErrorEvent(c, message)
 		}
 		_ = c.Close()
 		_, _ = waitForLogStream(clientDone, h.logStreamShutdownTimeout)
@@ -480,15 +480,19 @@ func (h *LogsHandler) streamLogSession(c logStreamSocket, session logStreamSessi
 	h.LogInfo("Log streaming ended")
 }
 
-func (h *LogsHandler) sendLogStreamError(c logStreamSocket, message string) {
-	h.LogWarn(message)
-	_ = h.sendLogStreamErrorEvent(c, message)
+func (h *LogsHandler) sendLogStreamError(c logStreamSocket, message string, args ...any) {
+	h.LogWarn(fmt.Sprintf(message, args...))
+	_ = h.sendLogStreamErrorEvent(c, message, args...)
 }
 
-func (h *LogsHandler) sendLogStreamErrorEvent(c logStreamSocket, message string) error {
+func (h *LogsHandler) sendLogStreamErrorEvent(c logStreamSocket, message string, args ...any) error {
+	translated := fmt.Sprintf(message, args...)
+	if conn, ok := c.(*websocket.Conn); ok {
+		translated = h.Translate(conn, message, args...)
+	}
 	payload, _ := json.Marshal(WSMessage{
 		Event: "error",
-		Data:  map[string]string{"message": message},
+		Data:  map[string]string{"message": translated},
 	})
 	return h.writeLogStreamMessage(c, payload)
 }

@@ -125,7 +125,7 @@ func (h *DockerLogsHandler) streamForApplication(
 		// successfully. Tell the user instead of trying to docker-logs
 		// an empty string (which docker would treat as "all").
 		_ = SendEvent(c, "no_container", map[string]any{
-			"message": "This application has not been deployed yet.",
+			"message": h.Translate(c, "This application has not been deployed yet."),
 		})
 		c.Close()
 		return
@@ -293,7 +293,7 @@ func (h *DockerLogsHandler) streamCommand(
 	conn, err := sshConfig.Dial(10 * time.Second)
 	if err != nil {
 		h.LogError(err, "Failed to connect to SSH", "host", sshConfig.Host)
-		h.SendError(c, fmt.Sprintf("SSH connection failed: %s", err.Error()))
+		h.SendError(c, "SSH connection failed: %s", err.Error())
 		return
 	}
 	defer conn.Close()

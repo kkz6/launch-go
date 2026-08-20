@@ -184,9 +184,7 @@ func (s *SiteService) createSite(ctx context.Context, serverID, teamID, userID s
 
 	// Validate site type
 	if !req.Type.IsValid() {
-		return nil, fiberutil.NewValidationError(map[string][]string{
-			"type": {fmt.Sprintf("Invalid site type: %s", req.Type)},
-		})
+		return nil, fiberutil.NewValidationErrorMessage("type", "Invalid site type: %s", req.Type)
 	}
 
 	// Validate source control for non-WordPress/phpMyAdmin sites
@@ -942,9 +940,7 @@ func (s *SiteService) updateSite(ctx context.Context, id, serverID, teamID, user
 func validateActiveServerPHP(server *servermodels.Server, phpVersion string) error {
 	software, err := servertypes.ParseSoftware(phpVersion)
 	if err != nil || !software.IsPhp() {
-		return fiberutil.NewValidationError(map[string][]string{
-			"php_version": {fmt.Sprintf("Invalid PHP version: %s", phpVersion)},
-		})
+		return fiberutil.NewValidationErrorMessage("php_version", "Invalid PHP version: %s", phpVersion)
 	}
 
 	for i := range server.Services {
@@ -954,24 +950,21 @@ func validateActiveServerPHP(server *servermodels.Server, phpVersion string) err
 			continue
 		}
 		if !service.Status.IsActive() {
-			return fiberutil.NewValidationError(map[string][]string{
-				"php_version": {
-					fmt.Sprintf(
-						"PHP %s is installed but not active (status: %s)",
-						software.GetVersion(),
-						service.Status,
-					),
-				},
-			})
+			return fiberutil.NewValidationErrorMessage(
+				"php_version",
+				"PHP %s is installed but not active (status: %s)",
+				software.GetVersion(),
+				service.Status,
+			)
 		}
 		return nil
 	}
 
-	return fiberutil.NewValidationError(map[string][]string{
-		"php_version": {
-			fmt.Sprintf("PHP %s is not installed on this server", software.GetVersion()),
-		},
-	})
+	return fiberutil.NewValidationErrorMessage(
+		"php_version",
+		"PHP %s is not installed on this server",
+		software.GetVersion(),
+	)
 }
 
 func resolveServerPHPVersion(server *servermodels.Server) (string, error) {

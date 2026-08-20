@@ -12,7 +12,14 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/platform/repositories"
 	"github.com/kkz6/launch-go/internal/modules/platform/types"
 	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
+	"github.com/kkz6/launch-go/internal/pkg/i18n"
 	"github.com/kkz6/launch-go/internal/pkg/service"
+)
+
+const (
+	renameUsernameUpdateKey         = "rename_username_captain"
+	renameUsernameUpdateTitle       = "Rename Default Username to Captain"
+	renameUsernameUpdateDescription = "The default UNIX username on provisioned servers is being renamed from `launcher` to `captain`. This update renames the system user, moves the home directory, and updates all related configuration files (Caddyfile, systemd services, crontab) on your servers.\n\nThis is a safe, idempotent operation — if a server already has the `captain` user, it will be skipped automatically."
 )
 
 // ServiceDeps holds all dependencies needed for platform services
@@ -25,6 +32,20 @@ type ServiceDeps struct {
 type PlatformUpdateService struct {
 	service.Base
 	repos *repositories.Registry
+}
+
+// localizePlatformUpdateResponse replaces metadata only for platform updates
+// identified by a stable application-owned key. Database-authored content for
+// unknown keys remains untouched.
+func localizePlatformUpdateResponse(ctx context.Context, response dto.PlatformUpdateResponse) dto.PlatformUpdateResponse {
+	if response.Key != renameUsernameUpdateKey {
+		return response
+	}
+
+	localized := response
+	localized.Title = i18n.TContext(ctx, renameUsernameUpdateTitle)
+	localized.Description = i18n.TContext(ctx, renameUsernameUpdateDescription)
+	return localized
 }
 
 // NewPlatformUpdateService creates a new PlatformUpdateService
@@ -44,7 +65,7 @@ func (s *PlatformUpdateService) GetPendingUpdates(ctx context.Context, teamID, u
 
 	result := make([]dto.PlatformUpdateResponse, len(updates))
 	for i, u := range updates {
-		resp := dto.ToPlatformUpdateResponse(&u)
+		resp := localizePlatformUpdateResponse(ctx, dto.ToPlatformUpdateResponse(&u))
 
 		counts, err := s.repos.ServerPlatformUpdate().CountByStatus(ctx, u.ID, teamID)
 		if err == nil {
@@ -84,7 +105,7 @@ func (s *PlatformUpdateService) GetUpdateDetail(ctx context.Context, updateID, t
 	}
 
 	resp := &dto.PlatformUpdateDetailResponse{
-		PlatformUpdateResponse: dto.ToPlatformUpdateResponse(update),
+		PlatformUpdateResponse: localizePlatformUpdateResponse(ctx, dto.ToPlatformUpdateResponse(update)),
 		ServerStatuses:         serverStatuses,
 	}
 	resp.StatusCounts = statusCounts

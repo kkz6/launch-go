@@ -9,6 +9,7 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/kkz6/launch-go/internal/pkg/broadcast"
+	"github.com/kkz6/launch-go/internal/pkg/i18n"
 	launchcache "github.com/kkz6/launch-go/internal/pkg/launch/cache"
 )
 
@@ -289,6 +290,9 @@ func Handler(hub *Hub, jwtSecret string, membershipCache *launchcache.TeamMember
 
 		// Create client
 		client := NewClient(hub, c, claims.UserID, claims.TeamID, authorizer)
+		if locale, ok := i18n.Normalize(c.Query("locale")); ok {
+			client.Locale = locale
+		}
 
 		// Register with hub
 		hub.Register(client)

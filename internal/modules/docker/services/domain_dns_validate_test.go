@@ -14,6 +14,7 @@ import (
 
 	servermodels "github.com/kkz6/launch-go/internal/modules/server/models"
 	serverrepos "github.com/kkz6/launch-go/internal/modules/server/repositories"
+	"github.com/kkz6/launch-go/internal/pkg/i18n"
 )
 
 type fakeDNSLookuper struct {
@@ -83,7 +84,62 @@ func TestValidateDNSAgainstServerLookupFailure(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, resp.OK)
 	assert.False(t, resp.Proxied)
-	assert.Contains(t, resp.Message, "DNS lookup failed")
+	assert.Equal(t, "DNS lookup failed: no such host", resp.Message)
+}
+
+func TestValidateDNSAgainstServerLocalizesJapaneseMessages(t *testing.T) {
+	t.Run("wildcard", func(t *testing.T) {
+		svc, _ := dnsValidateTestService(t, &fakeDNSLookuper{err: errors.New("must not be called")})
+		ctx := i18n.WithLocale(context.Background(), i18n.LocaleJapanese)
+
+		resp, err := svc.validateDNSAgainstServer(ctx, "app.sslip.io", "does-not-exist")
+
+		require.NoError(t, err)
+		assert.True(t, resp.OK)
+		assert.Contains(t, resp.Message, "ワイルドカードDNS")
+	})
+
+	t.Run("lookup failure hides resolver details", func(t *testing.T) {
+		svc, db := dnsValidateTestService(t, &fakeDNSLookuper{err: errors.New("resolver secret diagnostic")})
+		serverID := createTestServer(t, db, "203.0.113.10")
+		ctx := i18n.WithLocale(context.Background(), i18n.LocaleJapanese)
+
+		resp, err := svc.validateDNSAgainstServer(ctx, "example.com", serverID)
+
+		require.NoError(t, err)
+		assert.False(t, resp.OK)
+		assert.Equal(t, "DNSの検索に失敗しました。", resp.Message)
+		assert.NotContains(t, resp.Message, "secret diagnostic")
+	})
+
+	t.Run("mismatched IPs remain structured in translated copy", func(t *testing.T) {
+		svc, db := dnsValidateTestService(t, &fakeDNSLookuper{addrs: []string{"198.51.100.20"}})
+		serverID := createTestServer(t, db, "203.0.113.10")
+		ctx := i18n.WithLocale(context.Background(), i18n.LocaleJapanese)
+
+		resp, err := svc.validateDNSAgainstServer(ctx, "example.com", serverID)
+
+		require.NoError(t, err)
+		assert.Equal(t, []string{"198.51.100.20"}, resp.ResolvedIPs)
+		assert.Equal(t, "203.0.113.10", resp.ExpectedIP)
+		assert.Contains(t, resp.Message, "198.51.100.20")
+		assert.Contains(t, resp.Message, "203.0.113.10")
+		assert.Contains(t, resp.Message, "期待されるIP")
+	})
+
+	t.Run("Cloudflare explanation", func(t *testing.T) {
+		svc, db := dnsValidateTestService(t, &fakeDNSLookuper{addrs: []string{"104.16.132.229"}})
+		serverID := createTestServer(t, db, "203.0.113.10")
+		ctx := i18n.WithLocale(context.Background(), i18n.LocaleJapanese)
+
+		resp, err := svc.validateDNSAgainstServer(ctx, "example.com", serverID)
+
+		require.NoError(t, err)
+		assert.True(t, resp.Proxied)
+		assert.Contains(t, resp.Message, "Cloudflare経由")
+		assert.Contains(t, resp.Message, "104.16.132.229")
+		assert.Contains(t, resp.Message, "203.0.113.10")
+	})
 }
 
 func TestValidateDNSAgainstServerResolvesToExpectedIP(t *testing.T) {
