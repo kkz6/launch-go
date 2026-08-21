@@ -66,10 +66,49 @@ func (s *DashboardService) GetDashboard(ctx context.Context, teamID string) (*dt
 		return nil, err
 	}
 
+	failedQueues, err := s.getFailedQueues(ctx, teamID)
+	if err != nil {
+		return nil, err
+	}
+
 	return &dto.DashboardResponse{
 		Servers:        servers,
 		RecentActivity: recentActivity,
+		FailedQueues:   failedQueues,
 	}, nil
+}
+
+func (s *DashboardService) getFailedQueues(ctx context.Context, teamID string) ([]*dto.FailedQueueResponse, error) {
+	failedQueues := make([]*dto.FailedQueueResponse, 0)
+
+	err := s.db.WithContext(ctx).
+		Table("queues").
+		Select(
+			"queues.id",
+			"queues.queue AS name",
+			"queues.queue_connection AS connection",
+			"queues.site_id",
+			"sites.address AS site_name",
+			"queues.server_id",
+			"servers.name AS server_name",
+			"queues.last_status_check",
+		).
+		Joins("JOIN sites ON sites.id = queues.site_id").
+		Joins("JOIN servers ON servers.id = queues.server_id").
+		Where("queues.team_id = ?", teamID).
+		Where("queues.installed_at IS NOT NULL").
+		Where("queues.installation_failed_at IS NULL").
+		Where("queues.uninstallation_requested_at IS NULL").
+		Where("queues.last_status_check IS NOT NULL").
+		Where("queues.running = ?", false).
+		Where("servers.archived_at IS NULL").
+		Order("queues.last_status_check DESC").
+		Scan(&failedQueues).Error
+	if err != nil {
+		return nil, err
+	}
+
+	return failedQueues, nil
 }
 
 // failedActionRetention is how long a failed task stays in Active Actions

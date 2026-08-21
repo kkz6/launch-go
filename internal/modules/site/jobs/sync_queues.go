@@ -21,13 +21,22 @@ const TypeSyncQueues = "site:sync_queues"
 
 const syncQueuesJobTimeout = 2 * time.Minute
 
+type SyncQueuesTrigger string
+
+const (
+	SyncQueuesTriggerManual      SyncQueuesTrigger = "manual"
+	SyncQueuesTriggerScheduled   SyncQueuesTrigger = "scheduled"
+	SyncQueuesTriggerPostRestart SyncQueuesTrigger = "post_restart"
+)
+
 var errDaemonStatusTimeout = errors.New("daemon status check timed out")
 
 // SyncQueuesPayload holds data for queue status synchronization
 type SyncQueuesPayload struct {
-	SiteID   string  `json:"site_id"`
-	ServerID string  `json:"server_id"`
-	UserID   *string `json:"user_id,omitempty"`
+	SiteID   string            `json:"site_id"`
+	ServerID string            `json:"server_id"`
+	UserID   *string           `json:"user_id,omitempty"`
+	Trigger  SyncQueuesTrigger `json:"trigger,omitempty"`
 }
 
 // DaemonStatusInfo represents the info stored in the queue's info field
@@ -44,8 +53,9 @@ type SyncQueuesJob struct {
 	Payload SyncQueuesPayload
 
 	// Model fields for Failed() callback
-	site   *models.Site
-	server *servermodels.Server
+	site           *models.Site
+	server         *servermodels.Server
+	failedQueueIDs []string
 }
 
 func NewSyncQueuesJob(p SyncQueuesPayload) pkgjobs.Handler {
@@ -83,15 +93,11 @@ func (j *SyncQueuesJob) Handle(ctx context.Context) error {
 	task := tasks.CheckDaemonStatus()
 	result, err := j.Deps.RunTask(j.server, task).AsRoot().Dispatch(ctx)
 	if err != nil {
-		if isScheduledSyncTimeout(j.Payload.UserID, err) {
-			j.Deps.Logger.Warn().Err(err).Str("site_id", j.site.ID).Msg("Scheduled queue sync timed out; keeping the previous status")
-			return nil
-		}
 		j.Deps.Logger.Error().Err(err).Str("site_id", j.site.ID).Msg("Failed to check daemon status")
 		return fmt.Errorf("check daemon status: %w", err)
 	}
 	if err := validateDaemonStatusResult(result, task.Timeout()); err != nil {
-		if isScheduledSyncTimeout(j.Payload.UserID, err) {
+		if isScheduledSyncTimeout(j.Payload.Trigger, j.Payload.UserID, err) {
 			j.Deps.Logger.Warn().Err(err).Str("site_id", j.site.ID).Msg("Scheduled queue sync timed out; keeping the previous status")
 			return nil
 		}
@@ -102,6 +108,7 @@ func (j *SyncQueuesJob) Handle(ctx context.Context) error {
 	// Parse the output using shared parser
 	output := result.GetOutput()
 	statuses := tasks.ParseDaemonStatusOutput(output)
+	j.failedQueueIDs = nil
 
 	// Create a map of daemon ID to status for quick lookup
 	statusMap := make(map[string]*tasks.DaemonStatus)
@@ -111,6 +118,7 @@ func (j *SyncQueuesJob) Handle(ctx context.Context) error {
 
 	// Update each queue with its status
 	now := time.Now()
+	var updateErrors []error
 	for i := range queues {
 		queue := &queues[i]
 		queue.LastStatusCheck = &now
@@ -151,7 +159,16 @@ func (j *SyncQueuesJob) Handle(ctx context.Context) error {
 		// Update the queue in the database
 		if err := j.Deps.Repos.Queue().Update(ctx, queue); err != nil {
 			j.Deps.Logger.Error().Err(err).Str("queue_id", queue.ID).Msg("Failed to update queue status")
+			updateErrors = append(updateErrors, fmt.Errorf("update queue %s: %w", queue.ID, err))
+			continue
 		}
+
+		if !queue.Running && queue.InstalledAt != nil && queue.InstallationFailedAt == nil {
+			j.failedQueueIDs = append(j.failedQueueIDs, queue.ID)
+		}
+	}
+	if len(updateErrors) > 0 {
+		return fmt.Errorf("update queue statuses: %w", errors.Join(updateErrors...))
 	}
 
 	j.Deps.Logger.Info().
@@ -161,9 +178,20 @@ func (j *SyncQueuesJob) Handle(ctx context.Context) error {
 
 	// Broadcast status update
 	j.Deps.BroadcastServerEvent(j.server, "queues.synced", map[string]interface{}{
-		"site_id":     j.site.ID,
-		"queue_count": len(queues),
+		"site_id":          j.site.ID,
+		"queue_count":      len(queues),
+		"failed_count":     len(j.failedQueueIDs),
+		"failed_queue_ids": j.failedQueueIDs,
 	})
+
+	if len(j.failedQueueIDs) > 0 {
+		j.Deps.BroadcastServerEvent(j.server, "queues.failed", map[string]interface{}{
+			"site_id":          j.site.ID,
+			"queue_count":      len(queues),
+			"failed_count":     len(j.failedQueueIDs),
+			"failed_queue_ids": j.failedQueueIDs,
+		})
+	}
 
 	return nil
 }
@@ -175,10 +203,16 @@ func (j *SyncQueuesJob) Failed(ctx context.Context, err error) {
 
 // NewSyncQueuesTask creates a sync queues status job
 func NewSyncQueuesTask(siteID, serverID string, userID *string) (*asynq.Task, error) {
+	trigger := SyncQueuesTriggerManual
+	if userID == nil {
+		trigger = SyncQueuesTriggerScheduled
+	}
+
 	return pkgjobs.Task(TypeSyncQueues, SyncQueuesPayload{
 		SiteID:   siteID,
 		ServerID: serverID,
 		UserID:   userID,
+		Trigger:  trigger,
 	}, asynq.Timeout(syncQueuesJobTimeout))
 }
 
@@ -198,6 +232,7 @@ func validateDaemonStatusResult(result *servertasks.TaskRunnerResult, timeout ti
 	return nil
 }
 
-func isScheduledSyncTimeout(userID *string, err error) bool {
-	return userID == nil && (errors.Is(err, context.DeadlineExceeded) || errors.Is(err, errDaemonStatusTimeout))
+func isScheduledSyncTimeout(trigger SyncQueuesTrigger, userID *string, err error) bool {
+	isScheduled := trigger == SyncQueuesTriggerScheduled || (trigger == "" && userID == nil)
+	return isScheduled && (errors.Is(err, context.DeadlineExceeded) || errors.Is(err, errDaemonStatusTimeout))
 }
