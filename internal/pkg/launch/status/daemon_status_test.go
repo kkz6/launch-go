@@ -33,6 +33,11 @@ func TestCheckDaemonStatusSupervisorExitCodes(t *testing.T) {
 			wantOutput: `"status":"FATAL"`,
 		},
 		{
+			name:       "uptime fields with leading zeroes are decimal",
+			statusLine: "queue-1:queue-1_00 RUNNING pid 123, uptime 08:09:08\nqueue-2:queue-2_00 RUNNING pid 456, uptime 2 days, 08:09:08",
+			wantOutput: `"uptime_seconds":202148`,
+		},
+		{
 			name:       "supervisor command failure remains a task failure",
 			exitCode:   1,
 			statusLine: "unix:///run/supervisor.sock refused connection",
