@@ -14,8 +14,22 @@ const CheckDaemonStatusTaskType = "common:check_daemon_status"
 var daemonStatusScript = `#!/bin/bash
 set -euo pipefail
 
-# Get supervisorctl status and parse it
-supervisorctl status 2>/dev/null | while read -r line; do
+# supervisorctl exits 3 when it successfully reports at least one process in a
+# non-running state. That is health data, not a failure of this status check.
+# Preserve genuine supervisor errors while allowing the parser to report
+# stopped/FATAL workers to the caller.
+set +e
+supervisor_output=$(supervisorctl status 2>&1)
+supervisor_exit=$?
+set -e
+
+if [ "$supervisor_exit" -ne 0 ] && [ "$supervisor_exit" -ne 3 ]; then
+    printf '%s\n' "$supervisor_output" >&2
+    exit "$supervisor_exit"
+fi
+
+# Parse the captured supervisor output.
+while read -r line; do
     if [ -z "$line" ]; then
         continue
     fi
@@ -76,7 +90,7 @@ supervisorctl status 2>/dev/null | while read -r line; do
     # Output JSON (one per line)
     printf '{"daemon_id":"%s","status":"%s","pid":"%s","uptime_seconds":%d,"description":"%s","error":"%s"}\n' \
         "$daemon_id" "$status" "$pid" "$uptime_seconds" "$description_escaped" "$error_escaped"
-done
+done <<< "$supervisor_output"
 
 echo "===STATUS_CHECK_COMPLETE==="`
 
