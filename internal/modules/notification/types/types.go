@@ -100,6 +100,7 @@ const (
 	NotificationTypeDatabaseBackupFailed        NotificationType = "database_backup_failed"
 	NotificationTypeStaleProviderImages         NotificationType = "stale_provider_images"
 	NotificationTypeGHAPermissionsMissing       NotificationType = "gha_permissions_missing"
+	NotificationTypeQueueStopped                NotificationType = "queue_stopped"
 )
 
 var allNotificationTypes = []NotificationType{
@@ -119,6 +120,7 @@ var allNotificationTypes = []NotificationType{
 	NotificationTypeDatabaseBackupFailed,
 	NotificationTypeStaleProviderImages,
 	NotificationTypeGHAPermissionsMissing,
+	NotificationTypeQueueStopped,
 }
 
 var notificationTypeLabels = map[NotificationType]string{
@@ -138,6 +140,7 @@ var notificationTypeLabels = map[NotificationType]string{
 	NotificationTypeDatabaseBackupFailed:        "Database Backup Failed",
 	NotificationTypeStaleProviderImages:         "Stale Provider Images",
 	NotificationTypeGHAPermissionsMissing:       "GitHub App Missing Permissions",
+	NotificationTypeQueueStopped:                "Queue Worker Stopped",
 }
 
 // AllNotificationTypes returns all valid notification types

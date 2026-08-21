@@ -10,6 +10,7 @@ import (
 
 	"github.com/hibiken/asynq"
 
+	"github.com/kkz6/launch-go/internal/modules/notification/notifications"
 	servermodels "github.com/kkz6/launch-go/internal/modules/server/models"
 	servertasks "github.com/kkz6/launch-go/internal/modules/server/tasks"
 	"github.com/kkz6/launch-go/internal/modules/site/models"
@@ -191,9 +192,44 @@ func (j *SyncQueuesJob) Handle(ctx context.Context) error {
 			"failed_count":     len(j.failedQueueIDs),
 			"failed_queue_ids": j.failedQueueIDs,
 		})
+		j.notifyStoppedQueues(ctx, queues)
 	}
 
 	return nil
+}
+
+func (j *SyncQueuesJob) notifyStoppedQueues(ctx context.Context, queues []models.Queue) {
+	if j.Deps.TaskRunnerDeps == nil || j.Deps.TaskRunnerDeps.Notifier == nil || j.site == nil || j.server == nil {
+		return
+	}
+
+	failedIDs := make(map[string]struct{}, len(j.failedQueueIDs))
+	for _, id := range j.failedQueueIDs {
+		failedIDs[id] = struct{}{}
+	}
+
+	queueNames := make([]string, 0, len(failedIDs))
+	for i := range queues {
+		if _, failed := failedIDs[queues[i].ID]; failed {
+			queueNames = append(queueNames, queues[i].QueueName)
+		}
+	}
+	if len(queueNames) == 0 {
+		return
+	}
+
+	notification := notifications.NewQueueStoppedNotification(j.site.Address, j.server.Name, queueNames).
+		WithQueuesURL(queueManagementURL(j.Deps.FrontendURL, j.server.ID, j.site.ID))
+	if err := j.Deps.TaskRunnerDeps.Notifier.SendToTeam(ctx, j.server.TeamID, notification); err != nil {
+		j.Deps.Logger.Error().Err(err).Str("site_id", j.site.ID).Msg("failed to send stopped queue notification")
+	}
+}
+
+func queueManagementURL(frontendURL, serverID, siteID string) string {
+	if frontendURL == "" {
+		return ""
+	}
+	return fmt.Sprintf("%s/servers/%s/sites/%s?tab=queues", strings.TrimRight(frontendURL, "/"), serverID, siteID)
 }
 
 // Failed handles job failure
