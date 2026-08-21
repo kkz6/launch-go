@@ -76,12 +76,22 @@ func (j *RestartQueueJob) Handle(ctx context.Context) error {
 	}
 	if result.Error != nil {
 		j.Deps.Logger.Error().Err(result.Error).Str("queue_id", queue.ID).Msg("Failed to restart queue")
+		refreshQueueStatusAfterFailedRestart(ctx, j.Deps, site, server)
 		return result.Error
 	}
 
 	if result.GetExitCode() != 0 {
 		j.Deps.Logger.Error().Str("queue_id", queue.ID).Int("exit_code", result.GetExitCode()).Msg("Queue restart failed")
+		refreshQueueStatusAfterFailedRestart(ctx, j.Deps, site, server)
 		return fmt.Errorf("queue restart failed with exit code %d", result.GetExitCode())
+	}
+
+	failedQueueIDs, err := verifyQueuesAfterRestart(ctx, j.Deps, site, server)
+	if err != nil {
+		return fmt.Errorf("verify restarted queue: %w", err)
+	}
+	if containsQueueID(failedQueueIDs, queue.ID) {
+		return fmt.Errorf("queue %s did not remain running after restart", queue.ID)
 	}
 
 	// Broadcast success
@@ -172,12 +182,22 @@ func (j *RestartAllSiteQueuesJob) Handle(ctx context.Context) error {
 	}
 	if result.Error != nil {
 		j.Deps.Logger.Error().Err(result.Error).Str("site_id", site.ID).Msg("Failed to restart queues")
+		refreshQueueStatusAfterFailedRestart(ctx, j.Deps, site, server)
 		return result.Error
 	}
 
 	if result.GetExitCode() != 0 {
 		j.Deps.Logger.Error().Str("site_id", site.ID).Int("exit_code", result.GetExitCode()).Msg("Queue restart failed")
+		refreshQueueStatusAfterFailedRestart(ctx, j.Deps, site, server)
 		return fmt.Errorf("queue restart failed with exit code %d", result.GetExitCode())
+	}
+
+	failedQueueIDs, err := verifyQueuesAfterRestart(ctx, j.Deps, site, server)
+	if err != nil {
+		return fmt.Errorf("verify restarted queues: %w", err)
+	}
+	if len(failedQueueIDs) > 0 {
+		return fmt.Errorf("%d queue worker(s) did not remain running after restart", len(failedQueueIDs))
 	}
 
 	// Broadcast success
@@ -215,4 +235,49 @@ func NewRestartAllSiteQueuesTask(
 		SiteID: siteID,
 		UserID: userID,
 	}, opts...)
+}
+
+func verifyQueuesAfterRestart(
+	ctx context.Context,
+	jobDeps *JobDeps,
+	site *models.Site,
+	server *servermodels.Server,
+) ([]string, error) {
+	job := &SyncQueuesJob{
+		Deps: jobDeps,
+		Payload: SyncQueuesPayload{
+			SiteID:   site.ID,
+			ServerID: server.ID,
+			Trigger:  SyncQueuesTriggerPostRestart,
+		},
+	}
+
+	if err := job.Handle(ctx); err != nil {
+		return nil, err
+	}
+
+	return job.failedQueueIDs, nil
+}
+
+func containsQueueID(queueIDs []string, queueID string) bool {
+	for _, candidate := range queueIDs {
+		if candidate == queueID {
+			return true
+		}
+	}
+
+	return false
+}
+
+func refreshQueueStatusAfterFailedRestart(
+	ctx context.Context,
+	jobDeps *JobDeps,
+	site *models.Site,
+	server *servermodels.Server,
+) {
+	if _, err := verifyQueuesAfterRestart(ctx, jobDeps, site, server); err != nil {
+		jobDeps.Logger.Warn().Err(err).
+			Str("site_id", site.ID).
+			Msg("failed to refresh queue status after restart failure")
+	}
 }

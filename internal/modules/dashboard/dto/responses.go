@@ -8,6 +8,20 @@ import (
 type DashboardResponse struct {
 	Servers        []*DashboardServerResponse   `json:"servers"`
 	RecentActivity []*DashboardActivityResponse `json:"recent_activity"`
+	FailedQueues   []*FailedQueueResponse       `json:"failed_queues"`
+}
+
+// FailedQueueResponse represents an installed queue worker that was not
+// running during its most recent health check.
+type FailedQueueResponse struct {
+	ID              string     `json:"id"`
+	Name            string     `json:"name"`
+	Connection      string     `json:"connection"`
+	SiteID          string     `json:"site_id"`
+	SiteName        string     `json:"site_name"`
+	ServerID        string     `json:"server_id"`
+	ServerName      string     `json:"server_name"`
+	LastStatusCheck *time.Time `json:"last_status_check"`
 }
 
 // DashboardServerResponse represents a server in the dashboard

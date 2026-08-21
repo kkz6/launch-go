@@ -60,7 +60,8 @@ func (j *SyncAllQueuesJob) Handle(ctx context.Context) error {
 			continue
 		}
 
-		if err := j.Deps.DispatchTask(task, asynq.TaskID(pkgjobs.Dedup("sync_queues", r.SiteID))); err != nil {
+		taskID := pkgjobs.Dedup("sync_queues", r.SiteID, time.Now().UTC().Format("2006-01-02"))
+		if err := j.Deps.DispatchTask(task, asynq.TaskID(taskID), asynq.MaxRetry(2)); err != nil {
 			j.Deps.Logger.Error().Err(err).
 				Str("site_id", r.SiteID).
 				Msg("failed to dispatch sync queues task")
@@ -83,7 +84,5 @@ func (j *SyncAllQueuesJob) Failed(ctx context.Context, err error) {
 }
 
 func NewSyncAllQueuesTask() (*asynq.Task, error) {
-	return pkgjobs.Task(TypeSyncAllQueues, SyncAllQueuesPayload{},
-		asynq.TaskID(pkgjobs.Dedup("sync_all_queues", time.Now().Format("2006-01-02"))),
-	)
+	return pkgjobs.Task(TypeSyncAllQueues, SyncAllQueuesPayload{}, asynq.MaxRetry(2))
 }

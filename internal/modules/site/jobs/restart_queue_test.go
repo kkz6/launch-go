@@ -38,8 +38,8 @@ func TestRestartAllSiteQueuesFiltersUnavailableQueues(t *testing.T) {
 	err := job.Handle(context.Background())
 
 	require.NoError(t, err)
-	require.Equal(t, 1, dispatcher.ExecutionCount())
-	script := dispatcher.LastExecution().Script
+	require.Equal(t, 2, dispatcher.ExecutionCount())
+	script := dispatcher.GetExecution(0).Script
 	require.Contains(t, script, `"installed":*`)
 	require.NotContains(t, script, `"pending":*`)
 	require.NotContains(t, script, `"failed":*`)
@@ -89,6 +89,27 @@ func TestRestartAllSiteQueuesReturnsDispatcherError(t *testing.T) {
 	require.ErrorIs(t, err, expectedErr)
 }
 
+func TestRestartAllSiteQueuesFailsWhenVerificationFindsStoppedWorker(t *testing.T) {
+	jobDeps, dispatcher, db := restartQueueJobFixture(t)
+	createRestartQueue(t, db, "installed", true, false)
+	dispatcher.SetResult("Check Daemon Status", &taskrunner.TaskResult{
+		ExitCode: 0,
+		Output:   `{"daemon_id":"installed","status":"FATAL","pid":"","uptime_seconds":0,"description":"exited too quickly","error":"exited too quickly"}`,
+	})
+	job := &RestartAllSiteQueuesJob{
+		Deps:    jobDeps,
+		Payload: RestartAllSiteQueuesPayload{SiteID: "site-1"},
+	}
+
+	err := job.Handle(context.Background())
+
+	require.EqualError(t, err, "1 queue worker(s) did not remain running after restart")
+	var queue sitemodels.Queue
+	require.NoError(t, db.First(&queue, "id = ?", "installed").Error)
+	require.False(t, queue.Running)
+	require.NotNil(t, queue.LastStatusCheck)
+}
+
 func TestRestartQueueReturnsDispatcherError(t *testing.T) {
 	jobDeps, dispatcher, db := restartQueueJobFixture(t)
 	createRestartQueue(t, db, "queue-1", true, false)
@@ -105,6 +126,50 @@ func TestRestartQueueReturnsDispatcherError(t *testing.T) {
 	err := job.Handle(context.Background())
 
 	require.ErrorIs(t, err, expectedErr)
+}
+
+func TestRestartQueueVerifiesWorkerIsRunning(t *testing.T) {
+	jobDeps, dispatcher, db := restartQueueJobFixture(t)
+	createRestartQueue(t, db, "queue-1", true, false)
+	job := &RestartQueueJob{
+		Deps: jobDeps,
+		Payload: RestartQueuePayload{
+			SiteID:  "site-1",
+			QueueID: "queue-1",
+		},
+	}
+
+	err := job.Handle(context.Background())
+
+	require.NoError(t, err)
+	require.Equal(t, 2, dispatcher.ExecutionCount())
+}
+
+func TestRestartQueueFailsWhenVerificationFindsStoppedWorker(t *testing.T) {
+	jobDeps, dispatcher, db := restartQueueJobFixture(t)
+	createRestartQueue(t, db, "queue-1", true, false)
+	dispatcher.SetResult("Check Daemon Status", &taskrunner.TaskResult{
+		ExitCode: 0,
+		Output:   `{"daemon_id":"queue-1","status":"FATAL","pid":"","uptime_seconds":0,"description":"exited too quickly","error":"exited too quickly"}`,
+	})
+	job := &RestartQueueJob{
+		Deps: jobDeps,
+		Payload: RestartQueuePayload{
+			SiteID:  "site-1",
+			QueueID: "queue-1",
+		},
+	}
+
+	err := job.Handle(context.Background())
+
+	require.EqualError(t, err, "queue queue-1 did not remain running after restart")
+}
+
+func TestContainsQueueID(t *testing.T) {
+	t.Parallel()
+
+	require.True(t, containsQueueID([]string{"queue-1", "queue-2"}, "queue-2"))
+	require.False(t, containsQueueID([]string{"queue-1"}, "queue-2"))
 }
 
 func TestRestartQueueTaskConstructors(t *testing.T) {
@@ -126,6 +191,37 @@ func TestRestartQueueTaskConstructors(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "site-1", allPayload.SiteID)
 	require.Equal(t, &userID, allPayload.UserID)
+}
+
+func TestRestartQueueReturnsVerificationError(t *testing.T) {
+	jobDeps, dispatcher, db := restartQueueJobFixture(t)
+	createRestartQueue(t, db, "queue-1", true, false)
+	dispatcher.SetResult("Check Daemon Status", &taskrunner.TaskResult{ExitCode: 1})
+	job := &RestartQueueJob{Deps: jobDeps, Payload: RestartQueuePayload{SiteID: "site-1", QueueID: "queue-1"}}
+
+	err := job.Handle(context.Background())
+	require.ErrorContains(t, err, "verify restarted queue")
+}
+
+func TestRestartQueueRefreshesStatusAfterNonZeroExit(t *testing.T) {
+	jobDeps, dispatcher, db := restartQueueJobFixture(t)
+	createRestartQueue(t, db, "queue-1", true, false)
+	dispatcher.SetResult("Restart Queue", &taskrunner.TaskResult{ExitCode: 1})
+	job := &RestartQueueJob{Deps: jobDeps, Payload: RestartQueuePayload{SiteID: "site-1", QueueID: "queue-1"}}
+
+	err := job.Handle(context.Background())
+	require.EqualError(t, err, "queue restart failed with exit code 1")
+	require.Equal(t, 2, dispatcher.ExecutionCount())
+}
+
+func TestRestartAllSiteQueuesReturnsVerificationError(t *testing.T) {
+	jobDeps, dispatcher, db := restartQueueJobFixture(t)
+	createRestartQueue(t, db, "installed", true, false)
+	dispatcher.SetResult("Check Daemon Status", &taskrunner.TaskResult{ExitCode: 1})
+	job := &RestartAllSiteQueuesJob{Deps: jobDeps, Payload: RestartAllSiteQueuesPayload{SiteID: "site-1"}}
+
+	err := job.Handle(context.Background())
+	require.ErrorContains(t, err, "verify restarted queues")
 }
 
 func restartQueueJobFixture(
@@ -176,6 +272,11 @@ func restartQueueJobFixture(
 	require.NoError(t, db.Create(site).Error)
 
 	dispatcher := taskrunner.NewFakeDispatcher()
+	dispatcher.SetResult("Check Daemon Status", &taskrunner.TaskResult{
+		ExitCode: 0,
+		Output: `{"daemon_id":"installed","status":"RUNNING","pid":"101","uptime_seconds":30,"description":"","error":""}
+{"daemon_id":"queue-1","status":"RUNNING","pid":"102","uptime_seconds":30,"description":"","error":""}`,
+	})
 	logger := zerolog.Nop()
 	jobDeps := &JobDeps{
 		Deps: &pkgjobs.Deps{

@@ -55,6 +55,7 @@ func TestNewSyncQueuesTask(t *testing.T) {
 	require.NoError(t, json.Unmarshal(task.Payload(), &payload))
 	assert.Equal(t, "site-1", payload.SiteID)
 	assert.Equal(t, "server-1", payload.ServerID)
+	assert.Equal(t, SyncQueuesTriggerScheduled, payload.Trigger)
 }
 
 func TestValidateDaemonStatusResultPreservesTransportError(t *testing.T) {
@@ -69,8 +70,36 @@ func TestIsScheduledSyncTimeout(t *testing.T) {
 	t.Parallel()
 
 	userID := "user-1"
-	assert.True(t, isScheduledSyncTimeout(nil, context.DeadlineExceeded))
-	assert.True(t, isScheduledSyncTimeout(nil, fmt.Errorf("status: %w", errDaemonStatusTimeout)))
-	assert.False(t, isScheduledSyncTimeout(&userID, context.DeadlineExceeded), "manual sync failures must remain visible")
-	assert.False(t, isScheduledSyncTimeout(nil, errors.New("permission denied")))
+	assert.True(t, isScheduledSyncTimeout(SyncQueuesTriggerScheduled, nil, context.DeadlineExceeded))
+	assert.True(t, isScheduledSyncTimeout(SyncQueuesTriggerScheduled, nil, fmt.Errorf("status: %w", errDaemonStatusTimeout)))
+	assert.False(t, isScheduledSyncTimeout(SyncQueuesTriggerManual, &userID, context.DeadlineExceeded), "manual sync failures must remain visible")
+	assert.False(t, isScheduledSyncTimeout(SyncQueuesTriggerPostRestart, nil, context.DeadlineExceeded), "post-restart verification failures must remain visible")
+	assert.False(t, isScheduledSyncTimeout(SyncQueuesTriggerScheduled, nil, errors.New("permission denied")))
+}
+
+func TestScheduledSyncIgnoresDispatcherDeadline(t *testing.T) {
+	jobDeps, dispatcher, db := restartQueueJobFixture(t)
+	createRestartQueue(t, db, "queue-1", true, false)
+	dispatcher.SetRunError(context.DeadlineExceeded)
+	job := &SyncQueuesJob{Deps: jobDeps, Payload: SyncQueuesPayload{
+		SiteID: "site-1", ServerID: "server-1", Trigger: SyncQueuesTriggerScheduled,
+	}}
+
+	require.NoError(t, job.Handle(context.Background()))
+}
+
+func TestSyncQueuesReturnsQueueUpdateErrors(t *testing.T) {
+	jobDeps, _, db := restartQueueJobFixture(t)
+	createRestartQueue(t, db, "queue-1", true, false)
+	require.NoError(t, db.Exec(`
+		CREATE TRIGGER reject_queue_update BEFORE UPDATE ON queues
+		BEGIN SELECT RAISE(FAIL, 'update rejected'); END;
+	`).Error)
+	job := &SyncQueuesJob{Deps: jobDeps, Payload: SyncQueuesPayload{
+		SiteID: "site-1", ServerID: "server-1", Trigger: SyncQueuesTriggerManual,
+	}}
+
+	err := job.Handle(context.Background())
+	require.ErrorContains(t, err, "update queue statuses")
+	require.ErrorContains(t, err, "update rejected")
 }
