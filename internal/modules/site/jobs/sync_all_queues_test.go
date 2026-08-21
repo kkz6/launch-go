@@ -11,10 +11,12 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 
+	"github.com/kkz6/launch-go/internal/config"
 	servermodels "github.com/kkz6/launch-go/internal/modules/server/models"
 	sitemodels "github.com/kkz6/launch-go/internal/modules/site/models"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 	basemodels "github.com/kkz6/launch-go/internal/pkg/models"
+	queuepkg "github.com/kkz6/launch-go/internal/pkg/queue"
 )
 
 func TestSyncAllQueuesHandlesEmptyAndEligibleSites(t *testing.T) {
@@ -43,6 +45,11 @@ func TestSyncAllQueuesHandlesEmptyAndEligibleSites(t *testing.T) {
 	queue.UserID = server.UserID
 	require.NoError(t, db.Create(queue).Error)
 
+	require.NoError(t, job.Handle(context.Background()))
+
+	queueClient := queuepkg.NewClient(config.RedisConfig{Address: "127.0.0.1:1"})
+	t.Cleanup(func() { require.NoError(t, queueClient.Close()) })
+	job.Deps.Queue = queueClient
 	require.NoError(t, job.Handle(context.Background()))
 }
 
