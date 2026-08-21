@@ -58,10 +58,11 @@ while read -r line; do
 
     if [ "$status" = "RUNNING" ]; then
         # Description format: pid 12345, uptime 2:30:15
-        pid=$(echo "$description" | grep -oP 'pid \K[0-9]+' 2>/dev/null || echo "")
+        pid=$(printf '%s\n' "$description" | sed -n 's/.*pid \([0-9][0-9]*\).*/\1/p')
 
         # Parse uptime (format: H:MM:SS or D days, H:MM:SS or D day, H:MM:SS)
-        uptime_str=$(echo "$description" | grep -oP 'uptime \K.*' 2>/dev/null || echo "0:0:0")
+        uptime_str=$(printf '%s\n' "$description" | sed -n 's/.*uptime //p')
+        uptime_str=${uptime_str:-0:0:0}
 
         # Convert uptime to seconds
         # Handle "X day(s), H:MM:SS" format
@@ -70,13 +71,13 @@ while read -r line; do
             hours=${BASH_REMATCH[2]}
             mins=${BASH_REMATCH[3]}
             secs=${BASH_REMATCH[4]}
-            uptime_seconds=$((days * 86400 + hours * 3600 + mins * 60 + secs))
+            uptime_seconds=$((10#$days * 86400 + 10#$hours * 3600 + 10#$mins * 60 + 10#$secs))
         # Handle "H:MM:SS" format
         elif [[ "$uptime_str" =~ ^([0-9]+):([0-9]+):([0-9]+)$ ]]; then
             hours=${BASH_REMATCH[1]}
             mins=${BASH_REMATCH[2]}
             secs=${BASH_REMATCH[3]}
-            uptime_seconds=$((hours * 3600 + mins * 60 + secs))
+            uptime_seconds=$((10#$hours * 3600 + 10#$mins * 60 + 10#$secs))
         fi
     else
         # For non-running states, description might contain error info
