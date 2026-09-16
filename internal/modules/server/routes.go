@@ -114,6 +114,8 @@ func (m *Module) registerServerRoutes(router fiber.Router, authMiddleware fiber.
 		servers.Post("/:id/php/:phpId/opcache/configure", provisioned, middleware.Can("server.manage"), fiberutil.Validate(handler.ConfigureOpcache))
 		servers.Post("/:id/php/:phpId/extensions", provisioned, middleware.Can("server.manage"), fiberutil.Validate(handler.InstallPhpExtension))
 		servers.Delete("/:id/php/:phpId/extensions/:extension", provisioned, middleware.Can("server.manage"), handler.UninstallPhpExtension)
+		servers.Get("/:id/php/:phpId/configuration/:kind", provisioned, handler.GetPHPConfiguration)
+		servers.Put("/:id/php/:phpId/configuration/:kind", provisioned, middleware.Can("server.manage"), fiberutil.Validate(handler.UpdatePHPConfiguration))
 
 		// Composer Packages
 		servers.Get("/:id/packages", provisioned, fiberutil.IndexNested("id", "Composer auth retrieved", m.service.GetComposerAuth))

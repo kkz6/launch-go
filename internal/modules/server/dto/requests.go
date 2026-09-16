@@ -165,6 +165,13 @@ type UpdateComposerAuthRequest struct {
 	Contents string `json:"contents" validate:"required"`
 }
 
+// UpdatePHPConfigurationRequest represents an update to a version-scoped PHP
+// configuration file. The upper bound keeps synchronous SSH requests small and
+// comfortably covers the stock php.ini and php-fpm.conf files.
+type UpdatePHPConfigurationRequest struct {
+	Contents string `json:"contents" validate:"required,max=262144"`
+}
+
 // VulnerabilityAuditRequest represents the request body for running a vulnerability audit
 type VulnerabilityAuditRequest struct {
 	Email *string `json:"email" validate:"omitempty,email"`
