@@ -8,6 +8,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/server/providers"
 	"github.com/kkz6/launch-go/internal/modules/server/repositories"
 	"github.com/kkz6/launch-go/internal/modules/server/services"
+	"github.com/kkz6/launch-go/internal/modules/server/tasks"
 	"github.com/kkz6/launch-go/internal/pkg/app"
 	"github.com/kkz6/launch-go/internal/pkg/launch/sshkey"
 )
@@ -37,6 +38,14 @@ func NewModule(b *app.Builder) *Module {
 		Dependencies:    deps.ServiceDeps(),
 		Repos:           repos,
 		ProviderFactory: providers.NewFactory(sshkey.NewGenerator()),
+		TaskRunnerDeps: &tasks.TaskRunnerDeps{
+			DB:          deps.DB,
+			Queue:       deps.Queue,
+			Dispatcher:  deps.Dispatcher,
+			Logger:      deps.Logger,
+			Broadcaster: deps.WebSocket,
+			Notifier:    deps.Notifier,
+		},
 	})
 
 	return &Module{

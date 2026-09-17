@@ -279,12 +279,25 @@ func TestUpdateSitePHPVersionRejectsLostReservation(t *testing.T) {
 
 func TestUpdateSitePHPVersionRejectsInactiveTarget(t *testing.T) {
 	jobDeps, dispatcher, db := phpVersionJobFixture(t, servertypes.ServiceStatusStopped)
+	var server servermodels.Server
+	require.NoError(t, db.First(&server, "id = ?", "server-1").Error)
+	prepared, prepareErr := jobDeps.TaskRunnerDeps.
+		NewRunner(&server, taskrunner.NewBaseTask(
+			taskrunner.WithName("Queued site PHP update"),
+			taskrunner.WithScript(""),
+		)).
+		AsRoot().
+		ForSite("site-1").
+		TrackInDB().
+		Prepare(context.Background())
+	require.NoError(t, prepareErr)
 	job := &UpdateSitePHPVersionJob{
 		Deps: jobDeps,
 		Payload: UpdateSitePHPVersionPayload{
 			SiteID:          "site-1",
 			PreviousVersion: "php83",
 			Version:         "php84",
+			TaskID:          prepared.ID,
 		},
 	}
 
@@ -293,10 +306,17 @@ func TestUpdateSitePHPVersionRejectsInactiveTarget(t *testing.T) {
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "not active")
 	require.Zero(t, dispatcher.ExecutionCount())
+	job.Failed(context.Background(), err)
 
 	var site sitemodels.Site
 	require.NoError(t, db.First(&site, "id = ?", "site-1").Error)
 	require.Equal(t, sitetypes.PhpVersion83, *site.PhpVersion)
+	require.Nil(t, site.PendingPhpVersion)
+
+	var persistedTask servermodels.Task
+	require.NoError(t, db.First(&persistedTask, "id = ?", prepared.ID).Error)
+	require.Equal(t, string(servertypes.TaskStatusFailed), persistedTask.Status)
+	require.Contains(t, persistedTask.Output.String(), "not active")
 }
 
 func TestUpdateSitePHPVersionKeepsDatabaseOnRuntimeFailure(t *testing.T) {
@@ -408,7 +428,7 @@ func TestPersistPHPTransitionRejectsConcurrentQueueEdit(t *testing.T) {
 
 func TestUpdateSitePHPVersionTaskPayload(t *testing.T) {
 	userID := "user-1"
-	task, err := NewUpdateSitePHPVersionTask("site-1", "php83", "php84", false, &userID)
+	task, err := NewUpdateSitePHPVersionTask("site-1", "php83", "php84", false, &userID, "task-queued")
 	require.NoError(t, err)
 	require.Equal(t, TypeUpdateSitePHPVersion, task.Type())
 
@@ -419,6 +439,7 @@ func TestUpdateSitePHPVersionTaskPayload(t *testing.T) {
 	require.False(t, payload.PreviousVersionWasNull)
 	require.Equal(t, "php84", payload.Version)
 	require.Equal(t, &userID, payload.UserID)
+	require.Equal(t, "task-queued", payload.TaskID)
 }
 
 func TestReplacePHPExecutableOnlyReplacesExecutableToken(t *testing.T) {

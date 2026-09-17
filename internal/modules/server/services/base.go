@@ -3,6 +3,7 @@ package services
 import (
 	"github.com/kkz6/launch-go/internal/modules/server/contracts"
 	"github.com/kkz6/launch-go/internal/modules/server/providers"
+	servertasks "github.com/kkz6/launch-go/internal/modules/server/tasks"
 	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/launch/activity"
 	"github.com/kkz6/launch-go/internal/pkg/service"
@@ -26,6 +27,7 @@ type ServiceDeps struct {
 	service.Dependencies
 	Repos           contracts.RepositoryRegistry
 	ProviderFactory *providers.Factory
+	TaskRunnerDeps  *servertasks.TaskRunnerDeps
 }
 
 // Service provides business logic for server operations
@@ -35,6 +37,7 @@ type Service struct {
 	repos           contracts.RepositoryRegistry
 	dispatcher      *taskrunner.Dispatcher
 	providerFactory *providers.Factory
+	taskRunnerDeps  *servertasks.TaskRunnerDeps
 }
 
 // NewService creates a new Service instance from ServiceDeps
@@ -45,6 +48,7 @@ func NewService(deps ServiceDeps) *Service {
 		repos:           deps.Repos,
 		dispatcher:      deps.Dispatcher,
 		providerFactory: deps.ProviderFactory,
+		taskRunnerDeps:  deps.TaskRunnerDeps,
 	}
 }
 

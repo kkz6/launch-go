@@ -22,6 +22,7 @@ type PatchPhpVersionPayload struct {
 	ServiceID      string              `json:"service_id"`
 	PreviousStatus types.ServiceStatus `json:"previous_status"`
 	UserID         *string             `json:"user_id,omitempty"`
+	TaskID         string              `json:"task_id,omitempty"`
 }
 
 type PatchPhpVersionJob struct {
@@ -47,6 +48,7 @@ func (j *PatchPhpVersionJob) Timeout() time.Duration {
 
 func (j *PatchPhpVersionJob) Handle(ctx context.Context) error {
 	var err error
+	j.taskID = j.Payload.TaskID
 
 	j.service, err = j.Deps.Repos.Service().FindByID(ctx, j.Payload.ServiceID)
 	if err != nil {
@@ -82,7 +84,7 @@ func (j *PatchPhpVersionJob) Handle(ctx context.Context) error {
 	}
 	j.broadcastStatus(types.ServiceStatusUpdating)
 
-	result, err := j.Deps.RunTask(j.server, tasks.PatchPHP(software)).
+	runner := j.Deps.RunTask(j.server, tasks.PatchPHP(software)).
 		AsRoot().
 		TrackInDB().
 		OnTaskCreated(func(taskID string) {
@@ -100,8 +102,12 @@ func (j *PatchPhpVersionJob) Handle(ctx context.Context) error {
 					Msg("failed to associate PHP patch task")
 			}
 			j.broadcastPatch("running", "", "")
-		}).
-		Dispatch(ctx)
+		})
+	if j.Payload.TaskID != "" {
+		runner.UsePreparedTask(j.Payload.TaskID)
+		j.broadcastPatch("running", "", "")
+	}
+	result, err := runner.Dispatch(ctx)
 	if err != nil {
 		return j.recordFailure(ctx, fmt.Errorf("run PHP patch: %w", err))
 	}
@@ -189,9 +195,16 @@ func (j *PatchPhpVersionJob) setPatchState(
 
 func (j *PatchPhpVersionJob) recordFailure(ctx context.Context, patchErr error) error {
 	failureMessage := boundedPatchError(patchErr.Error(), 4096)
+	cleanupCtx, cancelCleanup := context.WithTimeout(context.WithoutCancel(ctx), 15*time.Second)
+	defer cancelCleanup()
+	if j.Deps.TaskRunnerDeps != nil {
+		if err := j.Deps.TaskRunnerDeps.FailPreparedTask(cleanupCtx, j.Payload.TaskID, patchErr); err != nil {
+			j.Deps.Logger.Error().Err(err).
+				Str("task_id", j.Payload.TaskID).
+				Msg("failed to persist PHP patch action failure")
+		}
+	}
 	if j.service != nil {
-		cleanupCtx, cancelCleanup := context.WithTimeout(context.WithoutCancel(ctx), 15*time.Second)
-		defer cancelCleanup()
 		if err := j.setPatchState(
 			cleanupCtx,
 			j.previousStatus,
@@ -251,6 +264,10 @@ func (j *PatchPhpVersionJob) broadcastPatch(patchStatus, output, version string)
 func (j *PatchPhpVersionJob) Failed(ctx context.Context, err error) {
 	if j.validated && !j.failureRecorded {
 		_ = j.recordFailure(ctx, err)
+	} else if j.Deps.TaskRunnerDeps != nil {
+		cleanupCtx, cancelCleanup := context.WithTimeout(context.WithoutCancel(ctx), 15*time.Second)
+		defer cancelCleanup()
+		_ = j.Deps.TaskRunnerDeps.FailPreparedTask(cleanupCtx, j.Payload.TaskID, err)
 	}
 
 	j.Deps.Logger.Error().Err(err).
@@ -264,7 +281,12 @@ func NewPatchPhpVersionTask(
 	serviceID string,
 	previousStatus types.ServiceStatus,
 	userID *string,
+	taskIDs ...string,
 ) (*asynq.Task, error) {
+	taskID := ""
+	if len(taskIDs) > 0 {
+		taskID = taskIDs[0]
+	}
 	return pkgjobs.Task(
 		TypePatchPhpVersion,
 		PatchPhpVersionPayload{
@@ -272,6 +294,7 @@ func NewPatchPhpVersionTask(
 			ServiceID:      serviceID,
 			PreviousStatus: previousStatus,
 			UserID:         userID,
+			TaskID:         taskID,
 		},
 		asynq.Timeout(20*time.Minute),
 	)

@@ -243,6 +243,34 @@ func TestPatchPhpVersionJobPersistsDetectedVersionAndTrackedTask(t *testing.T) {
 	assert.Zero(t, *persistedTask.ExitCode)
 }
 
+func TestPatchPhpVersionJobResumesPreparedAction(t *testing.T) {
+	job, _, db, dispatcher, _ := newPatchPhpVersionTestJob(t)
+	server := job.Deps.Repos.Server().(*patchJobServerRepository).server
+	prepared, err := job.Deps.TaskRunnerDeps.
+		NewRunner(server, taskrunner.NewBaseTask(
+			taskrunner.WithName("Queued PHP patch"),
+			taskrunner.WithScript(""),
+		)).
+		AsRoot().
+		TrackInDB().
+		Prepare(context.Background())
+	require.NoError(t, err)
+	job.Payload.TaskID = prepared.ID
+	dispatcher.DefaultResult.Output = "LAUNCH_PHP_PATCH_VERSION=8.3.12\n"
+
+	require.NoError(t, job.Handle(context.Background()))
+
+	var count int64
+	require.NoError(t, db.Model(&models.Task{}).Count(&count).Error)
+	assert.Equal(t, int64(1), count)
+	var persisted models.Task
+	require.NoError(t, db.First(&persisted, "id = ?", prepared.ID).Error)
+	assert.Equal(t, "Patch PHP 8.3", persisted.Name)
+	assert.Equal(t, string(types.TaskStatusFinished), persisted.Status)
+	require.Len(t, dispatcher.Executions, 1)
+	assert.Equal(t, prepared.ID, dispatcher.Executions[0].TaskID)
+}
+
 func TestPatchPhpVersionJobRecordsTaskFailure(t *testing.T) {
 	job, service, db, dispatcher, broadcaster := newPatchPhpVersionTestJob(t)
 	dispatcher.SetDefaultFailure(1, "apt repository unavailable")
@@ -336,6 +364,7 @@ func TestNewPatchPhpVersionTaskCarriesReservationState(t *testing.T) {
 		"service-php83",
 		types.ServiceStatusRunning,
 		nil,
+		"task-queued",
 	)
 
 	require.NoError(t, err)
@@ -345,6 +374,7 @@ func TestNewPatchPhpVersionTaskCarriesReservationState(t *testing.T) {
 	assert.Equal(t, "server-a", payload.ServerID)
 	assert.Equal(t, "service-php83", payload.ServiceID)
 	assert.Equal(t, types.ServiceStatusRunning, payload.PreviousStatus)
+	assert.Equal(t, "task-queued", payload.TaskID)
 }
 
 func TestBoundedPatchErrorLimitsPersistedAndBroadcastPayload(t *testing.T) {

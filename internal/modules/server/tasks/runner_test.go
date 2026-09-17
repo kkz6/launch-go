@@ -3,6 +3,7 @@ package tasks
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"sync"
 	"sync/atomic"
@@ -372,6 +373,107 @@ func TestTaskRunner_RunPersistsSuccessAndFailure(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestTaskRunnerPrepareAndResumeUsesOneTrackedAction(t *testing.T) {
+	require.NoError(t, serializers.SetEncryptionKey([]byte("0123456789abcdef0123456789abcdef")))
+	db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared"), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, db.AutoMigrate(&models.Task{}))
+
+	server := createTestServer()
+	prepared, err := NewTaskRunner(server, taskrunner.NewBaseTask(
+		taskrunner.WithName("Queued PHP update"),
+		taskrunner.WithScript(""),
+	)).
+		WithDB(db).
+		ForSite("site-123").
+		TrackInDB().
+		Prepare(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, string(servertypes.TaskStatusPending), prepared.Status)
+
+	dispatcher := &mockDispatcher{}
+	result, err := NewTaskRunner(server, createTestTask()).
+		WithDB(db).
+		WithDispatcher(dispatcher).
+		ForSite("site-123").
+		UsePreparedTask(prepared.ID).
+		Dispatch(context.Background())
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.NotNil(t, result.TaskModel)
+	assert.Equal(t, prepared.ID, result.TaskModel.ID)
+	require.NotNil(t, dispatcher.lastTask)
+	assert.Equal(t, prepared.ID, dispatcher.lastTask.GetID())
+
+	var count int64
+	require.NoError(t, db.Model(&models.Task{}).Count(&count).Error)
+	assert.Equal(t, int64(1), count)
+
+	var persisted models.Task
+	require.NoError(t, db.First(&persisted, "id = ?", prepared.ID).Error)
+	assert.Equal(t, string(servertypes.TaskStatusFinished), persisted.Status)
+	assert.Equal(t, "Test Task", persisted.Name)
+	assert.Equal(t, "echo 'hello world'", persisted.Script.String())
+	require.NotNil(t, persisted.SiteID)
+	assert.Equal(t, "site-123", *persisted.SiteID)
+}
+
+func TestTaskRunnerPreparedActionRejectsMismatchedTarget(t *testing.T) {
+	require.NoError(t, serializers.SetEncryptionKey([]byte("0123456789abcdef0123456789abcdef")))
+	db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared"), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, db.AutoMigrate(&models.Task{}))
+
+	server := createTestServer()
+	prepared, err := NewTaskRunner(server, createTestTask()).
+		WithDB(db).
+		ForSite("site-a").
+		TrackInDB().
+		Prepare(context.Background())
+	require.NoError(t, err)
+
+	result, err := NewTaskRunner(server, createTestTask()).
+		WithDB(db).
+		WithDispatcher(&mockDispatcher{}).
+		ForSite("site-b").
+		UsePreparedTask(prepared.ID).
+		Dispatch(context.Background())
+	require.Error(t, err)
+	require.NotNil(t, result)
+	assert.Contains(t, err.Error(), "target does not match")
+
+	var persisted models.Task
+	require.NoError(t, db.First(&persisted, "id = ?", prepared.ID).Error)
+	assert.Equal(t, string(servertypes.TaskStatusPending), persisted.Status)
+}
+
+func TestTaskRunnerDepsFailPreparedTaskOnlyTerminatesActiveAction(t *testing.T) {
+	require.NoError(t, serializers.SetEncryptionKey([]byte("0123456789abcdef0123456789abcdef")))
+	db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared"), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, db.AutoMigrate(&models.Task{}))
+
+	prepared, err := NewTaskRunner(createTestServer(), createTestTask()).
+		WithDB(db).
+		TrackInDB().
+		Prepare(context.Background())
+	require.NoError(t, err)
+
+	deps := &TaskRunnerDeps{DB: db}
+	require.NoError(t, deps.FailPreparedTask(context.Background(), prepared.ID, assert.AnError))
+
+	var persisted models.Task
+	require.NoError(t, db.First(&persisted, "id = ?", prepared.ID).Error)
+	assert.Equal(t, string(servertypes.TaskStatusFailed), persisted.Status)
+	assert.Equal(t, assert.AnError.Error(), persisted.Output.String())
+	require.NotNil(t, persisted.ExitCode)
+	assert.Equal(t, 1, *persisted.ExitCode)
+
+	require.NoError(t, deps.FailPreparedTask(context.Background(), prepared.ID, errors.New("later failure")))
+	require.NoError(t, db.First(&persisted, "id = ?", prepared.ID).Error)
+	assert.Equal(t, assert.AnError.Error(), persisted.Output.String())
 }
 
 // =============================================================================
