@@ -33,6 +33,7 @@ type UpdateSitePHPVersionPayload struct {
 	PreviousVersionWasNull bool    `json:"previous_version_was_null,omitempty"`
 	Version                string  `json:"version"`
 	UserID                 *string `json:"user_id,omitempty"`
+	TaskID                 string  `json:"task_id,omitempty"`
 }
 
 type commandChange struct {
@@ -83,7 +84,17 @@ func (j *UpdateSitePHPVersionJob) Handle(ctx context.Context) error {
 	}
 
 	if site.PhpVersion != nil && site.PhpVersion.String() == target.String() {
-		return j.clearPendingUpdate(ctx)
+		if err := j.clearPendingUpdate(ctx); err != nil {
+			return err
+		}
+		if j.Deps.TaskRunnerDeps != nil {
+			return j.Deps.TaskRunnerDeps.FinishPreparedTask(
+				ctx,
+				j.Payload.TaskID,
+				fmt.Sprintf("Site already uses PHP %s", target.GetVersion()),
+			)
+		}
+		return nil
 	}
 
 	current := ""
@@ -115,7 +126,11 @@ func (j *UpdateSitePHPVersionJob) Handle(ctx context.Context) error {
 	}
 
 	updateTask := tasks.UpdatePHPVersion(transition.UpdateConfig)
-	result, err := j.Deps.RunTask(server, updateTask).AsRoot().ForSite(site.ID).Dispatch(ctx)
+	runner := j.Deps.RunTask(server, updateTask).AsRoot().ForSite(site.ID)
+	if j.Payload.TaskID != "" {
+		runner.UsePreparedTask(j.Payload.TaskID)
+	}
+	result, err := runner.Dispatch(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to update site PHP runtime: %w", err)
 	}
@@ -157,6 +172,7 @@ func (j *UpdateSitePHPVersionJob) Handle(ctx context.Context) error {
 		"site_id":     site.ID,
 		"address":     site.Address,
 		"php_version": target.String(),
+		"task_id":     j.Payload.TaskID,
 	})
 	j.Deps.BroadcastServerEvent(server, "site.updated", map[string]any{
 		"team_id":   server.TeamID,
@@ -510,6 +526,13 @@ func (j *UpdateSitePHPVersionJob) clearPendingUpdate(ctx context.Context) error 
 func (j *UpdateSitePHPVersionJob) Failed(ctx context.Context, err error) {
 	cleanupCtx, cancelCleanup := context.WithTimeout(context.WithoutCancel(ctx), 15*time.Second)
 	defer cancelCleanup()
+	if j.Deps.TaskRunnerDeps != nil {
+		if taskErr := j.Deps.TaskRunnerDeps.FailPreparedTask(cleanupCtx, j.Payload.TaskID, err); taskErr != nil {
+			j.Deps.Logger.Error().Err(taskErr).
+				Str("task_id", j.Payload.TaskID).
+				Msg("failed to persist site PHP update action failure")
+		}
+	}
 	_ = j.clearPendingUpdate(cleanupCtx)
 	j.Deps.Logger.Error().
 		Err(err).
@@ -549,6 +572,7 @@ func (j *UpdateSitePHPVersionJob) Failed(ctx context.Context, err error) {
 			"address":     site.Address,
 			"php_version": j.Payload.Version,
 			"error":       err.Error(),
+			"task_id":     j.Payload.TaskID,
 		})
 	}
 }
@@ -559,7 +583,12 @@ func NewUpdateSitePHPVersionTask(
 	version string,
 	previousVersionWasNull bool,
 	userID *string,
+	taskIDs ...string,
 ) (*asynq.Task, error) {
+	taskID := ""
+	if len(taskIDs) > 0 {
+		taskID = taskIDs[0]
+	}
 	return pkgjobs.Task(
 		TypeUpdateSitePHPVersion,
 		UpdateSitePHPVersionPayload{
@@ -568,6 +597,7 @@ func NewUpdateSitePHPVersionTask(
 			PreviousVersionWasNull: previousVersionWasNull,
 			Version:                version,
 			UserID:                 userID,
+			TaskID:                 taskID,
 		},
 		asynq.MaxRetry(0),
 	)

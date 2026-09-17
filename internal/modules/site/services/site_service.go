@@ -24,6 +24,7 @@ import (
 	"github.com/kkz6/launch-go/internal/pkg/launch/activity"
 	"github.com/kkz6/launch-go/internal/pkg/security"
 	pkgservice "github.com/kkz6/launch-go/internal/pkg/service"
+	pkgtaskrunner "github.com/kkz6/launch-go/internal/pkg/taskrunner"
 )
 
 const (
@@ -770,6 +771,7 @@ func (s *SiteService) updateSite(ctx context.Context, id, serverID, teamID, user
 		(site.PhpVersion == nil || *req.PhpVersion != site.PhpVersion.String())
 	previousPHPVersionWasNull := site.PhpVersion == nil
 	previousPHPVersion := ""
+	var phpTargetServer *servermodels.Server
 	if site.PhpVersion != nil {
 		previousPHPVersion = site.PhpVersion.String()
 	}
@@ -785,6 +787,7 @@ func (s *SiteService) updateSite(ctx context.Context, id, serverID, teamID, user
 		if findErr != nil {
 			return nil, fmt.Errorf("failed to fetch server: %w", findErr)
 		}
+		phpTargetServer = server
 		if err := validateActiveServerPHP(server, *req.PhpVersion); err != nil {
 			return nil, err
 		}
@@ -837,18 +840,6 @@ func (s *SiteService) updateSite(ctx context.Context, id, serverID, teamID, user
 			return nil, errors.New("database not configured")
 		}
 
-		userIDPtr := userID
-		task, taskErr := jobs.NewUpdateSitePHPVersionTask(
-			site.ID,
-			previousPHPVersion,
-			*req.PhpVersion,
-			previousPHPVersionWasNull,
-			&userIDPtr,
-		)
-		if taskErr != nil {
-			return nil, taskErr
-		}
-
 		now, reserveErr := s.reserveSiteConfigurationUpdate(
 			ctx,
 			site,
@@ -859,7 +850,52 @@ func (s *SiteService) updateSite(ctx context.Context, id, serverID, teamID, user
 		if reserveErr != nil {
 			return nil, reserveErr
 		}
+
+		preparedTaskID := ""
+		if s.ServiceDeps().TaskRunnerDeps != nil {
+			target, parseErr := sitetypes.ParsePhpVersion(*req.PhpVersion)
+			if parseErr != nil {
+				s.rollbackSiteConfigurationUpdate(ctx, site, updates, *req.PhpVersion)
+				return nil, parseErr
+			}
+			pendingAction := pkgtaskrunner.NewBaseTask(
+				pkgtaskrunner.WithName(fmt.Sprintf("Switch %s to PHP %s", site.Address, target.GetVersion())),
+				pkgtaskrunner.WithScript(""),
+				pkgtaskrunner.WithTimeoutSeconds(300),
+			)
+			preparedTask, prepareErr := s.ServiceDeps().TaskRunnerDeps.
+				NewRunner(phpTargetServer, pendingAction).
+				AsRoot().
+				ForSite(site.ID).
+				TrackInDB().
+				Prepare(ctx)
+			if prepareErr != nil {
+				s.rollbackSiteConfigurationUpdate(ctx, site, updates, *req.PhpVersion)
+				return nil, fmt.Errorf("prepare site PHP update action: %w", prepareErr)
+			}
+			preparedTaskID = preparedTask.ID
+		}
+
+		userIDPtr := userID
+		task, taskErr := jobs.NewUpdateSitePHPVersionTask(
+			site.ID,
+			previousPHPVersion,
+			*req.PhpVersion,
+			previousPHPVersionWasNull,
+			&userIDPtr,
+			preparedTaskID,
+		)
+		if taskErr != nil {
+			if s.ServiceDeps().TaskRunnerDeps != nil {
+				_ = s.ServiceDeps().TaskRunnerDeps.FailPreparedTask(ctx, preparedTaskID, taskErr)
+			}
+			s.rollbackSiteConfigurationUpdate(ctx, site, updates, *req.PhpVersion)
+			return nil, taskErr
+		}
 		if enqueueErr := s.enqueueTaskStrict(task); enqueueErr != nil {
+			if s.ServiceDeps().TaskRunnerDeps != nil {
+				_ = s.ServiceDeps().TaskRunnerDeps.FailPreparedTask(ctx, preparedTaskID, enqueueErr)
+			}
 			s.rollbackSiteConfigurationUpdate(ctx, site, updates, *req.PhpVersion)
 			return nil, enqueueErr
 		}
@@ -878,14 +914,18 @@ func (s *SiteService) updateSite(ctx context.Context, id, serverID, teamID, user
 				"version":          *req.PhpVersion,
 			},
 		)
-		s.BroadcastToTeam(teamID, "site.php_version_update_requested", map[string]any{
+		queuedEvent := map[string]any{
 			"team_id":          teamID,
 			"server_id":        serverID,
 			"site_id":          site.ID,
 			"address":          site.Address,
 			"previous_version": previousPHPVersion,
 			"php_version":      *req.PhpVersion,
-		})
+		}
+		if preparedTaskID != "" {
+			queuedEvent["task_id"] = preparedTaskID
+		}
+		s.BroadcastToTeam(teamID, "site.php_version_update_requested", queuedEvent)
 	} else if updateCaddyfile {
 		if !s.HasQueue() {
 			return nil, pkgservice.ErrQueueRequired

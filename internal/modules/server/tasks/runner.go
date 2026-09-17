@@ -79,6 +79,7 @@ type TaskRunner struct {
 	completionConfig *taskrunner.CompletionConfig
 	markerHandler    taskrunner.MarkerHandler
 	onTaskCreated    func(taskID string)
+	preparedTaskID   string
 }
 
 // NewTaskRunner creates a new TaskRunner for a server.
@@ -169,6 +170,44 @@ func (r *TaskRunner) TrackInDB() *TaskRunner {
 	return r
 }
 
+// UsePreparedTask resumes a task row that was created before the queue job was
+// dispatched. This keeps queued work visible in Active Actions and gives
+// queue/preflight failures a durable log target.
+func (r *TaskRunner) UsePreparedTask(taskID string) *TaskRunner {
+	if taskID != "" {
+		r.preparedTaskID = taskID
+		r.trackInDB = true
+	}
+	return r
+}
+
+// Prepare creates and broadcasts a pending tracked task without starting the
+// remote command. The returned ID should be carried in the queue payload and
+// later supplied to UsePreparedTask.
+func (r *TaskRunner) Prepare(ctx context.Context) (*models.Task, error) {
+	if r.db == nil {
+		return nil, fmt.Errorf("database required to prepare task")
+	}
+	if r.preparedTaskID != "" {
+		return nil, fmt.Errorf("task %s is already prepared", r.preparedTaskID)
+	}
+
+	r.trackInDB = true
+	taskModel, err := r.newTaskModel()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create task model: %w", err)
+	}
+	if err := r.db.WithContext(ctx).Create(taskModel).Error; err != nil {
+		return nil, fmt.Errorf("failed to create task model: %w", err)
+	}
+	r.broadcastTaskEvent("task.created", taskModel, "")
+	r.preparedTaskID = taskModel.ID
+	if r.onTaskCreated != nil {
+		r.onTaskCreated(taskModel.ID)
+	}
+	return taskModel, nil
+}
+
 // WithoutTracking disables database tracking for internal probes that should
 // not appear as user-facing actions.
 func (r *TaskRunner) WithoutTracking() *TaskRunner {
@@ -255,21 +294,35 @@ func (r *TaskRunner) Run(ctx context.Context) (*TaskRunnerResult, error) {
 	var taskModel *models.Task
 	var err error
 	if r.trackInDB && r.db != nil {
-		taskModel, err = r.createTaskModel()
+		if r.preparedTaskID != "" {
+			taskModel, err = r.claimPreparedTask(ctx)
+			if err != nil {
+				runErr := fmt.Errorf("failed to claim prepared task: %w", err)
+				return &TaskRunnerResult{Error: runErr}, runErr
+			}
+		} else {
+			taskModel, err = r.createTaskModel()
+			if err != nil {
+				return nil, fmt.Errorf("failed to create task model: %w", err)
+			}
+			if r.onTaskCreated != nil {
+				r.onTaskCreated(taskModel.ID)
+			}
+			err = r.db.Model(taskModel).
+				Where("status = ?", string(servertypes.TaskStatusPending)).
+				Update("status", string(servertypes.TaskStatusRunning)).Error
+		}
 		if err != nil {
-			return nil, fmt.Errorf("failed to create task model: %w", err)
-		}
-		if r.onTaskCreated != nil {
-			r.onTaskCreated(taskModel.ID)
-		}
-		if err := r.db.Model(taskModel).Update("status", string(servertypes.TaskStatusRunning)).Error; err != nil {
 			runErr := fmt.Errorf("failed to mark task running: %w", err)
-			r.failTrackedTask(ctx, taskModel, runErr)
+			if taskModel != nil {
+				r.failTrackedTask(ctx, taskModel, runErr)
+			}
 			return &TaskRunnerResult{
 				TaskModel: taskModel,
 				Error:     runErr,
 			}, runErr
 		}
+		taskModel.Status = string(servertypes.TaskStatusRunning)
 		r.broadcastTaskRunning(taskModel)
 	}
 
@@ -706,7 +759,83 @@ func (r *TaskRunner) getConnection() (*taskrunner.Connection, error) {
 	return r.server.ConnectionAsUser(), nil
 }
 
+func (r *TaskRunner) claimPreparedTask(ctx context.Context) (*models.Task, error) {
+	prepared := &models.Task{}
+	if err := r.db.WithContext(ctx).
+		Where("id = ? AND server_id = ?", r.preparedTaskID, r.server.ID).
+		First(prepared).Error; err != nil {
+		return nil, fmt.Errorf("find prepared task: %w", err)
+	}
+	if prepared.Status != string(servertypes.TaskStatusPending) {
+		return nil, fmt.Errorf("prepared task is %s, expected pending", prepared.Status)
+	}
+	if (prepared.SiteID == nil) != (r.siteID == nil) ||
+		(prepared.SiteID != nil && r.siteID != nil && *prepared.SiteID != *r.siteID) {
+		return nil, fmt.Errorf("prepared task target does not match execution target")
+	}
+
+	actual, err := r.newTaskModel()
+	if err != nil {
+		return nil, err
+	}
+	updates := map[string]any{
+		"name":      actual.Name,
+		"user":      actual.User,
+		"type":      actual.Type,
+		"instance":  actual.Instance,
+		"script":    actual.Script,
+		"timeout":   actual.Timeout,
+		"site_id":   actual.SiteID,
+		"status":    string(servertypes.TaskStatusRunning),
+		"output":    dbtype.EncryptedString(""),
+		"exit_code": nil,
+	}
+	result := r.db.WithContext(ctx).
+		Model(&models.Task{}).
+		Where(
+			"id = ? AND server_id = ? AND status = ?",
+			prepared.ID,
+			r.server.ID,
+			string(servertypes.TaskStatusPending),
+		).
+		Updates(updates)
+	if result.Error != nil {
+		return nil, result.Error
+	}
+	if result.RowsAffected != 1 {
+		return nil, fmt.Errorf("prepared task was claimed concurrently")
+	}
+
+	prepared.Name = actual.Name
+	prepared.User = actual.User
+	prepared.Type = actual.Type
+	prepared.Instance = actual.Instance
+	prepared.Script = actual.Script
+	prepared.Timeout = actual.Timeout
+	prepared.SiteID = actual.SiteID
+	prepared.Status = string(servertypes.TaskStatusRunning)
+	prepared.Output = ""
+	prepared.ExitCode = nil
+	return prepared, nil
+}
+
 func (r *TaskRunner) createTaskModel() (*models.Task, error) {
+	taskModel, err := r.newTaskModel()
+	if err != nil {
+		return nil, err
+	}
+
+	if err := r.db.Create(taskModel).Error; err != nil {
+		return nil, err
+	}
+
+	// Broadcast task created event
+	r.broadcastTaskEvent("task.created", taskModel, "")
+
+	return taskModel, nil
+}
+
+func (r *TaskRunner) newTaskModel() (*models.Task, error) {
 	script := r.task.Script()
 	taskType := getTaskTypeName(r.task)
 
@@ -749,13 +878,6 @@ func (r *TaskRunner) createTaskModel() (*models.Task, error) {
 		}
 		taskModel.Instance = dbtype.EncryptedString(instance)
 	}
-
-	if err := r.db.Create(taskModel).Error; err != nil {
-		return nil, err
-	}
-
-	// Broadcast task created event
-	r.broadcastTaskEvent("task.created", taskModel, "")
 
 	return taskModel, nil
 }
@@ -831,6 +953,97 @@ func (d *TaskRunnerDeps) NewRunner(server *models.Server, task taskrunner.Task) 
 		WithLogger(d.Logger).
 		WithBroadcaster(d.Broadcaster).
 		WithNotifier(d.Notifier)
+}
+
+// FailPreparedTask terminates a queued/preflight action that never reached the
+// remote TaskRunner. Terminal tasks are left unchanged so a later job failure
+// callback cannot overwrite the real SSH result.
+func (d *TaskRunnerDeps) FailPreparedTask(ctx context.Context, taskID string, taskErr error) error {
+	if taskID == "" || d.DB == nil || taskErr == nil {
+		return nil
+	}
+
+	var taskModel models.Task
+	if err := d.DB.WithContext(ctx).First(&taskModel, "id = ?", taskID).Error; err != nil {
+		return err
+	}
+	if taskModel.Status != string(servertypes.TaskStatusPending) &&
+		taskModel.Status != string(servertypes.TaskStatusRunning) {
+		return nil
+	}
+
+	exitCode := 1
+	result := d.DB.WithContext(ctx).
+		Model(&models.Task{}).
+		Where("id = ? AND status IN ?", taskID, []string{
+			string(servertypes.TaskStatusPending),
+			string(servertypes.TaskStatusRunning),
+		}).
+		Updates(map[string]any{
+			"status":    string(servertypes.TaskStatusFailed),
+			"output":    dbtype.EncryptedString(taskErr.Error()),
+			"exit_code": exitCode,
+		})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return nil
+	}
+
+	taskModel.Status = string(servertypes.TaskStatusFailed)
+	taskModel.Output = dbtype.EncryptedString(taskErr.Error())
+	taskModel.ExitCode = &exitCode
+	if d.Broadcaster != nil {
+		var server models.Server
+		if err := d.DB.WithContext(ctx).First(&server, "id = ?", taskModel.ServerID).Error; err == nil {
+			d.Broadcaster.BroadcastToTeam(
+				server.TeamID,
+				"task.updated",
+				taskModel.BroadcastData(taskErr.Error()),
+			)
+		}
+	}
+	return nil
+}
+
+// FinishPreparedTask completes a prepared action when the requested state was
+// already reached before remote execution began.
+func (d *TaskRunnerDeps) FinishPreparedTask(ctx context.Context, taskID, output string) error {
+	if taskID == "" || d.DB == nil {
+		return nil
+	}
+
+	exitCode := 0
+	result := d.DB.WithContext(ctx).
+		Model(&models.Task{}).
+		Where("id = ? AND status IN ?", taskID, []string{
+			string(servertypes.TaskStatusPending),
+			string(servertypes.TaskStatusRunning),
+		}).
+		Updates(map[string]any{
+			"status":    string(servertypes.TaskStatusFinished),
+			"output":    dbtype.EncryptedString(output),
+			"exit_code": exitCode,
+		})
+	if result.Error != nil || result.RowsAffected == 0 {
+		return result.Error
+	}
+
+	if d.Broadcaster != nil {
+		var taskModel models.Task
+		if err := d.DB.WithContext(ctx).First(&taskModel, "id = ?", taskID).Error; err == nil {
+			var server models.Server
+			if err := d.DB.WithContext(ctx).First(&server, "id = ?", taskModel.ServerID).Error; err == nil {
+				d.Broadcaster.BroadcastToTeam(
+					server.TeamID,
+					"task.updated",
+					taskModel.BroadcastData(output),
+				)
+			}
+		}
+	}
+	return nil
 }
 
 // RunTask is a convenience function to run a task on a server synchronously.

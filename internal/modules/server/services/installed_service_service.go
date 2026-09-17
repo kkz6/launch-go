@@ -14,6 +14,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/server/dto"
 	"github.com/kkz6/launch-go/internal/modules/server/jobs"
 	"github.com/kkz6/launch-go/internal/modules/server/models"
+	servertasks "github.com/kkz6/launch-go/internal/modules/server/tasks"
 	"github.com/kkz6/launch-go/internal/modules/server/types"
 	"github.com/kkz6/launch-go/internal/pkg/dbtype"
 	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
@@ -735,10 +736,30 @@ func (s *Service) PatchPhpVersion(ctx context.Context, serviceID, serverID, team
 	queuedTypeData["patch_status"] = "queued"
 	delete(queuedTypeData, "patch_error")
 	delete(queuedTypeData, "patch_finished_at")
+	preparedTaskID := ""
+	if s.taskRunnerDeps != nil {
+		preparedTask, prepareErr := s.taskRunnerDeps.
+			NewRunner(server, servertasks.PatchPHP(service.GetSoftware())).
+			AsRoot().
+			TrackInDB().
+			Prepare(ctx)
+		if prepareErr != nil {
+			_, _ = s.restorePhpPatchReservation(ctx, service.ID, previousStatus)
+			return fmt.Errorf("prepare PHP patch action: %w", prepareErr)
+		}
+		preparedTaskID = preparedTask.ID
+	}
+	taskIDValue := any(nil)
+	if preparedTaskID != "" {
+		taskIDValue = preparedTaskID
+	}
 	if err := s.repos.Service().UpdateFields(ctx, service.ID, map[string]any{
 		"type_data": queuedTypeData,
-		"task_id":   nil,
+		"task_id":   taskIDValue,
 	}); err != nil {
+		if s.taskRunnerDeps != nil {
+			_ = s.taskRunnerDeps.FailPreparedTask(ctx, preparedTaskID, err)
+		}
 		restored, rollbackErr := s.restorePhpPatchReservation(
 			ctx,
 			service.ID,
@@ -761,29 +782,40 @@ func (s *Service) PatchPhpVersion(ctx context.Context, serviceID, serverID, team
 	}
 	service.TypeData = queuedTypeData
 	service.TaskID = nil
+	if preparedTaskID != "" {
+		service.TaskID = &preparedTaskID
+	}
 	s.BroadcastToTeam(teamID, "service.status_changed", map[string]any{
 		"server_id":  server.ID,
 		"service_id": service.ID,
 		"status":     types.ServiceStatusUpdating.String(),
 	})
-	s.BroadcastToTeam(teamID, "php.patch", map[string]any{
+	queuedEvent := map[string]any{
 		"server_id":  server.ID,
 		"service_id": service.ID,
 		"status":     "queued",
 		"version":    service.PhpVersionSeries(),
-	})
+	}
+	if preparedTaskID != "" {
+		queuedEvent["task_id"] = preparedTaskID
+	}
+	s.BroadcastToTeam(teamID, "php.patch", queuedEvent)
 
 	task, dispatchErr := jobs.NewPatchPhpVersionTask(
 		server.ID,
 		service.ID,
 		previousStatus,
 		&userID,
+		preparedTaskID,
 	)
 	if dispatchErr == nil {
 		_, dispatchErr = s.Queue.EnqueueDefault(task)
 	}
 	if dispatchErr == nil {
 		return nil
+	}
+	if s.taskRunnerDeps != nil {
+		_ = s.taskRunnerDeps.FailPreparedTask(ctx, preparedTaskID, dispatchErr)
 	}
 
 	restored, rollbackErr := s.restorePhpPatchReservation(
