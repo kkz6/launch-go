@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"strings"
+	"time"
 
 	basemodels "github.com/kkz6/launch-go/internal/pkg/models"
 )
@@ -38,9 +39,10 @@ func (k *SSHKey) GetFingerprint() string {
 
 // ServerSSHKey represents the many-to-many relationship between servers and SSH keys
 type ServerSSHKey struct {
-	basemodels.BaseModel
-	ServerID string `gorm:"column:server_id;type:char(26);primaryKey" json:"server_id"`
-	SSHKeyID string `gorm:"column:ssh_key_id;type:char(26);primaryKey" json:"ssh_key_id"`
+	ServerID  string     `gorm:"column:server_id;type:char(26);primaryKey" json:"server_id"`
+	SSHKeyID  string     `gorm:"column:ssh_key_id;type:char(26);primaryKey" json:"ssh_key_id"`
+	CreatedAt *time.Time `gorm:"type:timestamp null" json:"created_at,omitempty"`
+	UpdatedAt *time.Time `gorm:"type:timestamp null" json:"updated_at,omitempty"`
 }
 
 func (ServerSSHKey) TableName() string {

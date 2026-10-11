@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 
@@ -65,9 +66,12 @@ func (r *SSHKeyRepository) FindGlobalByTeam(ctx context.Context, teamID string) 
 	return keys, err
 }
 
-// AttachToServer attaches an SSH key to a server
+// AttachToServer is idempotent: both the API and the add-key job call it.
 func (r *SSHKeyRepository) AttachToServer(ctx context.Context, serverID, sshKeyID string) error {
-	return r.DB.WithContext(ctx).Create(&models.ServerSSHKey{
+	return r.DB.WithContext(ctx).Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "server_id"}, {Name: "ssh_key_id"}},
+		DoNothing: true,
+	}).Create(&models.ServerSSHKey{
 		ServerID: serverID,
 		SSHKeyID: sshKeyID,
 	}).Error

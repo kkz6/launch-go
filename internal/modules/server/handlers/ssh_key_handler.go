@@ -69,12 +69,23 @@ func (h *Handler) GenerateSSHKey(c *fiber.Ctx, req *dto.GenerateSSHKeyRequest) e
 	})
 }
 
-// AttachSSHKey attaches an SSH key (by id from the body) to a server.
+// AttachSSHKey attaches a saved key or creates and attaches a custom key.
 // Action with body — does not fit a generic helper.
 func (h *Handler) AttachSSHKey(c *fiber.Ctx, req *dto.AttachSSHKeyRequest) error {
 	teamID, serverID, err := fiberctx.GetTeamAndServerID(c)
 	if err != nil {
 		return err
+	}
+	if req.SSHKeyID == "" {
+		userID, err := fiberctx.MustGetUserID(c)
+		if err != nil {
+			return err
+		}
+		key, err := h.service.CreateServerSSHKey(c.Context(), serverID, teamID, userID, req)
+		if err != nil {
+			return err
+		}
+		return fiberctx.OK(c, "SSH key attached", key)
 	}
 	if err := h.service.AttachSSHKey(c.Context(), serverID, teamID, req.SSHKeyID); err != nil {
 		return err

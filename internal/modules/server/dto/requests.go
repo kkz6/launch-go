@@ -129,9 +129,11 @@ type GenerateSSHKeyRequest struct {
 	Type string `json:"type" validate:"omitempty,oneof=rsa ed25519"`
 }
 
-// AttachSSHKeyRequest represents the request body for attaching an SSH key to a server
+// AttachSSHKeyRequest attaches a saved key by ID or creates a server-specific key.
 type AttachSSHKeyRequest struct {
-	SSHKeyID string `json:"ssh_key_id" validate:"required,ulid"`
+	SSHKeyID  string `json:"ssh_key_id" validate:"required_without=Name,omitempty,ulid"`
+	Name      string `json:"name" validate:"required_without=SSHKeyID,excluded_with=SSHKeyID,omitempty,min=1,max=255"`
+	PublicKey string `json:"public_key" validate:"required_without=SSHKeyID,excluded_with=SSHKeyID"`
 }
 
 // RunCommandRequest represents the request body for running a command on a server

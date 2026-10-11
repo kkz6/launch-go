@@ -2,12 +2,16 @@ package services
 
 import (
 	"context"
+	"strings"
 
 	"github.com/hibiken/asynq"
+	"golang.org/x/crypto/ssh"
+	"gorm.io/gorm"
 
 	"github.com/kkz6/launch-go/internal/modules/server/dto"
 	"github.com/kkz6/launch-go/internal/modules/server/jobs"
 	"github.com/kkz6/launch-go/internal/modules/server/models"
+	"github.com/kkz6/launch-go/internal/modules/server/repositories"
 	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/launch/activity"
 )
@@ -70,6 +74,39 @@ func (s *Service) CreateSSHKey(ctx context.Context, teamID, userID string, req *
 	return dto.ToSSHKeyResponse(key), nil
 }
 
+// CreateServerSSHKey creates and attaches a custom key in one transaction.
+func (s *Service) CreateServerSSHKey(ctx context.Context, serverID, teamID, userID string, req *dto.AttachSSHKeyRequest) (dto.SSHKeyResponse, error) {
+	server, err := s.repos.Server().FindByIDAndTeam(ctx, serverID, teamID)
+	if err != nil {
+		return dto.SSHKeyResponse{}, err
+	}
+	name, publicKey := strings.TrimSpace(req.Name), strings.TrimSpace(req.PublicKey)
+	if name == "" {
+		return dto.SSHKeyResponse{}, fiberutil.BadRequest("Name is required")
+	}
+	_, _, _, rest, err := ssh.ParseAuthorizedKey([]byte(publicKey))
+	if err != nil || len(strings.TrimSpace(string(rest))) != 0 {
+		return dto.SSHKeyResponse{}, fiberutil.BadRequest("Invalid SSH public key format")
+	}
+	key := &models.SSHKey{Name: name, PublicKey: publicKey, IsGlobal: false}
+	key.TeamID, key.UserID = teamID, userID
+	err = s.repos.DB().WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		repo := repositories.NewSSHKeyRepository(tx)
+		if err := repo.Create(ctx, key); err != nil {
+			return err
+		}
+		return repo.AttachToServer(ctx, serverID, key.ID)
+	})
+	if err != nil {
+		return dto.SSHKeyResponse{}, err
+	}
+	activity.RecordEvent(ctx, "created", userID, key, "SSH key was created")
+	if err := s.dispatchSSHKeyAddJob(server, key); err != nil {
+		s.LogError(err, "Failed to dispatch SSH key add job", "server_id", serverID, "ssh_key_id", key.ID)
+	}
+	return dto.ToSSHKeyResponse(key), nil
+}
+
 // AttachSSHKey attaches an SSH key (by id from the request body) to a
 // server. Has its own signature so it does not fit a generic helper.
 func (s *Service) AttachSSHKey(ctx context.Context, serverID, teamID, sshKeyID string) error {
@@ -81,6 +118,9 @@ func (s *Service) AttachSSHKey(ctx context.Context, serverID, teamID, sshKeyID s
 	key, err := s.repos.SSHKey().FindByID(ctx, sshKeyID)
 	if err != nil {
 		return err
+	}
+	if key.TeamID != teamID {
+		return fiberutil.NotFound()
 	}
 
 	attached, err := s.repos.SSHKey().IsAttachedToServer(ctx, serverID, sshKeyID)
@@ -113,6 +153,9 @@ func (s *Service) DetachSSHKey(ctx context.Context, sshKeyID, serverID, teamID, 
 	key, err := s.repos.SSHKey().FindByID(ctx, sshKeyID)
 	if err != nil {
 		return err
+	}
+	if key.TeamID != teamID {
+		return fiberutil.NotFound()
 	}
 
 	if err := s.repos.SSHKey().DetachFromServer(ctx, serverID, sshKeyID); err != nil {
