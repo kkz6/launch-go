@@ -447,9 +447,24 @@ func (j *RunManualBackupJob) resolveDatabaseDumps(ctx context.Context) ([]tasks.
 			continue
 		}
 		users, err := j.Deps.DatabaseRepos.User().FindByDatabase(ctx, dbID)
-		if err != nil || len(users) == 0 {
+		if err != nil {
+			return nil, fmt.Errorf("load users for database %s: %w", db[0].Name, err)
+		}
+		if len(users) == 0 {
+			// Administrator accounts have server-wide access and need not
+			// appear in the per-database grant table used by ordinary users.
+			adminName := "root"
+			if engine == "postgres" {
+				adminName = "postgres"
+			}
+			admin, adminErr := j.Deps.DatabaseRepos.User().FindByNameAndServer(ctx, adminName, j.server.ID)
+			if adminErr == nil && admin.TeamID == j.server.TeamID {
+				users = append(users, *admin)
+			}
+		}
+		if len(users) == 0 {
 			j.Deps.Logger.Warn().Str("database_id", dbID).
-				Msg("backup: no database_users linked — skipping")
+				Msg("backup: no linked user or server administrator available — skipping")
 			continue
 		}
 		user := users[0]
