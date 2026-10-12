@@ -9,6 +9,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/server/models"
 	"github.com/kkz6/launch-go/internal/modules/server/tasks"
 	"github.com/kkz6/launch-go/internal/modules/server/types"
+	"github.com/kkz6/launch-go/internal/pkg/dbtype"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 	"github.com/kkz6/launch-go/internal/pkg/launch/status"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
@@ -80,6 +81,22 @@ func (j *AddServiceJob) Handle(ctx context.Context) error {
 	result, err := j.Deps.RunTask(j.server, task).
 		AsRoot().
 		TrackInDB().
+		OnTaskCreated(func(id string) {
+			data := make(dbtype.JSONMap, len(j.service.TypeData)+1)
+			for key, value := range j.service.TypeData {
+				data[key] = value
+			}
+			data["install_task_id"] = id
+			if err := j.Deps.Repos.Service().UpdateFields(ctx, j.service.ID, map[string]any{
+				"task_id": id, "type_data": data,
+			}); err != nil {
+				j.Deps.Logger.Error().Err(err).Str("service_id", j.service.ID).Msg("Failed to persist service installation task")
+			}
+			j.Deps.BroadcastServerEvent(j.server, "service.status_changed", map[string]any{
+				"service_id": j.service.ID, "server_id": j.server.ID,
+				"status": string(types.ServiceStatusInstalling), "task_id": id,
+			})
+		}).
 		Dispatch(ctx)
 
 	if err != nil {

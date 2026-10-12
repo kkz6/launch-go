@@ -205,6 +205,7 @@ type ServiceResponse struct {
 	StatusDetails   map[string]any      `json:"status_details,omitempty"`
 	StatusOutput    *string             `json:"status_output,omitempty"`
 	TaskID          *string             `json:"task_id,omitempty"`
+	InstallTaskID   *string             `json:"install_task_id,omitempty"`
 	PatchStatus     *string             `json:"patch_status,omitempty"`
 	PatchError      *string             `json:"patch_error,omitempty"`
 	Extensions      []ExtensionResponse `json:"extensions,omitempty"`
@@ -261,6 +262,9 @@ func ToServiceResponse(service *models.InstalledService) ServiceResponse {
 
 	// Extract status details from TypeData
 	if service.TypeData != nil {
+		if taskID, ok := service.TypeData["install_task_id"].(string); ok && taskID != "" {
+			resp.InstallTaskID = &taskID
+		}
 		if lastStatusCheck, ok := service.TypeData["last_status_check"].(string); ok {
 			resp.LastStatusCheck = &lastStatusCheck
 		}
