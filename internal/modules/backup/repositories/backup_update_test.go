@@ -29,7 +29,7 @@ func backupUpdateFixture(t *testing.T, databases ...*gorm.DB) (*BackupRepository
 	repo := NewBackupRepository(db)
 	backup := &models.Backup{StorageProviderID: 1, DispatchToken: "backup-update-test-token", CronExpression: "0 0 * * *", IncludeFiles: "[]", ExcludeFiles: "[]", Path: "old", Enabled: true, NotificationOnFailure: true}
 	backup.ServerID, backup.TeamID = "server", "team"
-	require.NoError(t, repo.CreateBackupWithDatabases(context.Background(), backup, []string{"old-db"}))
+	require.NoError(t, repo.CreateBackupWithDatabases(context.Background(), backup, []string{"01ARZ3NDEKTSV4RRFFQ69G5FAV"}))
 	// The update service reads and passes a backup with its existing links loaded.
 	require.NoError(t, db.Preload("Databases").First(backup, "id = ?", backup.ID).Error)
 	require.Len(t, backup.Databases, 1)
@@ -63,10 +63,10 @@ func TestUpdateBackupDatabaseSelectionOnPostgres(t *testing.T) {
 	require.NoError(t, db.Exec("SET search_path TO "+schema).Error)
 	require.NoError(t, db.Migrator().CreateTable(&models.Backup{}, &models.BackupDatabase{}))
 	repo, backup := backupUpdateFixture(t, db)
-	require.NoError(t, repo.UpdateBackupWithDatabases(context.Background(), backup, []string{"new-db"}))
+	require.NoError(t, repo.UpdateBackupWithDatabases(context.Background(), backup, []string{"01ARZ3NDEKTSV4RRFFQ69G5FAW"}))
 	ids, err := repo.GetBackupDatabaseIDs(context.Background(), backup.ID)
 	require.NoError(t, err)
-	require.Equal(t, []string{"new-db"}, ids)
+	require.Equal(t, []string{"01ARZ3NDEKTSV4RRFFQ69G5FAW"}, ids)
 	require.Equal(t, ids, dto.ToBackupResponse(backup).Databases)
 }
 
@@ -74,10 +74,10 @@ func TestUpdateBackupReplacesLoadedDatabaseSelection(t *testing.T) {
 	repo, backup := backupUpdateFixture(t)
 	backup.Path, backup.CronExpression = "updated", "0 3 * * *"
 	backup.Enabled, backup.NotificationOnFailure = false, false
-	require.NoError(t, repo.UpdateBackupWithDatabases(context.Background(), backup, []string{"new-db"}))
+	require.NoError(t, repo.UpdateBackupWithDatabases(context.Background(), backup, []string{"01ARZ3NDEKTSV4RRFFQ69G5FAW"}))
 	ids, err := repo.GetBackupDatabaseIDs(context.Background(), backup.ID)
 	require.NoError(t, err)
-	require.Equal(t, []string{"new-db"}, ids)
+	require.Equal(t, []string{"01ARZ3NDEKTSV4RRFFQ69G5FAW"}, ids)
 	require.Equal(t, ids, dto.ToBackupResponse(backup).Databases)
 	var stored models.Backup
 	require.NoError(t, repo.DB.First(&stored, "id = ?", backup.ID).Error)
@@ -101,12 +101,12 @@ func TestUpdateBackupRollsBackSettingsAndDatabaseSelection(t *testing.T) {
 			tx.AddError(errors.New("database selection rejected"))
 		}
 	}))
-	require.Error(t, repo.UpdateBackupWithDatabases(context.Background(), backup, []string{"new-db"}))
+	require.Error(t, repo.UpdateBackupWithDatabases(context.Background(), backup, []string{"01ARZ3NDEKTSV4RRFFQ69G5FAW"}))
 	var stored models.Backup
 	require.NoError(t, repo.DB.First(&stored, "id = ?", backup.ID).Error)
 	require.Equal(t, "old", stored.Path)
 	ids, err := repo.GetBackupDatabaseIDs(context.Background(), backup.ID)
 	require.NoError(t, err)
-	require.Equal(t, []string{"old-db"}, ids)
+	require.Equal(t, []string{"01ARZ3NDEKTSV4RRFFQ69G5FAV"}, ids)
 	require.Equal(t, ids, dto.ToBackupResponse(backup).Databases)
 }
