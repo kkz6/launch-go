@@ -27,7 +27,7 @@ func backupUpdateFixture(t *testing.T, databases ...*gorm.DB) (*BackupRepository
 		require.NoError(t, db.AutoMigrate(&models.BackupDatabase{}))
 	}
 	repo := NewBackupRepository(db)
-	backup := &models.Backup{StorageProviderID: 1, CronExpression: "0 0 * * *", IncludeFiles: "[]", ExcludeFiles: "[]", Path: "old", Enabled: true, NotificationOnFailure: true}
+	backup := &models.Backup{StorageProviderID: 1, DispatchToken: "backup-update-test-token", CronExpression: "0 0 * * *", IncludeFiles: "[]", ExcludeFiles: "[]", Path: "old", Enabled: true, NotificationOnFailure: true}
 	backup.ServerID, backup.TeamID = "server", "team"
 	require.NoError(t, repo.CreateBackupWithDatabases(context.Background(), backup, []string{"old-db"}))
 	// The update service reads and passes a backup with its existing links loaded.
