@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	"github.com/kkz6/launch-go/internal/modules/backup/models"
 	"github.com/kkz6/launch-go/internal/pkg/repository"
@@ -122,16 +123,23 @@ func (r *BackupRepository) ListEnabled(ctx context.Context) ([]models.Backup, er
 
 // UpdateBackupWithDatabases updates a backup and its associated databases.
 func (r *BackupRepository) UpdateBackupWithDatabases(ctx context.Context, backup *models.Backup, databaseIDs []string) error {
-	return r.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if err := tx.Save(backup).Error; err != nil {
+	associations := make([]models.BackupDatabase, len(databaseIDs))
+	for i, dbID := range databaseIDs {
+		associations[i] = models.BackupDatabase{BackupID: backup.ID, DatabaseID: dbID}
+	}
+	err := r.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// Loaded relations are snapshots, not updates. In particular GORM's
+		// automatic upsert of BackupDatabase has no primary-key conflict target
+		// and is invalid on PostgreSQL. Replace these links explicitly below.
+		if err := tx.Omit(clause.Associations).Save(backup).Error; err != nil {
 			return err
-		}
-		associations := make([]models.BackupDatabase, len(databaseIDs))
-		for i, dbID := range databaseIDs {
-			associations[i] = models.BackupDatabase{BackupID: backup.ID, DatabaseID: dbID}
 		}
 		return repository.SyncAssociationsWithTx(tx, "backup_id", backup.ID, associations)
 	})
+	if err == nil {
+		backup.Databases = associations
+	}
+	return err
 }
 
 // UpdateBackupFields updates specific fields of a backup. Aliases Base.UpdateFields
