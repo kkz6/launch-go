@@ -1238,7 +1238,8 @@ func (s *SiteService) RegenerateDeployToken(ctx context.Context, id, serverID, t
 		return nil, err
 	}
 
-	deployToken := security.NewTokenGenerator(32).WithEncoding(security.TokenBase64URL).MustGenerate()
+	// Match site creation with a 32-character alphanumeric token.
+	deployToken := security.GeneratePassword(32)
 	site.DeployToken = &deployToken
 
 	if err := s.Repos().Site().Update(ctx, site); err != nil {
