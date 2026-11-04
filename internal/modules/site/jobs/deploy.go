@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"time"
 
 	"github.com/hibiken/asynq"
 
@@ -76,7 +75,22 @@ func (j *DeployJob) Handle(ctx context.Context) error {
 		return fmt.Errorf("failed to find server: %w", err)
 	}
 
-	// Update deployment status to installing
+	// Save the exact release identity before starting any remote work. New names
+	// are deterministic per deployment, including concurrent queue redeliveries.
+	if j.Payload.ZeroDowntime {
+		if j.deployment.ReleaseName == nil && j.deployment.TaskID == nil {
+			if j.deployment.CreatedAt == nil {
+				return fmt.Errorf("cannot name deployment release without creation time")
+			}
+			name := j.deployment.CreatedAt.UTC().Format("20060102150405") + "-" + j.deployment.ID
+			j.deployment.ReleaseName = &name
+		}
+		if _, err := resolveDeploymentRelease(ctx, j.Deps.DB, j.deployment, j.server.ID); err != nil {
+			return fmt.Errorf("resolve deployment release: %w", err)
+		}
+	}
+
+	// Update deployment status to installing, persisting the release name too.
 	j.deployment.Status = sitetypes.DeploymentStatusInstalling
 	if err := j.Deps.Repos.Deployment().Update(ctx, j.deployment); err != nil {
 		return fmt.Errorf("failed to update deployment status: %w", err)
@@ -173,10 +187,10 @@ func (j *DeployJob) buildDeployConfig(ctx context.Context, site *models.Site, de
 		}
 	}
 
-	// Generate release timestamp for zero-downtime deployment
+	// Use the persisted release name for zero-downtime deployment.
 	var releaseTimestamp string
-	if j.Payload.ZeroDowntime {
-		releaseTimestamp = time.Now().Format("20060102150405")
+	if j.Payload.ZeroDowntime && deployment.ReleaseName != nil {
+		releaseTimestamp = *deployment.ReleaseName
 	}
 
 	// Generate environment variables for first deployment

@@ -66,10 +66,20 @@ func (j *RollbackJob) Handle(ctx context.Context) error {
 		return fmt.Errorf("failed to find server: %w", err)
 	}
 
-	// Update deployment status to Installing
+	if targetDeployment.SiteID != j.site.ID || j.deployment.SiteID != j.site.ID {
+		return fmt.Errorf("rollback deployment does not belong to site")
+	}
+	releaseName, err := resolveDeploymentRelease(ctx, j.Deps.DB, targetDeployment, j.server.ID)
+	if err != nil {
+		return fmt.Errorf("resolve rollback release: %w", err)
+	}
+
+	// A rollback record refers to the same release as its target, so it can
+	// itself be selected for a later rollback without inventing a new path.
+	j.deployment.ReleaseName = &releaseName
 	j.deployment.Status = sitetypes.DeploymentStatusInstalling
 	if err := j.Deps.Repos.Deployment().Update(ctx, j.deployment); err != nil {
-		j.Deps.Logger.Error().Err(err).Msg("Failed to update deployment status to installing")
+		return fmt.Errorf("failed to save rollback release: %w", err)
 	}
 
 	// Broadcast rollback started
@@ -80,8 +90,7 @@ func (j *RollbackJob) Handle(ctx context.Context) error {
 		"target_deployment_id": targetDeployment.ID,
 	})
 
-	// Calculate release directory from target deployment's created_at timestamp
-	releaseDirectory := fmt.Sprintf("%s/releases/%d", j.site.Path, targetDeployment.CreatedAt.Unix())
+	releaseDirectory := fmt.Sprintf("%s/releases/%s", j.site.Path, releaseName)
 	currentDirectory := fmt.Sprintf("%s/current", j.site.Path)
 
 	// Create rollback task

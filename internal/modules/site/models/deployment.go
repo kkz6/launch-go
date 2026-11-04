@@ -15,6 +15,7 @@ type Deployment struct {
 	basemodels.TeamScoped
 	UserID         *string                    `gorm:"column:user_id;type:char(26);index" json:"user_id,omitempty"`
 	TaskID         *string                    `gorm:"column:task_id;type:char(26);index" json:"task_id,omitempty"`
+	ReleaseName    *string                    `gorm:"column:release_name;size:64" json:"release_name,omitempty"`
 	Status         sitetypes.DeploymentStatus `gorm:"type:varchar(255);not null" json:"status"`
 	GitHash        *string                    `gorm:"column:git_hash;type:varchar(255)" json:"git_hash,omitempty"`
 	CommitData     dbtype.JSONMap             `gorm:"column:commit_data;type:json" json:"commit_data,omitempty"`

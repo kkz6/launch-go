@@ -466,17 +466,14 @@ func (t *deploySiteTask) installPendingQueues(ctx context.Context, cbCtx *taskru
 }
 
 // cleanupOldDeployments removes old deployment records beyond the retention limit.
-// For zero-downtime deployments, it uses the site's DeploymentReleasesRetention setting.
-// For normal deployments, it keeps only the most recent 5 deployments.
+// Zero-downtime records identify retained releases and rollback targets. Preserve
+// them until record pruning can be reconciled with the remote filesystem.
+// For normal deployments, keep only the most recent 5 deployments.
 func (t *deploySiteTask) cleanupOldDeployments(ctx context.Context, cbCtx *taskrunner.CallbackContext) {
-	// Determine retention count based on deployment type
-	retentionCount := 5 // default for normal deployments
 	if t.callback.ZeroDowntimeDeployment {
-		retentionCount = t.callback.DeploymentReleasesRetention
-		if retentionCount <= 0 {
-			retentionCount = 10 // default if not set
-		}
+		return
 	}
+	retentionCount := 5
 
 	// Get IDs of deployments to keep (most recent N)
 	var deploymentsToKeep []string
@@ -609,28 +606,27 @@ func buildZeroDowntimeScript(opts DeployOptions) string {
 	}{phpBinary}))
 	scriptBuilder.WriteString("\n")
 
-	scriptBuilder.WriteString("# Create the necessary directories\n")
-	scriptBuilder.WriteString(fmt.Sprintf("mkdir -p %s\n", repoDir))
-	scriptBuilder.WriteString(fmt.Sprintf("mkdir -p %s\n", sharedDir))
-	scriptBuilder.WriteString(fmt.Sprintf("mkdir -p %s\n", releaseDir))
-	scriptBuilder.WriteString(fmt.Sprintf("mkdir -p %s\n", logsDir))
-	scriptBuilder.WriteString("\n")
+	// Capture the serving release before hooks or promotion change current.
+	scriptBuilder.WriteString("PREVIOUS_RELEASE=\"\"\n")
+	scriptBuilder.WriteString(fmt.Sprintf("if [ -L '%s' ]; then\n", escapeShellPath(currentDir)))
+	scriptBuilder.WriteString(fmt.Sprintf("    PREVIOUS_RELEASE=$(readlink -f -- '%s')\nfi\n\n", escapeShellPath(currentDir)))
+	scriptBuilder.WriteString(fmt.Sprintf("CANDIDATE_DIRECTORY='%s'\n", escapeShellPath(releaseDir)))
+	scriptBuilder.WriteString(`if [ -e "$CANDIDATE_DIRECTORY" ] || [ -L "$CANDIDATE_DIRECTORY" ]; then
+    echo "Error: Candidate release already exists; create a new deployment" >&2
+    exit 1
+fi
 
-	scriptBuilder.WriteString("# Cleanup old releases\n")
-	scriptBuilder.WriteString(templates.MustRender("site", "deployment/cleanup_old_releases.sh", struct {
-		LatestDeploymentTimestamp string
-		ReleasesDirectory         string
-		RetentionCount            int
-	}{
-		LatestDeploymentTimestamp: opts.ReleaseTimestamp,
-		ReleasesDirectory:         releasesDir,
-		RetentionCount:            site.DeploymentReleasesRetention,
-	}))
+`)
+
+	scriptBuilder.WriteString("# Create the necessary directories\n")
+	scriptBuilder.WriteString(fmt.Sprintf("mkdir -p -- '%s' '%s' '%s' '%s'\n",
+		escapeShellPath(repoDir), escapeShellPath(sharedDir), escapeShellPath(releasesDir), escapeShellPath(logsDir)))
+	scriptBuilder.WriteString("mkdir -- \"$CANDIDATE_DIRECTORY\"\n")
 	scriptBuilder.WriteString("\n")
 
 	if site.HookBeforeUpdatingRepository != nil && *site.HookBeforeUpdatingRepository != "" {
 		scriptBuilder.WriteString("echo \"Running hook before updating repository\"\n")
-		scriptBuilder.WriteString(fmt.Sprintf("cd %s\n", releaseDir))
+		scriptBuilder.WriteString(fmt.Sprintf("cd -- '%s'\n", escapeShellPath(releaseDir)))
 		scriptBuilder.WriteString(*site.HookBeforeUpdatingRepository + "\n\n")
 	}
 
@@ -640,7 +636,7 @@ func buildZeroDowntimeScript(opts DeployOptions) string {
 
 		if site.HookAfterUpdatingRepository != nil && *site.HookAfterUpdatingRepository != "" {
 			scriptBuilder.WriteString("echo \"Running hook after updating repository\"\n")
-			scriptBuilder.WriteString(fmt.Sprintf("cd %s\n", releaseDir))
+			scriptBuilder.WriteString(fmt.Sprintf("cd -- '%s'\n", escapeShellPath(releaseDir)))
 			scriptBuilder.WriteString(*site.HookAfterUpdatingRepository + "\n\n")
 		}
 	}
@@ -688,7 +684,7 @@ func buildZeroDowntimeScript(opts DeployOptions) string {
 
 	if site.HookBeforeMakingCurrent != nil && *site.HookBeforeMakingCurrent != "" {
 		scriptBuilder.WriteString("echo \"Running hook before putting the site live\"\n")
-		scriptBuilder.WriteString(fmt.Sprintf("cd %s\n", releaseDir))
+		scriptBuilder.WriteString(fmt.Sprintf("cd -- '%s'\n", escapeShellPath(releaseDir)))
 		scriptBuilder.WriteString(*site.HookBeforeMakingCurrent + "\n\n")
 	}
 
@@ -706,13 +702,51 @@ func buildZeroDowntimeScript(opts DeployOptions) string {
 
 	if site.HookAfterMakingCurrent != nil && *site.HookAfterMakingCurrent != "" {
 		scriptBuilder.WriteString("echo \"Running hook after putting the site live\"\n")
-		scriptBuilder.WriteString(fmt.Sprintf("cd %s\n", releaseDir))
+		scriptBuilder.WriteString(fmt.Sprintf("cd -- '%s'\n", escapeShellPath(releaseDir)))
 		scriptBuilder.WriteString(*site.HookAfterMakingCurrent + "\n\n")
 	}
 
+	// Pruning must never run before the new release and its hooks succeed.
+	scriptBuilder.WriteString("# Cleanup old releases\n")
+	scriptBuilder.WriteString(templates.MustRender("site", "deployment/cleanup_old_releases.sh", struct {
+		LatestDeploymentTimestamp string
+		ReleasesDirectory         string
+		CurrentDirectory          string
+		RetentionCount            int
+	}{
+		LatestDeploymentTimestamp: opts.ReleaseTimestamp,
+		ReleasesDirectory:         releasesDir,
+		CurrentDirectory:          currentDir,
+		RetentionCount:            site.DeploymentReleasesRetention,
+	}))
+	scriptBuilder.WriteString("\n")
+
 	scriptBuilder.WriteString("echo \"Done!\"\n")
 
-	return scriptBuilder.String()
+	return withDeploymentLock(site.Path, scriptBuilder.String())
+}
+
+func escapeShellPath(path string) string {
+	return strings.ReplaceAll(path, "'", "'\"'\"'")
+}
+
+// The parent holds the site lock while the foreground body runs. Closing its
+// descriptor in the body prevents hooks and their background children from
+// retaining the lock after deployment finishes.
+func withDeploymentLock(sitePath, script string) string {
+	return "#!/bin/bash\n" + templates.ShellDefaultsLenient() + fmt.Sprintf(`
+mkdir -p -- '%s'
+exec 9>'%s/.deployment.lock'
+if ! flock -n 9; then
+    echo "Error: Another deployment or rollback is running for this site" >&2
+    exit 1
+fi
+(
+exec 9>&-
+%s
+)
+exec 9>&-
+`, escapeShellPath(sitePath), escapeShellPath(sitePath), script)
 }
 
 // renderUpdateRepository renders the update repository template
@@ -751,7 +785,7 @@ func renderUpdateRepository(opts DeployOptions, repoDir, releaseDir string) stri
 func renderPrepareFreshInstallation(opts DeployOptions, repoDir, releaseDir, sharedDir string) string {
 	site := opts.Site
 	var scriptBuilder strings.Builder
-	scriptBuilder.WriteString(fmt.Sprintf("cd %s\n\n", site.Path))
+	scriptBuilder.WriteString(fmt.Sprintf("cd -- '%s'\n\n", escapeShellPath(site.Path)))
 
 	switch site.Type {
 	case sitetypes.SiteTypeLaravel:
@@ -801,7 +835,7 @@ func renderPrepareFreshInstallation(opts DeployOptions, repoDir, releaseDir, sha
 		}))
 	}
 
-	scriptBuilder.WriteString(fmt.Sprintf("\ncd %s\n", site.Path))
+	scriptBuilder.WriteString(fmt.Sprintf("\ncd -- '%s'\n", escapeShellPath(site.Path)))
 	return scriptBuilder.String()
 }
 
@@ -826,7 +860,7 @@ func RollbackDeployment(config RollbackDeploymentConfig) *taskrunner.BaseTask {
 
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName("Rollback Deployment"),
-		taskrunner.WithScript(script),
+		taskrunner.WithScript(withDeploymentLock(config.SitePath, script)),
 		taskrunner.WithTimeoutSeconds(60),
 	)
 }
