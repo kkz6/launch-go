@@ -49,7 +49,7 @@ type deviceTestFixture struct {
 
 func newDeviceTestFixture(t *testing.T) *deviceTestFixture {
 	t.Helper()
-	var dialector gorm.Dialector = sqlite.Open(filepath.Join(t.TempDir(), "device.db") + "?_busy_timeout=5000&_journal_mode=WAL")
+	dialector := sqlite.Open(filepath.Join(t.TempDir(), "device.db") + "?_busy_timeout=5000&_journal_mode=WAL")
 	schema := ""
 	// DEVICE_AUTH_TEST_DSN must point to a disposable PostgreSQL database.
 	// Each test isolates a schema, but runs the complete migration set, whose
