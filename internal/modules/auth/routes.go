@@ -35,6 +35,7 @@ func (m *Module) RegisterPublicRoutes(router fiber.Router) {
 
 	// Public routes (no authentication required)
 	m.setupPublicRoutes(auth, handler, passkeyHandler, deps.Config.App.Frontend())
+	m.registerDeviceRoutes(auth, authMiddleware)
 
 	// Protected routes (authentication required)
 	protected := auth.Group("", authMiddleware)

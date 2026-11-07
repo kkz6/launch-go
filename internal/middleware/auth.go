@@ -114,7 +114,7 @@ func tryAuthenticate(c *fiber.Ctx, jwtSecret string, db *gorm.DB) bool {
 		}
 	}
 
-	userID, patErr := validatePAT(c.Context(), db, token)
+	userID, patErr := validatePAT(c.UserContext(), db, token)
 	if patErr == nil && userID != "" {
 		fiberctx.SetUserContext(c, userID, nil)
 		return true

@@ -36,7 +36,7 @@ func (s *Service) GetTask(ctx context.Context, taskID, serverID, teamID string) 
 	if err != nil {
 		return dto.TaskResponse{}, err
 	}
-	if task == nil {
+	if task == nil || task.ServerID != serverID {
 		return dto.TaskResponse{}, fiberutil.NotFound("Task not found")
 	}
 	return dto.ToTaskResponse(task), nil

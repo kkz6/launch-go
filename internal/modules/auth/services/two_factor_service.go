@@ -14,6 +14,7 @@ import (
 	"github.com/pquerna/otp/totp"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	"github.com/kkz6/launch-go/internal/config"
 	"github.com/kkz6/launch-go/internal/modules/auth/contracts"
@@ -199,7 +200,7 @@ func (s *TwoFactorService) VerifyTwoFactor(ctx context.Context, userID, code str
 		err := s.repos.DB().WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 			// Lock the user row to prevent concurrent recovery code usage
 			var lockedUser models.User
-			if err := tx.Set("gorm:query_option", "FOR UPDATE").
+			if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
 				First(&lockedUser, "id = ?", userID).Error; err != nil {
 				return err
 			}
