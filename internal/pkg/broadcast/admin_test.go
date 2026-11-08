@@ -31,3 +31,22 @@ func TestAdminInvalidationOmitsStreamsAndUnrelatedEvents(t *testing.T) {
 	}
 	require.Nil(t, AdminChangeForTeamEvent("", "site.deleted", nil))
 }
+
+func TestAdminServerDeletionFailureOnlyCopiesAllowlistedCodes(t *testing.T) {
+	for _, tc := range []struct{ event, code, expected string }{
+		{"server.deletion_failed", "provider_unauthorized", "provider_unauthorized"},
+		{"server.deletion_failed", "provider_forbidden", "provider_forbidden"},
+		{"server.deletion_failed", "private-provider-error", ""},
+		{"server.updated", "provider_unauthorized", ""},
+		{"site.deletion_failed", "provider_unauthorized", ""},
+	} {
+		change := AdminChangeForTeamEvent("team-a", tc.event, map[string]any{
+			"server_id": "server-a", "error_code": tc.code, "error": "secret-token-and-provider-body",
+		})
+		require.Equal(t, tc.expected, change.ErrorCode)
+		encoded, err := json.Marshal(change)
+		require.NoError(t, err)
+		require.NotContains(t, string(encoded), "secret-token")
+		require.NotContains(t, string(encoded), "private-provider-error")
+	}
+}

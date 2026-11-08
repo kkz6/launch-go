@@ -18,6 +18,16 @@ import (
 // requests. Custom machines are only disconnected from launchctl; cloud VMs
 // are deleted by the provider job before their records are removed.
 func (s *Service) DeleteServer(ctx context.Context, id, teamID, userID string) error {
+	return s.deleteServer(ctx, id, teamID, userID, false)
+}
+
+// RemoveServerRecord removes launchctl's record without contacting the cloud
+// provider or remote host. Only the explicit staff removal action exposes it.
+func (s *Service) RemoveServerRecord(ctx context.Context, id, teamID, userID string) error {
+	return s.deleteServer(ctx, id, teamID, userID, true)
+}
+
+func (s *Service) deleteServer(ctx context.Context, id, teamID, userID string, removeRecord bool) error {
 	if !s.HasDB() {
 		return fiberutil.Internal("Database not configured")
 	}
@@ -48,7 +58,7 @@ func (s *Service) DeleteServer(ctx context.Context, id, teamID, userID string) e
 		if err := guardDockerProjectsExist(ctx, tx, id); err != nil {
 			return err
 		}
-		if server.Provider == types.ProviderCustom {
+		if removeRecord || server.Provider == types.ProviderCustom {
 			return tx.Delete(server).Error
 		}
 		if !s.HasQueue() {
@@ -65,8 +75,12 @@ func (s *Service) DeleteServer(ctx context.Context, id, teamID, userID string) e
 	if err != nil {
 		return err
 	}
-	activity.RecordEvent(ctx, "deletion_requested", userID, server, "Server deletion requested")
-	if server.Provider == types.ProviderCustom {
+	if removeRecord {
+		activity.RecordEvent(ctx, "removed", userID, server, "Server removed from launchctl; remote machine left unchanged")
+	} else {
+		activity.RecordEvent(ctx, "deletion_requested", userID, server, "Server deletion requested")
+	}
+	if removeRecord || server.Provider == types.ProviderCustom {
 		s.BroadcastToTeam(server.TeamID, "server.deleted", map[string]any{"server_id": server.ID})
 	} else if updated, err := s.repos.Server().FindByIDAndTeam(ctx, id, teamID); err == nil {
 		s.broadcastServerUpdate(updated)

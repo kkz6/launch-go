@@ -179,6 +179,46 @@ func TestDeleteServerJobScopesOwnershipAndCurrentState(t *testing.T) {
 	}
 }
 
+func TestDeleteServerFailureCodesRetainRecordsAndHideProviderDetails(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		status int
+		code   string
+	}{
+		{"unauthorized", http.StatusUnauthorized, "provider_unauthorized"},
+		{"forbidden", http.StatusForbidden, "provider_forbidden"},
+		{"other provider failure", http.StatusBadRequest, ""},
+		{"untyped status text", http.StatusBadRequest, ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			job, db, events, _ := newDeleteTestJob(t, tc.status)
+			failure := job.Handle(context.Background())
+			require.Error(t, failure)
+			if tc.name == "untyped status text" {
+				failure = errors.New("provider deletion failed (HTTP 401)")
+			}
+			job.Failed(context.Background(), fmt.Errorf("secret-provider-response: %w", failure))
+			var server models.Server
+			require.NoError(t, db.First(&server, "id = ?", "server-a").Error)
+			require.Equal(t, types.ServerStatusRunning, server.Status)
+			require.NoError(t, db.First(&models.SSHKey{}, "id = ?", "key-a").Error)
+			require.Equal(t, []string{"server.deletion_failed", "server.updated"}, events.events)
+			payload := events.data[0].(map[string]any)
+			if tc.code == "" {
+				require.NotContains(t, payload, "error_code")
+			} else {
+				require.Equal(t, tc.code, payload["error_code"])
+			}
+			admin := broadcast.AdminChangeForTeamEvent("team-a", "server.deletion_failed", payload)
+			require.Equal(t, tc.code, admin.ErrorCode)
+			encoded, err := json.Marshal([]any{events.data, admin})
+			require.NoError(t, err)
+			require.NotContains(t, string(encoded), "secret-provider-response")
+			require.NotContains(t, string(encoded), "test-token")
+		})
+	}
+}
+
 func TestDeleteServerRejectedTaskDoesNotRestoreLaterIntent(t *testing.T) {
 	job, db, events, calls := newDeleteTestJob(t, http.StatusNoContent)
 	require.NoError(t, db.Model(&models.Server{}).Where("id = ?", "server-a").Update("status", types.ServerStatusRunning).Error)

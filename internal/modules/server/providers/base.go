@@ -260,6 +260,16 @@ func DoPost(ctx context.Context, client *httpclient.Client, path string, body in
 	return result, nil
 }
 
+// DeletionHTTPError retains only the provider status, never its response body
+// or underlying request error, so callers can safely classify deletion failures.
+type DeletionHTTPError struct {
+	StatusCode int
+}
+
+func (e *DeletionHTTPError) Error() string {
+	return fmt.Sprintf("provider deletion failed (HTTP %d)", e.StatusCode)
+}
+
 // DoDelete performs a DELETE request using the httpclient.
 // Only an absent resource (404) is treated as an idempotent success.
 func DoDelete(ctx context.Context, client *httpclient.Client, path string) error {
@@ -273,7 +283,7 @@ func DoDelete(ctx context.Context, client *httpclient.Client, path string) error
 		// Deletion failures reach jobs and notifications. Keep upstream bodies,
 		// which can contain credentials, out of errors and logs on this path.
 		if httpErr, ok := httpclient.IsHTTPError(err); ok {
-			return fmt.Errorf("provider deletion failed (HTTP %d)", httpErr.StatusCode)
+			return &DeletionHTTPError{StatusCode: httpErr.StatusCode}
 		}
 		return fmt.Errorf("provider deletion request failed")
 	}

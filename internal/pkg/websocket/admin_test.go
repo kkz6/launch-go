@@ -93,7 +93,7 @@ func TestRedisBroadcasterMirrorsWorkerLifecycleWithoutModelData(t *testing.T) {
 	require.NoError(t, err)
 	b := NewRedisBroadcaster(server.Addr(), "", 0, nil)
 	t.Cleanup(func() { require.NoError(t, b.Close()) })
-	b.BroadcastToTeam("team-a", "server.deletion_failed", map[string]any{"server_id": "server-a", "error": "private provider error"})
+	b.BroadcastToTeam("team-a", "server.deletion_failed", map[string]any{"server_id": "server-a", "error": "private provider error", "error_code": "provider_unauthorized"})
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 	team, err := subscription.ReceiveMessage(ctx)
@@ -104,8 +104,9 @@ func TestRedisBroadcasterMirrorsWorkerLifecycleWithoutModelData(t *testing.T) {
 	require.NoError(t, json.Unmarshal([]byte(team.Payload), &teamMessage))
 	require.NoError(t, json.Unmarshal([]byte(staff.Payload), &staffMessage))
 	require.Equal(t, "team.team-a", teamMessage.Channel)
+	require.Equal(t, "provider_unauthorized", teamMessage.Data.(map[string]any)["error_code"])
 	require.Equal(t, broadcast.AdminResourcesChannel, staffMessage.Channel)
-	require.Equal(t, map[string]any{"resource": "server", "action": "deletion_failed", "team_id": "team-a", "server_id": "server-a"}, staffMessage.Data)
+	require.Equal(t, map[string]any{"resource": "server", "action": "deletion_failed", "team_id": "team-a", "server_id": "server-a", "error_code": "provider_unauthorized"}, staffMessage.Data)
 }
 
 func receiveAdminTestMessage(t *testing.T, client *Client) Message {

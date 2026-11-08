@@ -110,3 +110,51 @@ func TestCloudServerQueueFailurePreservesRecordAndStatus(t *testing.T) {
 		require.Equal(t, types.ServerStatusRunning, stored.Status)
 	}
 }
+
+func TestRemoveCloudServerRecordNeedsNeitherConnectionCredentialsNorQueue(t *testing.T) {
+	for _, configuredQueue := range []bool{false, true} {
+		svc, db, server := serverDeleteFixture(t, types.ProviderDigitalOcean)
+		require.False(t, server.Connected)
+		require.Nil(t, server.ServerProviderID)
+		if configuredQueue {
+			attachTestQueue(t, svc)
+		}
+		other := server
+		other.ID = "other-server"
+		require.NoError(t, db.Create(&other).Error)
+		require.NoError(t, svc.RemoveServerRecord(context.Background(), server.ID, server.TeamID, "staff-admin"))
+		var count int64
+		require.NoError(t, db.Model(&models.Server{}).Where("id = ?", server.ID).Count(&count).Error)
+		require.Zero(t, count)
+		require.NoError(t, db.First(&models.Server{}, "id = ?", other.ID).Error)
+		if configuredQueue {
+			queues, err := svc.Queue.Inspector().Queues()
+			require.NoError(t, err)
+			require.Empty(t, queues, "local removal must never enqueue provider deletion")
+		}
+	}
+}
+
+func TestRemoveServerRecordPreservesResourceLifecycleAndTeamGuards(t *testing.T) {
+	for _, tc := range []struct{ name, setup, team string }{
+		{"sites", "INSERT INTO sites VALUES ('site', 'server-delete')", "customer-team"},
+		{"projects", "INSERT INTO docker_projects (id, server_id) VALUES ('project', 'server-delete')", "customer-team"},
+		{"wrong team", "", "other-team"},
+		{"provisioning", "UPDATE servers SET status = 'provisioning'", "customer-team"},
+		{"starting", "UPDATE servers SET status = 'starting'", "customer-team"},
+		{"already deleting", "UPDATE servers SET status = 'deleting'", "customer-team"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			svc, db, server := serverDeleteFixture(t, types.ProviderDigitalOcean)
+			if tc.setup != "" {
+				require.NoError(t, db.Exec(tc.setup).Error)
+			}
+			var before models.Server
+			require.NoError(t, db.First(&before, "id = ?", server.ID).Error)
+			require.Error(t, svc.RemoveServerRecord(context.Background(), server.ID, tc.team, "admin"))
+			var after models.Server
+			require.NoError(t, db.First(&after, "id = ?", server.ID).Error)
+			require.Equal(t, before.Status, after.Status)
+		})
+	}
+}

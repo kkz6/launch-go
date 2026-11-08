@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"strings"
 
 	"github.com/hibiken/asynq"
@@ -14,6 +15,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/notification/notifications"
 	"github.com/kkz6/launch-go/internal/modules/server/dto"
 	"github.com/kkz6/launch-go/internal/modules/server/models"
+	"github.com/kkz6/launch-go/internal/modules/server/providers"
 	"github.com/kkz6/launch-go/internal/modules/server/repositories"
 	"github.com/kkz6/launch-go/internal/modules/server/types"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
@@ -139,7 +141,7 @@ func (j *DeleteServerJob) Handle(ctx context.Context) error {
 }
 
 // Failed restores a retryable state and reports a safe terminal failure.
-func (j *DeleteServerJob) Failed(ctx context.Context, _ error) {
+func (j *DeleteServerJob) Failed(ctx context.Context, failure error) {
 	// A rejected stale task must not reset a later accepted deletion intent.
 	if j.rejected {
 		return
@@ -162,11 +164,27 @@ func (j *DeleteServerJob) Failed(ctx context.Context, _ error) {
 		return
 	}
 	server.Status = previous
-	const message = "Server deletion failed. The server record has been retained; check the provider and try again."
-	j.Deps.BroadcastServerEvent(server, "server.deletion_failed", map[string]any{
+	message := "Server deletion failed. The server record has been retained; check the provider and try again."
+	errorCode := ""
+	var providerError *providers.DeletionHTTPError
+	if errors.As(failure, &providerError) {
+		switch providerError.StatusCode {
+		case http.StatusUnauthorized:
+			errorCode = "provider_unauthorized"
+			message = "The cloud provider rejected the saved credentials. The server record has been retained; update the provider credentials and try again."
+		case http.StatusForbidden:
+			errorCode = "provider_forbidden"
+			message = "The cloud provider denied server deletion. The server record has been retained; check the provider permissions and try again."
+		}
+	}
+	payload := map[string]any{
 		"server_id": server.ID,
 		"error":     message,
-	})
+	}
+	if errorCode != "" {
+		payload["error_code"] = errorCode
+	}
+	j.Deps.BroadcastServerEvent(server, "server.deletion_failed", payload)
 	j.Deps.BroadcastServerEvent(server, "server.updated", dto.ToServerResponse(server))
 	if j.Deps.TaskRunnerDeps != nil && j.Deps.TaskRunnerDeps.Notifier != nil {
 		notification := notifications.NewFailedToDeleteServerNotification(server.Name, server.Provider.String(), message)

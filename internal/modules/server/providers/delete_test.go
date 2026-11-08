@@ -2,6 +2,7 @@ package providers
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"net/http"
@@ -84,7 +85,7 @@ func TestCloudDeleteRejectsInvalidPrimaryIDWithoutFallback(t *testing.T) {
 
 func TestCloudDeleteRequiresProviderSuccess(t *testing.T) {
 	for _, name := range []string{"digitalocean", "hetzner", "linode", "vultr"} {
-		for _, status := range []int{http.StatusNoContent, http.StatusNotFound, http.StatusForbidden} {
+		for _, status := range []int{http.StatusNoContent, http.StatusNotFound, http.StatusUnauthorized, http.StatusForbidden} {
 			t.Run(name+http.StatusText(status), func(t *testing.T) {
 				var paths []string
 				api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -98,8 +99,12 @@ func TestCloudDeleteRequiresProviderSuccess(t *testing.T) {
 				defer api.Close()
 				server := &models.Server{ProviderData: dbtype.JSONMap{"provider_server_id": "instance-1", "ssh_key_id": "key-1"}}
 				err := deleteTestProviders(api.URL)[name].Delete(context.Background(), server, map[string]any{"token": "test-token"})
-				if status == http.StatusForbidden {
+				if status == http.StatusUnauthorized || status == http.StatusForbidden {
 					require.Error(t, err)
+					var failure *DeletionHTTPError
+					require.ErrorAs(t, err, &failure)
+					require.Equal(t, status, failure.StatusCode)
+					require.Nil(t, errors.Unwrap(failure), "the raw provider body must not survive in the error chain")
 					require.NotContains(t, err.Error(), "secret-provider-token")
 					require.Len(t, paths, 1, "key cleanup must not run before VM deletion succeeds")
 				} else {

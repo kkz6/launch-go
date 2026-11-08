@@ -27,12 +27,19 @@ import (
 )
 
 type adminServerDeleter struct {
-	ids []string
-	err error
+	ids     []string
+	err     error
+	removed bool
 }
 
 func (d *adminServerDeleter) DeleteServer(_ context.Context, id, teamID, actorID string) error {
 	d.ids = []string{id, teamID, actorID}
+	return d.err
+}
+
+func (d *adminServerDeleter) RemoveServerRecord(_ context.Context, id, teamID, actorID string) error {
+	d.ids = []string{id, teamID, actorID}
+	d.removed = true
 	return d.err
 }
 
@@ -92,6 +99,16 @@ func TestAdminServerDeleteEnforcesRoleNameAndOwningTeam(t *testing.T) {
 		{"missing name", "admin", "customer-server", `{}`, 422, false},
 		{"bad json", "admin", "customer-server", `{`, 400, false},
 		{"missing server", "admin", "unknown", `{"confirmation_name":"Production"}`, 404, false},
+		{"invalid mode", "admin", "customer-server", `{"confirmation_name":"Production","mode":"force"}`, 422, false},
+		{"old route rejects removal mode", "admin", "customer-server", `{"confirmation_name":"Production","mode":"remove_record"}`, 422, false},
+		{"old route rejects explicit delete mode", "admin", "customer-server", `{"confirmation_name":"Production","mode":"delete"}`, 422, false},
+		{"anonymous local removal", "", "customer-server/record", `{"confirmation_name":"Production"}`, 401, false},
+		{"support local removal", "support", "customer-server/record", `{"confirmation_name":"Production"}`, 403, false},
+		{"customer local removal", "customer", "customer-server/record", `{"confirmation_name":"Production"}`, 403, false},
+		{"local removal wrong name", "admin", "customer-server/record", `{"confirmation_name":"production"}`, 422, false},
+		{"local removal missing name", "admin", "customer-server/record", `{}`, 422, false},
+		{"local removal missing server", "admin", "unknown/record", `{"confirmation_name":"Production"}`, 404, false},
+		{"local removal bad json", "admin", "customer-server/record", `{`, 400, false},
 		{"confirmed", "admin", "customer-server", `{"confirmation_name":"Production","team_id":"attacker-team"}`, 200, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -104,6 +121,7 @@ func TestAdminServerDeleteEnforcesRoleNameAndOwningTeam(t *testing.T) {
 			defer response.Body.Close()
 			require.Equal(t, tc.status, response.StatusCode)
 			if tc.forwarded {
+				require.False(t, deleter.removed, "default deletion must keep its provider semantics")
 				require.Equal(t, []string{"customer-server", "customer-team", "admin"}, deleter.ids)
 				var body struct {
 					Data services.ServerDeletionResult `json:"data"`
@@ -115,6 +133,25 @@ func TestAdminServerDeleteEnforcesRoleNameAndOwningTeam(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestAdminServerRecordRemovalIsExplicitAndUsesOwningTeam(t *testing.T) {
+	app, db, deleter := adminServerDeleteFixture(t)
+	require.NoError(t, db.Model(&servermodels.Server{}).Where("id = ?", "customer-server").Update("provider", servertypes.ProviderDigitalOcean).Error)
+	req := httptest.NewRequest(http.MethodDelete, "/admin/servers/customer-server/record", strings.NewReader(`{"confirmation_name":"Production","team_id":"attacker-team"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Test-User", "admin")
+	response, err := app.Test(req)
+	require.NoError(t, err)
+	defer response.Body.Close()
+	require.Equal(t, 200, response.StatusCode)
+	require.True(t, deleter.removed)
+	require.Equal(t, []string{"customer-server", "customer-team", "admin"}, deleter.ids)
+	var body struct {
+		Data services.ServerDeletionResult `json:"data"`
+	}
+	require.NoError(t, json.NewDecoder(response.Body).Decode(&body))
+	require.Equal(t, "removed", body.Data.Status)
 }
 
 func TestAdminServerDeleteReportsQueueFailureAndCloudReceipt(t *testing.T) {
