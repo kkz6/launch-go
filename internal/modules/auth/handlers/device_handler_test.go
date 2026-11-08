@@ -212,14 +212,14 @@ func TestDeviceSignInIssuesOneRevocableCredential(t *testing.T) {
 	response, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, response.StatusCode)
-	response.Body.Close()
+	require.NoError(t, response.Body.Close())
 	rows, err := repositories.NewPersonalAccessTokenRepository(f.db).DeleteByUser(t.Context(), pat.ID, f.user.ID)
 	require.NoError(t, err)
 	require.EqualValues(t, 1, rows)
 	response, err = http.DefaultClient.Do(req)
 	require.NoError(t, err)
 	require.Equal(t, http.StatusUnauthorized, response.StatusCode)
-	response.Body.Close()
+	require.NoError(t, response.Body.Close())
 }
 
 func TestDeviceSignInDenialExpiryAndMissingUserIssueNoToken(t *testing.T) {
@@ -406,7 +406,9 @@ func TestDeviceConcurrentApprovalsCannotChangeIdentity(t *testing.T) {
 				t.Error(err)
 				return
 			}
-			response.Body.Close()
+			if err := response.Body.Close(); err != nil {
+				t.Error(err)
+			}
 			results <- result{contender.userID, response.StatusCode}
 		})
 	}
@@ -460,7 +462,9 @@ func TestDeviceRecoveryCodeCannotApproveTwoGrantsConcurrentlyOnPostgres(t *testi
 				t.Error(err)
 				return
 			}
-			response.Body.Close()
+			if err := response.Body.Close(); err != nil {
+				t.Error(err)
+			}
 			statuses <- response.StatusCode
 		})
 	}
@@ -492,7 +496,9 @@ func TestDeviceRateLimitCountsConcurrentRequests(t *testing.T) {
 				t.Error(err)
 				return
 			}
-			response.Body.Close()
+			if err := response.Body.Close(); err != nil {
+				t.Error(err)
+			}
 			statuses <- response.StatusCode
 		})
 	}
