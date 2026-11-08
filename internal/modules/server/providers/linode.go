@@ -103,7 +103,11 @@ func (p *LinodeProvider) Delete(ctx context.Context, server *models.Server, cred
 		return fmt.Errorf("cloud instance ID is missing")
 	}
 
-	linodeID := GetStringField(providerData, "linode_id", GetStringField(providerData, "provider_server_id", ""))
+	idKey := "linode_id"
+	if _, exists := providerData[idKey]; !exists {
+		idKey = "provider_server_id"
+	}
+	linodeID := ExtractServerID(providerData, idKey)
 	if linodeID == "" {
 		return fmt.Errorf("cloud instance ID is missing")
 	}

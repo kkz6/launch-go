@@ -2,6 +2,8 @@ package providers
 
 import (
 	"context"
+	"fmt"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -22,6 +24,62 @@ func deleteTestProviders(baseURL string) map[string]Provider {
 	vul := NewVultrProvider(nil)
 	vul.baseURL = baseURL
 	return map[string]Provider{"digitalocean": do, "hetzner": het, "linode": lin, "vultr": vul}
+}
+
+func TestCloudDeleteLegacyNumericIDs(t *testing.T) {
+	for _, provider := range []struct{ name, key, path string }{
+		{"digitalocean", "droplet_id", "/droplets/"},
+		{"hetzner", "hetzner_id", "/servers/"},
+		{"linode", "linode_id", "/linode/instances/"},
+	} {
+		for _, tc := range []struct{ name, raw string }{
+			{"legacy numeric ID", `{"%s":56516756}`},
+			{"current string ID", `{"%s":"56516756"}`},
+			{"primary ID wins", `{"%s":56516756,"provider_server_id":"999"}`},
+			{"fallback string ID", `{"provider_server_id":"56516756","unused":"%s"}`},
+			{"fallback numeric ID", `{"provider_server_id":56516756,"unused":"%s"}`},
+		} {
+			t.Run(provider.name+"/"+tc.name, func(t *testing.T) {
+				// Laravel stored cloud API IDs as JSON numbers; exercise the same
+				// database scan as a migrated server record, without rewriting it.
+				var data dbtype.JSONMap
+				require.NoError(t, data.Scan(fmt.Sprintf(tc.raw, provider.key)))
+				var paths []string
+				api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					require.Equal(t, http.MethodDelete, r.Method)
+					paths = append(paths, r.URL.Path)
+					w.WriteHeader(http.StatusNoContent)
+				}))
+				defer api.Close()
+				err := deleteTestProviders(api.URL)[provider.name].Delete(context.Background(), &models.Server{ProviderData: data}, map[string]any{"token": "test-token"})
+				require.NoError(t, err)
+				require.Equal(t, []string{provider.path + "56516756"}, paths)
+			})
+		}
+	}
+}
+
+func TestCloudDeleteRejectsInvalidPrimaryIDWithoutFallback(t *testing.T) {
+	for _, provider := range []struct{ name, key string }{
+		{"digitalocean", "droplet_id"},
+		{"hetzner", "hetzner_id"},
+		{"linode", "linode_id"},
+	} {
+		t.Run(provider.name, func(t *testing.T) {
+			requests := 0
+			api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				requests++
+				w.WriteHeader(http.StatusNoContent)
+			}))
+			defer api.Close()
+			for _, invalid := range []any{nil, "", float64(0), float64(-1), 123.5, float64(1 << 53), math.NaN(), math.Inf(1), true, map[string]any{"id": 123}} {
+				data := dbtype.JSONMap{provider.key: invalid, "provider_server_id": "999"}
+				err := deleteTestProviders(api.URL)[provider.name].Delete(context.Background(), &models.Server{ProviderData: data}, map[string]any{"token": "test-token"})
+				require.ErrorContains(t, err, "instance ID is missing")
+			}
+			require.Zero(t, requests, "an invalid primary ID must not target the fallback resource")
+		})
+	}
 }
 
 func TestCloudDeleteRequiresProviderSuccess(t *testing.T) {

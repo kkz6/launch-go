@@ -113,7 +113,11 @@ func (p *DigitalOceanProvider) Delete(ctx context.Context, server *models.Server
 		return fmt.Errorf("cloud instance ID is missing")
 	}
 
-	dropletID := GetStringField(providerData, "droplet_id", GetStringField(providerData, "provider_server_id", ""))
+	idKey := "droplet_id"
+	if _, exists := providerData[idKey]; !exists {
+		idKey = "provider_server_id"
+	}
+	dropletID := ExtractServerID(providerData, idKey)
 	if dropletID == "" {
 		return fmt.Errorf("cloud instance ID is missing")
 	}

@@ -112,7 +112,11 @@ func (p *HetznerProvider) Delete(ctx context.Context, server *models.Server, cre
 
 	client := p.NewClient(token)
 
-	hetznerID := GetStringField(providerData, "hetzner_id", GetStringField(providerData, "provider_server_id", ""))
+	idKey := "hetzner_id"
+	if _, exists := providerData[idKey]; !exists {
+		idKey = "provider_server_id"
+	}
+	hetznerID := ExtractServerID(providerData, idKey)
 	if hetznerID == "" {
 		return fmt.Errorf("cloud instance ID is missing")
 	}

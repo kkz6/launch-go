@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"net/http"
 	"strconv"
 
@@ -301,24 +302,49 @@ func ExtractServerID(data map[string]interface{}, key string) string {
 	case string:
 		return v
 	case float64:
-		// All upstream IDs we've seen are whole numbers; trunc and format.
-		return strconv.FormatInt(int64(v), 10)
+		// JSON numbers must be positive, exact integers. Never truncate or
+		// round a malformed identifier into a different cloud resource.
+		if v <= 0 || v > 1<<53-1 || math.Trunc(v) != v {
+			return ""
+		}
+		return strconv.FormatFloat(v, 'f', 0, 64)
 	case float32:
-		return strconv.FormatInt(int64(v), 10)
+		if v <= 0 || v > 1<<24-1 || math.Trunc(float64(v)) != float64(v) {
+			return ""
+		}
+		return strconv.FormatFloat(float64(v), 'f', 0, 32)
 	case int:
+		if v <= 0 {
+			return ""
+		}
 		return strconv.Itoa(v)
 	case int32:
+		if v <= 0 {
+			return ""
+		}
 		return strconv.FormatInt(int64(v), 10)
 	case int64:
+		if v <= 0 {
+			return ""
+		}
 		return strconv.FormatInt(v, 10)
 	case uint:
+		if v == 0 {
+			return ""
+		}
 		return strconv.FormatUint(uint64(v), 10)
 	case uint64:
+		if v == 0 {
+			return ""
+		}
 		return strconv.FormatUint(v, 10)
 	case json.Number:
+		if id, err := strconv.ParseUint(v.String(), 10, 64); err != nil || id == 0 {
+			return ""
+		}
 		return v.String()
 	default:
-		return fmt.Sprintf("%v", v)
+		return ""
 	}
 }
 
