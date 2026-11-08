@@ -15,28 +15,32 @@ import (
 // added below. ServerName is folded in so the UI can show which server each
 // site is on.
 type SiteSummary struct {
-	ID               string     `json:"id"`
-	ServerID         string     `json:"server_id"`
-	ServerName       string     `json:"server_name"`
-	Address          string     `json:"address"`
-	Type             string     `json:"type"`
-	TLSSetting       string     `json:"tls_setting"`
-	RepositoryBranch *string    `json:"repository_branch,omitempty"`
-	CreatedAt        *time.Time `json:"created_at,omitempty"`
+	ID                        string     `json:"id"`
+	ServerID                  string     `json:"server_id"`
+	ServerName                string     `json:"server_name"`
+	Address                   string     `json:"address"`
+	Type                      string     `json:"type"`
+	TLSSetting                string     `json:"tls_setting"`
+	RepositoryBranch          *string    `json:"repository_branch,omitempty"`
+	CreatedAt                 *time.Time `json:"created_at,omitempty"`
+	UninstallationRequestedAt *time.Time `json:"uninstallation_requested_at"`
+	UninstallationFailedAt    *time.Time `json:"uninstallation_failed_at"`
 }
 
 // NewSiteSummary maps a Site model to its safe summary view, folding in the
 // owning server's name from the supplied serverID→name lookup.
 func NewSiteSummary(s sitemodels.Site, serverNames map[string]string) SiteSummary {
 	return SiteSummary{
-		ID:               s.ID,
-		ServerID:         s.ServerID,
-		ServerName:       serverNames[s.ServerID],
-		Address:          s.Address,
-		Type:             s.Type.String(),
-		TLSSetting:       s.TLSSetting.String(),
-		RepositoryBranch: s.RepositoryBranch,
-		CreatedAt:        s.CreatedAt,
+		ID:                        s.ID,
+		ServerID:                  s.ServerID,
+		ServerName:                serverNames[s.ServerID],
+		Address:                   s.Address,
+		Type:                      s.Type.String(),
+		TLSSetting:                s.TLSSetting.String(),
+		RepositoryBranch:          s.RepositoryBranch,
+		CreatedAt:                 s.CreatedAt,
+		UninstallationRequestedAt: s.UninstallationRequestedAt,
+		UninstallationFailedAt:    s.UninstallationFailedAt,
 	}
 }
 

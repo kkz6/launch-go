@@ -88,6 +88,19 @@ func (m *Module) SiteRepository() *repositories.SiteRepository {
 	return m.repos.Site()
 }
 
+// SiteService exposes the configured service for cross-module site operations.
+func (m *Module) SiteService() *services.SiteService {
+	deps := m.Deps()
+	return m.createServices(&servertasks.TaskRunnerDeps{
+		DB:          deps.DB,
+		Queue:       deps.Queue,
+		Dispatcher:  deps.Dispatcher,
+		Logger:      deps.Logger,
+		Broadcaster: deps.WebSocket,
+		Notifier:    deps.Notifier,
+	}).Site()
+}
+
 // RegisterJobs registers background job handlers (implements app.JobRegistrar)
 func (m *Module) RegisterJobs(mux *asynq.ServeMux) {
 	jobs.Register(

@@ -5,6 +5,7 @@ import (
 	"errors"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	authmodels "github.com/kkz6/launch-go/internal/modules/auth/models"
 )
@@ -87,13 +88,15 @@ func (s *Service) DeleteUser(ctx context.Context, actorStaffID, targetUserID str
 	}
 
 	return s.repos.DB().WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		var exists int64
-		if err := tx.Model(&authmodels.User{}).Where("id = ?", targetUserID).Count(&exists).Error; err != nil {
-			return err
-		}
-
-		if exists == 0 {
+		// Share the target-row lock with staff-role changes so a concurrent
+		// promotion cannot slip between the role guard and the final DELETE.
+		var target authmodels.User
+		err := tx.Select("id").Clauses(clause.Locking{Strength: "UPDATE"}).First(&target, "id = ?", targetUserID).Error
+		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return ErrUserNotFound
+		}
+		if err != nil {
+			return err
 		}
 
 		reason, err := s.deletableReasonInTx(tx, targetUserID)

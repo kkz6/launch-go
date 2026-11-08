@@ -33,6 +33,7 @@ type Service struct {
 	repos         *repositories.Registry
 	logReader     ServerLogReader
 	serverDeleter ServerDeleter
+	siteDeleter   SiteDeleter
 
 	// jwtSecret signs the scoped impersonation token. Wired from main.go/module
 	// via SetJWTSecret out of config; never read from the environment directly.

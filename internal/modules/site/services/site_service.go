@@ -1168,37 +1168,7 @@ func originalSiteUpdateFields(site *models.Site, updates map[string]any) map[str
 
 // Delete deletes a site
 func (s *SiteService) Delete(ctx context.Context, id, serverID, teamID string) error {
-	site, err := s.Repos().Site().FindByIDAndServerAndTeam(ctx, id, serverID, teamID)
-	if err != nil {
-		return err
-	}
-
-	activity.RecordEvent(ctx, "deleted", "", site, "Site deletion requested")
-
-	now := time.Now()
-	site.UninstallationRequestedAt = &now
-
-	if err := s.Repos().Site().Update(ctx, site); err != nil {
-		return err
-	}
-
-	s.broadcastSiteUpdate(ctx, serverID, site)
-
-	// Dispatch site uninstall job
-	task, err := jobs.NewUninstallSiteTask(site.ID, serverID, nil)
-	if err != nil {
-		s.LogError(err, "Failed to create uninstall site task", "site_id", site.ID)
-		return err
-	}
-
-	if err := s.EnqueueTask(task); err != nil {
-		s.LogError(err, "Failed to enqueue uninstall site task", "site_id", site.ID)
-		return err
-	}
-
-	s.LogInfo("Site deletion requested", "site_id", site.ID, "address", site.Address)
-
-	return nil
+	return s.DeleteSite(ctx, id, serverID, teamID, "")
 }
 
 // GetDeletionSummary returns a summary of resources that will be deleted

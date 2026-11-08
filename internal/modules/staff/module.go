@@ -93,6 +93,8 @@ func (m *Module) RegisterRoutes(router fiber.Router, authMiddleware fiber.Handle
 	admin.Get("/users/:id/servers", m.handler.ShowUserServers)
 	admin.Get("/users/:id/sites", m.handler.ShowUserSites)
 	admin.Get("/users/:id/subscriptions", m.handler.ShowUserSubscriptions)
+	admin.Patch("/users/:id/staff-role", middleware.RequireStaff(stafftypes.StaffRoleSuperAdmin), m.handler.UpdateStaffRole)
+	admin.Delete("/sites/:id", middleware.RequireStaff(stafftypes.StaffRoleSuperAdmin), m.handler.DeleteSite)
 	admin.Get("/teams", m.handler.ListTeams)
 	admin.Get("/servers", m.handler.ListServers)
 	admin.Get("/servers/:id", m.handler.ShowServer)
