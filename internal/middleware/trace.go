@@ -3,6 +3,8 @@ package middleware
 import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/oklog/ulid/v2"
+
+	"github.com/kkz6/launch-go/internal/pkg/observability"
 )
 
 const (
@@ -48,6 +50,13 @@ func Trace() fiber.Handler {
 
 		// Add to response headers
 		c.Set(TraceIDHeader, traceID)
+
+		request := observability.NewRequest(traceID, c.Method())
+		// Existing repositories receive either context form. Share only the
+		// diagnostics object, never retain the pooled Fiber request itself.
+		c.Locals(observability.RequestContextKey{}, request)
+		c.SetUserContext(observability.WithRequest(c.UserContext(), request))
+		defer func() { request.Finish(c.Route().Path) }()
 
 		return c.Next()
 	}

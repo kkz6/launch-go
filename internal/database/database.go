@@ -58,9 +58,9 @@ func ConnectWithLogger(cfg config.DatabaseConfig, appLogger *zerolog.Logger) (*g
 			slowThreshold = 200 * time.Millisecond
 		}
 		if cfg.LogQueries {
-			gormConfig.Logger = logger.NewGormLoggerWithConfig(appLogger, gormlogger.Info, slowThreshold)
+			gormConfig.Logger = logger.NewGormLoggerWithConfig(appLogger, gormlogger.Info, slowThreshold, driver)
 		} else {
-			gormConfig.Logger = logger.NewGormLoggerWithConfig(appLogger, gormlogger.Warn, slowThreshold)
+			gormConfig.Logger = logger.NewGormLoggerWithConfig(appLogger, gormlogger.Warn, slowThreshold, driver)
 		}
 	}
 

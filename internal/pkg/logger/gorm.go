@@ -12,6 +12,8 @@ import (
 	"github.com/rs/zerolog"
 	"gorm.io/gorm"
 	gormlogger "gorm.io/gorm/logger"
+
+	"github.com/kkz6/launch-go/internal/pkg/observability"
 )
 
 // Icons for SQL operations
@@ -30,6 +32,7 @@ type GormLogger struct {
 	logger        *zerolog.Logger
 	logLevel      gormlogger.LogLevel
 	slowThreshold time.Duration
+	dialect       string
 }
 
 // NewGormLogger creates a new GORM logger
@@ -42,11 +45,12 @@ func NewGormLogger(logger *zerolog.Logger) *GormLogger {
 }
 
 // NewGormLoggerWithConfig creates a GORM logger with custom configuration
-func NewGormLoggerWithConfig(logger *zerolog.Logger, level gormlogger.LogLevel, slowThreshold time.Duration) *GormLogger {
+func NewGormLoggerWithConfig(logger *zerolog.Logger, level gormlogger.LogLevel, slowThreshold time.Duration, dialect string) *GormLogger {
 	return &GormLogger{
 		logger:        logger,
 		logLevel:      level,
 		slowThreshold: slowThreshold,
+		dialect:       dialect,
 	}
 }
 
@@ -94,21 +98,23 @@ func (l *GormLogger) Trace(ctx context.Context, begin time.Time, fc func() (sql 
 	icon := l.getOperationIcon(sql)
 
 	// Format the SQL for display (truncate if too long)
-	displaySQL := l.formatSQL(sql)
+	displaySQL := l.formatSQL(observability.RedactSQL(sql, l.dialect))
 
 	switch {
 	case err != nil && !errors.Is(err, gorm.ErrRecordNotFound):
 		// Error occurred
 		l.logger.Error().
+			Fields(observability.RequestFields(ctx)).
 			Str("caller", caller).
 			Str("duration", FormatDuration(elapsed)).
 			Int64("rows", rows).
-			Err(err).
+			Str("error", observability.QueryError(err)).
 			Msgf("%s %s", iconSQLError, displaySQL)
 
 	case elapsed > l.slowThreshold && l.slowThreshold != 0:
 		// Slow query
 		l.logger.Warn().
+			Fields(observability.RequestFields(ctx)).
 			Str("caller", caller).
 			Str("duration", FormatDuration(elapsed)).
 			Int64("rows", rows).
@@ -118,6 +124,7 @@ func (l *GormLogger) Trace(ctx context.Context, begin time.Time, fc func() (sql 
 	case l.logLevel >= gormlogger.Info:
 		// Normal query
 		l.logger.Debug().
+			Fields(observability.RequestFields(ctx)).
 			Str("caller", caller).
 			Str("duration", FormatDuration(elapsed)).
 			Int64("rows", rows).
@@ -127,7 +134,7 @@ func (l *GormLogger) Trace(ctx context.Context, begin time.Time, fc func() (sql 
 
 // ParamsFilter allows filtering of sensitive parameters
 func (l *GormLogger) ParamsFilter(ctx context.Context, sql string, params ...interface{}) (string, []interface{}) {
-	return sql, params
+	return sql, nil
 }
 
 // getOperationIcon returns an icon based on the SQL operation
