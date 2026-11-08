@@ -60,3 +60,36 @@ func TestChannelAuthorizerFailsClosedWithoutDatabase(t *testing.T) {
 		t.Fatal("resource authorization succeeded without a database")
 	}
 }
+
+func TestAdminChannelUsesFreshActiveStaffRole(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, statement := range []string{
+		`CREATE TABLE users (id TEXT PRIMARY KEY, staff_role TEXT, status TEXT)`,
+		`INSERT INTO users VALUES ('admin', 'super_admin', 'active'), ('support', 'support', 'active'), ('customer', NULL, 'active'), ('suspended', 'super_admin', 'suspended')`,
+	} {
+		if err := db.Exec(statement).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	authorizer := newChannelAuthorizer(db)
+	for user, allowed := range map[string]bool{"admin": true, "support": true, "customer": false, "suspended": false, "missing": false} {
+		if got := authorizer.AuthorizeChannel(user, "team-a", "admin.resources"); got != allowed {
+			t.Fatalf("%s access = %v, want %v", user, got, allowed)
+		}
+	}
+	if err := db.Exec(`UPDATE users SET staff_role = NULL WHERE id = 'admin'`).Error; err != nil {
+		t.Fatal(err)
+	}
+	if authorizer.AuthorizeChannel("admin", "team-a", "admin.resources") {
+		t.Fatal("demoted staff retained access")
+	}
+	if authorizer.AuthorizeChannel("support", "team-a", "admin.unknown") {
+		t.Fatal("unknown staff channel allowed")
+	}
+	if newChannelAuthorizer(nil).AuthorizeChannel("support", "team-a", "admin.resources") {
+		t.Fatal("staff channel allowed without database")
+	}
+}

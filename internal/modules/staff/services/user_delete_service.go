@@ -8,6 +8,7 @@ import (
 	"gorm.io/gorm/clause"
 
 	authmodels "github.com/kkz6/launch-go/internal/modules/auth/models"
+	"github.com/kkz6/launch-go/internal/pkg/broadcast"
 )
 
 // Human-readable reasons surfaced to the 409 when a user is not deletable.
@@ -87,7 +88,7 @@ func (s *Service) DeleteUser(ctx context.Context, actorStaffID, targetUserID str
 		return ErrCannotDeleteSelf
 	}
 
-	return s.repos.DB().WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	err := s.repos.DB().WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		// Share the target-row lock with staff-role changes so a concurrent
 		// promotion cannot slip between the role guard and the final DELETE.
 		var target authmodels.User
@@ -110,6 +111,11 @@ func (s *Service) DeleteUser(ctx context.Context, actorStaffID, targetUserID str
 
 		return s.repos.DeleteUser(tx, targetUserID)
 	})
+	if err != nil {
+		return err
+	}
+	s.broadcastAdminChange(broadcast.AdminResourceChange{Resource: "user", Action: "deleted", UserID: targetUserID})
+	return nil
 }
 
 // deletableReasonInTx re-evaluates the delete guards against the supplied

@@ -11,6 +11,7 @@ import (
 	staffdto "github.com/kkz6/launch-go/internal/modules/staff/dto"
 	"github.com/kkz6/launch-go/internal/modules/staff/repositories"
 	stafftypes "github.com/kkz6/launch-go/internal/modules/staff/types"
+	"github.com/kkz6/launch-go/internal/pkg/broadcast"
 )
 
 // ServerLogReader is the minimal cross-module dependency the staff module needs
@@ -34,6 +35,7 @@ type Service struct {
 	logReader     ServerLogReader
 	serverDeleter ServerDeleter
 	siteDeleter   SiteDeleter
+	broadcaster   broadcast.Broadcaster
 
 	// jwtSecret signs the scoped impersonation token. Wired from main.go/module
 	// via SetJWTSecret out of config; never read from the environment directly.
@@ -59,6 +61,15 @@ type Service struct {
 // NewService creates a new staff service.
 func NewService(repos *repositories.Registry) *Service {
 	return &Service{repos: repos}
+}
+
+// SetBroadcaster wires the ID-only staff invalidation stream.
+func (s *Service) SetBroadcaster(b broadcast.Broadcaster) { s.broadcaster = b }
+
+func (s *Service) broadcastAdminChange(change broadcast.AdminResourceChange) {
+	if s.broadcaster != nil {
+		s.broadcaster.Broadcast(broadcast.AdminResourcesChannel, broadcast.AdminResourceChanged, change)
+	}
 }
 
 // SetJWTSecret wires the HS256 signing secret used to mint scoped impersonation

@@ -13,6 +13,7 @@ import (
 
 	authmodels "github.com/kkz6/launch-go/internal/modules/auth/models"
 	billingmodels "github.com/kkz6/launch-go/internal/modules/billing/models"
+	"github.com/kkz6/launch-go/internal/pkg/broadcast"
 	"github.com/kkz6/launch-go/internal/pkg/mail/templates"
 )
 
@@ -89,6 +90,7 @@ func (s *Service) InviteUser(ctx context.Context, email, planID string, trialEnd
 		return nil, err
 	}
 
+	s.broadcastAdminChange(broadcast.AdminResourceChange{Resource: "invitation", Action: "created"})
 	if err := s.sendInvitationEmail(ctx, email, token, trialEndsAt); err != nil {
 		// The invite row is valid and usable; surface the transport error so the
 		// admin knows the email did not go out, but keep the created invitation.
@@ -123,7 +125,11 @@ func (s *Service) ListPendingInvitations(ctx context.Context, limit, offset int)
 // RevokeInvitation deletes a pending invitation by id. Returns
 // gorm.ErrRecordNotFound (via the repo) when no row matched.
 func (s *Service) RevokeInvitation(ctx context.Context, id string) error {
-	return s.repos.DeleteInvitation(ctx, id)
+	if err := s.repos.DeleteInvitation(ctx, id); err != nil {
+		return err
+	}
+	s.broadcastAdminChange(broadcast.AdminResourceChange{Resource: "invitation", Action: "deleted"})
+	return nil
 }
 
 // PlatformInviteByToken looks up a platform invite by token and reports whether
@@ -158,7 +164,7 @@ func (s *Service) AcceptPlatformInviteWithTrial(ctx context.Context, token, pers
 		return errors.New("personal team id is required to grant a trial")
 	}
 
-	return s.repos.DB().WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	err := s.repos.DB().WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		invitation, err := s.repos.FindInvitationByTokenTx(ctx, tx, token)
 		if err != nil {
 			return err
@@ -186,6 +192,12 @@ func (s *Service) AcceptPlatformInviteWithTrial(ctx context.Context, token, pers
 
 		return s.repos.MarkInvitationAccepted(ctx, tx, invitation.ID, time.Now())
 	})
+	if err != nil {
+		return err
+	}
+	s.broadcastAdminChange(broadcast.AdminResourceChange{Resource: "invitation", Action: "accepted", TeamID: personalTeamID})
+	s.broadcastAdminChange(broadcast.AdminResourceChange{Resource: "subscription", Action: "created", TeamID: personalTeamID})
+	return nil
 }
 
 // generateInviteToken returns a random URL-safe token built from 32 bytes of

@@ -167,7 +167,7 @@ func TestUninstallSiteCanceledJobStillRestoresRetryableState(t *testing.T) {
 	require.Nil(t, site.UninstallationRequestedAt)
 	require.NotNil(t, site.UninstallationFailedAt)
 	require.NoError(t, db.First(&models.Queue{}, "id = ?", "queue-1").Error)
-	require.Equal(t, []string{"site.updated"}, events.events)
+	require.Equal(t, []string{"site.deletion_failed", "site.updated"}, events.events)
 }
 
 type replacingUninstallDispatcher struct {

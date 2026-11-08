@@ -115,8 +115,27 @@ func (h *Hub) broadcastToChannel(message outboundMessage) {
 	}
 	h.mu.RUnlock()
 
-	// Send to all clients
+	// Staff subscriptions are reauthorized for every delivery. A role change,
+	// suspension or account removal revokes an already-connected socket too.
+	authorizedStaff := make(map[string]bool)
 	for _, client := range clientsCopy {
+		if message.channel == broadcast.AdminResourcesChannel {
+			if !client.validStaffSession() {
+				h.Unsubscribe(client, message.channel)
+				client.sendProtocolMessage("subscription.error", message.channel, map[string]string{"message": "Staff access required"})
+				continue
+			}
+			allowed, checked := authorizedStaff[client.UserID]
+			if !checked {
+				allowed = client.authorizer != nil && client.authorizer.AuthorizeChannel(client.UserID, client.TeamID, message.channel)
+				authorizedStaff[client.UserID] = allowed
+			}
+			if !allowed {
+				h.Unsubscribe(client, message.channel)
+				client.sendProtocolMessage("subscription.error", message.channel, map[string]string{"message": "Staff access required"})
+				continue
+			}
+		}
 		if !client.SafeSend(message.payload) {
 			// Client buffer full or closing, schedule for removal
 			go h.Unregister(client)
@@ -209,6 +228,9 @@ func (h *Hub) BroadcastToDeployment(deploymentID string, event string, data inte
 // the right handler. Mirrors the same injection in RedisBroadcaster.
 func (h *Hub) BroadcastToTeam(teamID string, event string, data interface{}) {
 	h.Broadcast(broadcast.TeamChannel(teamID), event, broadcast.EnsureRoutingField(data, "team_id", teamID))
+	if change := broadcast.AdminChangeForTeamEvent(teamID, event, data); change != nil {
+		h.Broadcast(broadcast.AdminResourcesChannel, broadcast.AdminResourceChanged, change)
+	}
 }
 
 // BroadcastToUser sends a message to the user's channel
@@ -290,6 +312,7 @@ func Handler(hub *Hub, jwtSecret string, membershipCache *launchcache.TeamMember
 
 		// Create client
 		client := NewClient(hub, c, claims.UserID, claims.TeamID, authorizer)
+		client.staffTokenExpiresAt = claims.StaffTokenExpiresAt
 		if locale, ok := i18n.Normalize(c.Query("locale")); ok {
 			client.Locale = locale
 		}

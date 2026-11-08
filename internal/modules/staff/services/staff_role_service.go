@@ -9,6 +9,7 @@ import (
 
 	authmodels "github.com/kkz6/launch-go/internal/modules/auth/models"
 	stafftypes "github.com/kkz6/launch-go/internal/modules/staff/types"
+	"github.com/kkz6/launch-go/internal/pkg/broadcast"
 	"github.com/kkz6/launch-go/internal/pkg/launch/activity"
 )
 
@@ -84,6 +85,7 @@ func (s *Service) UpdateStaffRole(ctx context.Context, actorID, targetID string,
 	}
 	// RequireStaff reads the role from the database on every request; there is
 	// no process-local role cache to invalidate after this commit.
+	s.broadcastAdminChange(broadcast.AdminResourceChange{Resource: "user", Action: "staff_role_updated", UserID: targetID})
 	return result, nil
 }
 

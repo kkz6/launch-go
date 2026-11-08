@@ -9,6 +9,7 @@ import (
 
 	"github.com/gofiber/contrib/websocket"
 
+	"github.com/kkz6/launch-go/internal/pkg/broadcast"
 	"github.com/kkz6/launch-go/internal/pkg/i18n"
 )
 
@@ -40,6 +41,8 @@ type Client struct {
 	sendMu     sync.RWMutex
 	closing    atomic.Bool
 	authorizer ChannelAuthorizer
+
+	staffTokenExpiresAt time.Time
 }
 
 // NewClient creates a new WebSocket client
@@ -120,7 +123,7 @@ func (c *Client) ReadPump() {
 		switch msg.Action {
 		case "subscribe":
 			channel := strings.TrimSpace(msg.Channel)
-			if c.authorizer == nil || !c.authorizer.AuthorizeChannel(c.UserID, c.TeamID, channel) {
+			if !c.canSubscribe(channel) {
 				c.sendProtocolMessage("subscription.error", channel, map[string]string{
 					"message": i18n.Translate(c.Locale, "channel access denied"),
 				})
@@ -195,4 +198,13 @@ func (c *Client) GetChannels() []string {
 		channels = append(channels, channel)
 	}
 	return channels
+}
+
+func (c *Client) validStaffSession() bool { return time.Now().Before(c.staffTokenExpiresAt) }
+
+func (c *Client) canSubscribe(channel string) bool {
+	if channel == broadcast.AdminResourcesChannel && !c.validStaffSession() {
+		return false
+	}
+	return c.authorizer != nil && c.authorizer.AuthorizeChannel(c.UserID, c.TeamID, channel)
 }

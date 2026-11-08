@@ -4,6 +4,7 @@ import (
 	"context"
 
 	authtypes "github.com/kkz6/launch-go/internal/modules/auth/types"
+	"github.com/kkz6/launch-go/internal/pkg/broadcast"
 )
 
 // SetUserStatus suspends or unsuspends a customer account. The actor is the
@@ -36,5 +37,9 @@ func (s *Service) SetUserStatus(ctx context.Context, actorStaffID, targetUserID 
 		return ErrCannotSuspendStaff
 	}
 
-	return s.repos.SetUserStatus(ctx, targetUserID, status)
+	if err := s.repos.SetUserStatus(ctx, targetUserID, status); err != nil {
+		return err
+	}
+	s.broadcastAdminChange(broadcast.AdminResourceChange{Resource: "user", Action: "updated", UserID: targetUserID})
+	return nil
 }

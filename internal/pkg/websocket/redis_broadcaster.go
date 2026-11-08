@@ -50,6 +50,9 @@ func NewRedisBroadcaster(addr, password string, db int, logger *zerolog.Logger) 
 // the other Broadcast methods below.
 func (r *RedisBroadcaster) BroadcastToTeam(teamID string, event string, data any) {
 	r.publish(broadcast.TeamChannel(teamID), event, broadcast.EnsureRoutingField(data, "team_id", teamID))
+	if change := broadcast.AdminChangeForTeamEvent(teamID, event, data); change != nil {
+		r.publish(broadcast.AdminResourcesChannel, broadcast.AdminResourceChanged, change)
+	}
 }
 
 // BroadcastToServer publishes a message to Redis for the server channel

@@ -15,6 +15,9 @@ import (
 type Claims struct {
 	UserID string
 	TeamID string
+	// Zero for spectate/refresh/undated tokens. Only a normal unexpired access
+	// token may subscribe to the cross-team staff invalidation stream.
+	StaffTokenExpiresAt time.Time
 }
 
 var (
@@ -70,8 +73,9 @@ func AuthenticateWebSocket(c *websocket.Conn, jwtSecret string, membershipCache 
 	}
 
 	return &Claims{
-		UserID: userID,
-		TeamID: teamID,
+		UserID:              userID,
+		TeamID:              teamID,
+		StaffTokenExpiresAt: staffTokenExpiry(token, jwtSecret),
 	}, nil
 }
 
@@ -124,4 +128,23 @@ func AuthenticateWebSocketLegacy(c *websocket.Conn, jwtSecret string) (*Claims, 
 		UserID: userID,
 		TeamID: teamID,
 	}, nil
+}
+
+func staffTokenExpiry(token, secret string) time.Time {
+	claims, err := security.ParseJWTToken(token, secret)
+	readOnly, _ := claims["read_only"].(bool)
+	if err != nil || claims["type"] != "access" || readOnly {
+		return time.Time{}
+	}
+	if impersonator, ok := claims["impersonator_id"].(string); ok && impersonator != "" {
+		return time.Time{}
+	}
+	if session, ok := claims["impersonation_sid"].(string); ok && session != "" {
+		return time.Time{}
+	}
+	expires, err := claims.GetExpirationTime()
+	if err != nil || expires == nil {
+		return time.Time{}
+	}
+	return expires.Time
 }

@@ -216,6 +216,9 @@ func (j *UninstallSiteJob) Failed(ctx context.Context, err error) {
 	}
 	site, findErr := j.Deps.Repos.Site().FindByID(ctx, j.Payload.SiteID)
 	if findErr == nil {
+		j.Deps.BroadcastToTeam(site.TeamID, "site.deletion_failed", map[string]any{
+			"site_id": site.ID, "server_id": site.ServerID,
+		})
 		j.Deps.BroadcastToTeam(site.TeamID, "site.updated", map[string]any{
 			"team_id": site.TeamID, "server_id": site.ServerID,
 			"site_id": site.ID, "site": dto.ToSiteResponse(site),
