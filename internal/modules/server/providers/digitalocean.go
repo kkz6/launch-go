@@ -110,17 +110,16 @@ func (p *DigitalOceanProvider) Delete(ctx context.Context, server *models.Server
 
 	providerData := server.ProviderData
 	if providerData == nil {
-		return nil // Nothing to delete
+		return fmt.Errorf("cloud instance ID is missing")
 	}
 
-	dropletID := GetStringField(providerData, "droplet_id", "")
+	dropletID := GetStringField(providerData, "droplet_id", GetStringField(providerData, "provider_server_id", ""))
 	if dropletID == "" {
-		return nil // Nothing to delete
+		return fmt.Errorf("cloud instance ID is missing")
 	}
 
 	client := p.NewClient(token)
-	DoDeleteIgnoreErrors(ctx, client, "/droplets/"+dropletID)
-	return nil
+	return DoDelete(ctx, client, "/droplets/"+dropletID)
 }
 
 // GetPublicIPv4 fetches the public IPv4 address of a server

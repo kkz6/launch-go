@@ -195,7 +195,7 @@ func (h *AdminHandler) ListServers(c *fiber.Ctx) error {
 // when no server matches the id. Never exposes keys, passwords or the private
 // IP — the detail DTO carries an explicit allow-list.
 func (h *AdminHandler) ShowServer(c *fiber.Ctx) error {
-	server, err := h.service.GetServerDetail(c.Context(), c.Params("id"))
+	server, err := h.service.GetServerDetail(c.UserContext(), c.Params("id"))
 	if err != nil {
 		if errors.Is(err, services.ErrServerNotFound) {
 			return fiberutil.RespondNotFound(c, "Server not found")

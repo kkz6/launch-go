@@ -14,6 +14,7 @@ import (
 	"github.com/hibiken/asynq"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/sync/errgroup"
+	"gorm.io/gorm"
 
 	"github.com/kkz6/launch-go/internal/config"
 	"github.com/kkz6/launch-go/internal/modules/server/dto"
@@ -254,69 +255,6 @@ func (s *Service) UpdateServer(ctx context.Context, id, teamID, userID string, r
 	activity.RecordEvent(ctx, "updated", userID, server, "Server was updated")
 	s.broadcastServerUpdate(server)
 	return dto.ToServerResponse(server), nil
-}
-
-// DeleteServer deletes a server. Signature matches DeleteFunc.
-//
-// Broadcasting contract:
-//   - Immediately after marking status=deleting we broadcast `server.updated`
-//     so the UI flips the badge to "Deleting" without waiting for the worker.
-//     Without this, the user clicks Delete, nothing visible happens for
-//     seconds (cloud delete API can take 10-30s), and they assume sockets
-//     are broken.
-//   - For custom providers we delete the row inline and broadcast
-//     `server.deleted` so the list re-fetches and the card disappears.
-//   - For cloud providers, DeleteServerJob.Handle owns the final
-//     `server.deleted` broadcast after the upstream API call succeeds.
-//     DeleteServerJob.Failed broadcasts `server.deletion_failed` so the UI
-//     can surface the error rather than spinning forever.
-func (s *Service) DeleteServer(ctx context.Context, id, teamID, userID string) error {
-	_ = userID
-	server, err := s.repos.Server().FindByIDAndTeam(ctx, id, teamID)
-	if err != nil {
-		return err
-	}
-
-	// Docker servers refuse deletion while live projects still belong to
-	// them. Mirrors how ProjectService.DeleteProject refuses to delete a
-	// project that still has workloads — the user must tear things down
-	// from the bottom up. Querying the docker_projects table directly
-	// (rather than importing the docker repo) keeps the server module
-	// independent of the docker module's import graph.
-	//
-	// The PHP server types (php / database / loadbalancer) don't have
-	// docker_projects rows by construction, so the COUNT comes back zero
-	// and the check is free for them — no `if server.Type == "docker"`
-	// guard needed.
-	if err := s.guardDockerProjectsExist(ctx, server.ID); err != nil {
-		return err
-	}
-
-	activity.RecordEvent(ctx, "deleted", "", server, "Server deletion requested")
-
-	if err := s.repos.Server().UpdateStatus(ctx, id, types.ServerStatusDeleting); err != nil {
-		return err
-	}
-
-	// Reload so the broadcast payload reflects the new status.
-	if updated, err := s.repos.Server().FindByIDAndTeam(ctx, id, teamID); err == nil {
-		s.broadcastServerUpdate(updated)
-	}
-
-	if server.Provider == types.ProviderCustom {
-		if err := s.repos.Server().Delete(ctx, id); err != nil {
-			return err
-		}
-		s.BroadcastToTeam(server.TeamID, "server.deleted", map[string]any{
-			"server_id": server.ID,
-		})
-		return nil
-	}
-
-	if err := s.dispatchDeleteJob(server); err != nil {
-		s.LogError(err, "Failed to dispatch delete job", "server_id", server.ID)
-	}
-	return nil
 }
 
 // ArchiveServer archives a server. Signature matches ActionFunc.
@@ -598,9 +536,9 @@ func (s *Service) dispatchCreateOnProviderJob(server *models.Server, serverProvi
 	})
 }
 
-func (s *Service) dispatchDeleteJob(server *models.Server) error {
+func (s *Service) dispatchDeleteJob(server *models.Server, userID string) error {
 	return s.MustDispatch(func() (*asynq.Task, error) {
-		return jobs.NewDeleteServerTask(server.ID, server.TeamID, nil)
+		return jobs.NewDeleteServerTask(server.ID, server.TeamID, &userID, server.Status)
 	})
 }
 
@@ -1060,12 +998,9 @@ func (s *Service) RunVulnerabilityAudit(ctx context.Context, serverID, teamID, u
 // The companion frontend disables the Delete button when
 // `projects_count > 0` is exposed on the server response, so this
 // server-side check is the backstop — never the primary UX.
-func (s *Service) guardDockerProjectsExist(ctx context.Context, serverID string) error {
-	if !s.HasDB() {
-		return nil
-	}
+func guardDockerProjectsExist(ctx context.Context, db *gorm.DB, serverID string) error {
 	var count int64
-	if err := s.DB().WithContext(ctx).
+	if err := db.WithContext(ctx).
 		Table("docker_projects").
 		Where("server_id = ? AND deleted_at IS NULL", serverID).
 		Count(&count).Error; err != nil {

@@ -17,14 +17,16 @@ type AdminServerOwner struct {
 // an allow-list of non-sensitive fields — never the private key, host key,
 // passwords, launch token, provider credentials or private IP.
 type AdminServerDetail struct {
-	ID          string  `json:"id"`
-	Name        string  `json:"name"`
-	Description *string `json:"description,omitempty"`
-	Provider    string  `json:"provider"`
-	Type        *string `json:"type,omitempty"`
-	Status      string  `json:"status"`
-	Connected   bool    `json:"connected"`
-	PublicIPv4  *string `json:"public_ipv4,omitempty"`
+	ID            string  `json:"id"`
+	Name          string  `json:"name"`
+	Description   *string `json:"description,omitempty"`
+	Provider      string  `json:"provider"`
+	Type          *string `json:"type,omitempty"`
+	Status        string  `json:"status"`
+	Connected     bool    `json:"connected"`
+	SitesCount    int64   `json:"sites_count"`
+	ProjectsCount int64   `json:"projects_count"`
+	PublicIPv4    *string `json:"public_ipv4,omitempty"`
 
 	CPUCores    *int `json:"cpu_cores,omitempty"`
 	MemoryInMB  *int `json:"memory_in_mb,omitempty"`

@@ -140,8 +140,8 @@ func (p *AWSProvider) Create(ctx context.Context, server *models.Server, credent
 
 // Delete deletes a server from AWS
 func (p *AWSProvider) Delete(ctx context.Context, server *models.Server, credentials map[string]interface{}) error {
-	// AWS EC2 deletion would use AWS SDK
-	return nil
+	// Fail closed until EC2 termination is implemented.
+	return fmt.Errorf("AWS server deletion is not supported")
 }
 
 // GetPublicIPv4 fetches the public IPv4 address

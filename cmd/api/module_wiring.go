@@ -23,6 +23,7 @@ func (m moduleSet) wire(a *Application) {
 	m.server.SetSiteReader(m.site.SiteReader())
 	m.git.SetSiteChecker(m.site.SiteChecker())
 	m.staff.SetServerLogReader(m.server.Repos().Task())
+	m.staff.Service().SetServerDeleter(m.server.Service())
 	m.staff.Service().SetInvitationDeps(m.emailSender, a.config.App.Frontend())
 	m.auth.Service().Auth.SetPlatformInviteReader(m.staff.Service())
 }

@@ -260,7 +260,7 @@ func DoPost(ctx context.Context, client *httpclient.Client, path string, body in
 }
 
 // DoDelete performs a DELETE request using the httpclient.
-// Returns nil error even if the server returns an error (for idempotent deletes).
+// Only an absent resource (404) is treated as an idempotent success.
 func DoDelete(ctx context.Context, client *httpclient.Client, path string) error {
 	var result map[string]interface{}
 	err := client.Delete(ctx, path, &result)
@@ -269,10 +269,14 @@ func DoDelete(ctx context.Context, client *httpclient.Client, path string) error
 		if httpErr, ok := httpclient.IsHTTPError(err); ok && httpErr.IsNotFound() {
 			return nil
 		}
-		// Log other failures so we can see what the upstream complained about.
-		logUpstreamError(http.MethodDelete, path, err)
+		// Deletion failures reach jobs and notifications. Keep upstream bodies,
+		// which can contain credentials, out of errors and logs on this path.
+		if httpErr, ok := httpclient.IsHTTPError(err); ok {
+			return fmt.Errorf("provider deletion failed (HTTP %d)", httpErr.StatusCode)
+		}
+		return fmt.Errorf("provider deletion request failed")
 	}
-	return err
+	return nil
 }
 
 // DoDeleteIgnoreErrors performs a DELETE request and ignores all errors.

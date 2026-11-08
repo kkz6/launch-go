@@ -100,17 +100,16 @@ func (p *LinodeProvider) Delete(ctx context.Context, server *models.Server, cred
 
 	providerData := server.ProviderData
 	if providerData == nil {
-		return nil
+		return fmt.Errorf("cloud instance ID is missing")
 	}
 
-	linodeID := GetStringField(providerData, "linode_id", "")
+	linodeID := GetStringField(providerData, "linode_id", GetStringField(providerData, "provider_server_id", ""))
 	if linodeID == "" {
-		return nil
+		return fmt.Errorf("cloud instance ID is missing")
 	}
 
 	client := p.NewClient(token)
-	DoDeleteIgnoreErrors(ctx, client, "/linode/instances/"+linodeID)
-	return nil
+	return DoDelete(ctx, client, "/linode/instances/"+linodeID)
 }
 
 // GetPublicIPv4 fetches the public IPv4 address

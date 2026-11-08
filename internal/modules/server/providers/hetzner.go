@@ -107,13 +107,17 @@ func (p *HetznerProvider) Delete(ctx context.Context, server *models.Server, cre
 
 	providerData := server.ProviderData
 	if providerData == nil {
-		return nil
+		return fmt.Errorf("cloud instance ID is missing")
 	}
 
 	client := p.NewClient(token)
 
-	if hetznerID := GetStringField(providerData, "hetzner_id", ""); hetznerID != "" {
-		DoDeleteIgnoreErrors(ctx, client, "/servers/"+hetznerID)
+	hetznerID := GetStringField(providerData, "hetzner_id", GetStringField(providerData, "provider_server_id", ""))
+	if hetznerID == "" {
+		return fmt.Errorf("cloud instance ID is missing")
+	}
+	if err := DoDelete(ctx, client, "/servers/"+hetznerID); err != nil {
+		return err
 	}
 
 	if sshKeyID := GetStringField(providerData, "ssh_key_id", ""); sshKeyID != "" {

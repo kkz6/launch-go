@@ -110,13 +110,17 @@ func (p *VultrProvider) Delete(ctx context.Context, server *models.Server, crede
 
 	providerData := server.ProviderData
 	if providerData == nil {
-		return nil
+		return fmt.Errorf("cloud instance ID is missing")
 	}
 
 	client := p.NewClient(token)
 
-	if vultrID := GetStringField(providerData, "vultr_id", ""); vultrID != "" {
-		DoDeleteIgnoreErrors(ctx, client, "/instances/"+vultrID)
+	vultrID := GetStringField(providerData, "vultr_id", GetStringField(providerData, "provider_server_id", ""))
+	if vultrID == "" {
+		return fmt.Errorf("cloud instance ID is missing")
+	}
+	if err := DoDelete(ctx, client, "/instances/"+vultrID); err != nil {
+		return err
 	}
 
 	if sshKeyID := GetStringField(providerData, "ssh_key_id", ""); sshKeyID != "" {

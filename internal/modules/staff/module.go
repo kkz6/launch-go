@@ -97,6 +97,7 @@ func (m *Module) RegisterRoutes(router fiber.Router, authMiddleware fiber.Handle
 	admin.Get("/servers", m.handler.ListServers)
 	admin.Get("/servers/:id", m.handler.ShowServer)
 	admin.Get("/servers/:id/logs", m.handler.ServerLogs)
+	admin.Delete("/servers/:id", middleware.RequireStaff(stafftypes.StaffRoleSuperAdmin), m.handler.DeleteServer)
 	admin.Get("/failures", m.handler.Failures)
 	admin.Get("/failures/:id/log", m.handler.ShowFailureLog)
 

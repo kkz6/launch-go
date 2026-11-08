@@ -30,8 +30,9 @@ type ServerLogReader interface {
 
 // Service exposes the staff module's business operations.
 type Service struct {
-	repos     *repositories.Registry
-	logReader ServerLogReader
+	repos         *repositories.Registry
+	logReader     ServerLogReader
+	serverDeleter ServerDeleter
 
 	// jwtSecret signs the scoped impersonation token. Wired from main.go/module
 	// via SetJWTSecret out of config; never read from the environment directly.
@@ -210,6 +211,10 @@ func (s *Service) GetServerDetail(ctx context.Context, serverID string) (*staffd
 	if server == nil {
 		return nil, ErrServerNotFound
 	}
+	sitesCount, projectsCount, err := s.repos.ServerResourceCounts(ctx, serverID)
+	if err != nil {
+		return nil, err
+	}
 
 	owner := staffdto.AdminServerOwner{
 		TeamID: server.TeamID,
@@ -238,6 +243,8 @@ func (s *Service) GetServerDetail(ctx context.Context, serverID string) (*staffd
 		Type:                  server.Type,
 		Status:                string(server.Status),
 		Connected:             server.Connected,
+		SitesCount:            sitesCount,
+		ProjectsCount:         projectsCount,
 		PublicIPv4:            server.PublicIPv4,
 		CPUCores:              server.CPUCores,
 		MemoryInMB:            server.MemoryInMB,

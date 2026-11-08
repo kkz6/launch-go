@@ -35,7 +35,7 @@ func (n *FailedToDeleteServerNotification) ToEmail() *channels.EmailMessage {
 		WithState("DELETE FAILED", "error").
 		WithGreeting("Failed to Delete Server from Provider").
 		WithIntro(fmt.Sprintf("Failed to delete server **%s** from **%s**.", n.ServerName, n.Provider)).
-		WithIntro(fmt.Sprintf("The server has been removed from Launch, but we were unable to delete it from your cloud provider. You may need to manually delete it from your %s account to avoid additional charges.", n.Provider))
+		WithIntro(fmt.Sprintf("The server record has been retained in Launch because deletion from your cloud provider could not be confirmed. You may need to manually delete it from your %s account to avoid additional charges.", n.Provider))
 
 	details := fmt.Sprintf(`**Server:** %s
 
@@ -62,7 +62,7 @@ func (n *FailedToDeleteServerNotification) ToEmail() *channels.EmailMessage {
 func (n *FailedToDeleteServerNotification) plainTextEmail() *channels.EmailMessage {
 	body := fmt.Sprintf(`Failed to delete server '%s' from %s.
 
-The server has been removed from Launch, but we were unable to delete it from your cloud provider. You may need to manually delete it from your %s account to avoid additional charges.
+The server record has been retained in Launch because deletion from your cloud provider could not be confirmed. You may need to manually delete it from your %s account to avoid additional charges.
 
 Server: %s
 Provider: %s`,
