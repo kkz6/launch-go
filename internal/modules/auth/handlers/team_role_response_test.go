@@ -2,14 +2,9 @@ package handlers_test
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"net"
-	"net/http"
 	"testing"
-	"time"
 
-	"github.com/gofiber/fiber/v2"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 	"gorm.io/driver/sqlite"
@@ -17,11 +12,9 @@ import (
 
 	"github.com/kkz6/launch-go/internal/modules/auth/contracts"
 	"github.com/kkz6/launch-go/internal/modules/auth/dto"
-	"github.com/kkz6/launch-go/internal/modules/auth/handlers"
 	"github.com/kkz6/launch-go/internal/modules/auth/models"
 	"github.com/kkz6/launch-go/internal/modules/auth/repositories"
 	"github.com/kkz6/launch-go/internal/modules/auth/services"
-	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 	launchcache "github.com/kkz6/launch-go/internal/pkg/launch/cache"
 	basemodels "github.com/kkz6/launch-go/internal/pkg/models"
 	"github.com/kkz6/launch-go/internal/pkg/security"
@@ -67,42 +60,17 @@ func TestAccountResponsesFollowSelectedTeamRole(t *testing.T) {
 	require.Equal(t, "owner", *login.AuthResponse.User.Role)
 	refreshToken := login.AuthResponse.RefreshToken
 
-	app := fiber.New(fiber.Config{DisableStartupMessage: true, ErrorHandler: fiberutil.NewErrorHandler()})
-	app.Use(func(c *fiber.Ctx) error {
-		c.Locals(fiberutil.KeyUserID, user.ID)
-		return c.Next()
-	})
-	app.Post("/teams/:teamId/switch", handlers.NewTeamHandler(service).SwitchTeamByID)
-	app.Get("/user", handlers.NewUserHandler(service).User)
-	// A real listener initializes fasthttp's request context cancellation channel.
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
-	require.NoError(t, err)
-	done := make(chan error, 1)
-	go func() { done <- app.Listener(listener) }()
-	t.Cleanup(func() {
-		require.NoError(t, app.Shutdown())
-		require.NoError(t, <-done)
-	})
-	client := &http.Client{Timeout: 5 * time.Second}
-	baseURL := "http://" + listener.Addr().String()
-
 	for _, selected := range []struct {
 		team *models.Team
 		role string
 	}{{memberTeam, "member"}, {editorTeam, "editor"}, {ownerTeam, "owner"}} {
 		t.Run(selected.role, func(t *testing.T) {
-			for _, route := range []struct{ method, path string }{
-				{http.MethodPost, "/teams/" + selected.team.ID + "/switch"},
-				{http.MethodGet, "/user"},
-			} {
-				request, err := http.NewRequest(route.method, baseURL+route.path, nil)
-				require.NoError(t, err)
-				response, err := client.Do(request)
-				require.NoError(t, err)
-				require.Equal(t, http.StatusOK, response.StatusCode)
-				var body dto.UserResponse
-				require.NoError(t, json.Unmarshal(parseResponse(response).Data, &body))
-				require.NoError(t, response.Body.Close())
+			switched, err := service.Team.SwitchTeam(context.Background(), user.ID, selected.team.ID)
+			require.NoError(t, err)
+			current, err := service.User.GetUser(context.Background(), user.ID)
+			require.NoError(t, err)
+			for _, account := range []*models.User{switched, current} {
+				body := service.UserResponse(context.Background(), account)
 				require.NotNil(t, body.Role)
 				require.Equal(t, selected.role, *body.Role)
 				require.Equal(t, selected.team.ID, *body.CurrentTeamID)
