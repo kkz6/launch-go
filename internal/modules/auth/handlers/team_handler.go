@@ -143,7 +143,5 @@ func (h *TeamHandler) handleSwitchTeam(c *fiber.Ctx, userID, teamID string) erro
 		return fiberctx.HandleError(c, err)
 	}
 
-	isSubscribed := h.Service().IsUserSubscribed(c.Context(), user)
-
-	return fiberctx.OK(c, "Team switched. Use X-Team-ID header for subsequent requests.", dto.ToUserResponseWithStatus(user, isSubscribed, user.Onboarded))
+	return fiberctx.OK(c, "Team switched. Use X-Team-ID header for subsequent requests.", h.Service().UserResponse(c.Context(), user))
 }

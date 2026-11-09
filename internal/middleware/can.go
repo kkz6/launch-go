@@ -35,7 +35,10 @@ func Can(ability string) fiber.Handler {
 
 		actor := authaccess.ActorFromFiber(c)
 		if err := gateMiddleware.gate.Authorize(c.Context(), actor, ability, nil); err != nil {
-			return fiberctx.RespondForbidden(c, err.Error())
+			if actor.ReadOnly {
+				return respondReadOnlyImpersonation(c)
+			}
+			return fiberctx.ErrorWithCode(c, fiber.StatusForbidden, "permission.denied", "Your team role does not allow this action. Ask a team owner to update your access.")
 		}
 
 		return c.Next()

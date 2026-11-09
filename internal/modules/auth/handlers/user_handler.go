@@ -35,16 +35,7 @@ func (h *UserHandler) User(c *fiber.Ctx) error {
 		return fiberctx.RespondNotFound(c, "User not found")
 	}
 
-	isSubscribed := h.Service().IsUserSubscribed(c.Context(), user)
-
-	resp := dto.ToUserResponseWithStatus(user, isSubscribed, user.Onboarded)
-	if user.CurrentTeamID != nil {
-		if role := h.Service().CurrentTeamRole(c.Context(), user.ID, *user.CurrentTeamID); role != "" {
-			resp.Role = &role
-		}
-	}
-
-	return fiberctx.OK(c, "User retrieved", resp)
+	return fiberctx.OK(c, "User retrieved", h.Service().UserResponse(c.Context(), user))
 }
 
 // UpdateProfile updates the user's profile
@@ -59,9 +50,7 @@ func (h *UserHandler) UpdateProfile(c *fiber.Ctx, req *dto.UpdateProfileRequest)
 		return fiberctx.HandleError(c, err)
 	}
 
-	isSubscribed := h.Service().IsUserSubscribed(c.Context(), user)
-
-	return fiberctx.OK(c, "Profile updated", dto.ToUserResponseWithStatus(user, isSubscribed, user.Onboarded))
+	return fiberctx.OK(c, "Profile updated", h.Service().UserResponse(c.Context(), user))
 }
 
 // UpdateLocale updates the user's language preference. The new locale is
@@ -79,8 +68,7 @@ func (h *UserHandler) UpdateLocale(c *fiber.Ctx, req *dto.UpdateLocaleRequest) e
 	}
 
 	i18n.ApplyPreference(c, user.Locale)
-	isSubscribed := h.Service().IsUserSubscribed(c.Context(), user)
-	return fiberctx.OK(c, "Locale updated", dto.ToUserResponseWithStatus(user, isSubscribed, user.Onboarded))
+	return fiberctx.OK(c, "Locale updated", h.Service().UserResponse(c.Context(), user))
 }
 
 // ChangePassword changes the user's password
@@ -138,7 +126,5 @@ func (h *UserHandler) ResetOnboarding(c *fiber.Ctx) error {
 		return fiberctx.HandleError(c, err)
 	}
 
-	isSubscribed := h.Service().IsUserSubscribed(c.Context(), user)
-
-	return fiberctx.OK(c, "Onboarding reset successfully", dto.ToUserResponseWithStatus(user, isSubscribed, user.Onboarded))
+	return fiberctx.OK(c, "Onboarding reset successfully", h.Service().UserResponse(c.Context(), user))
 }

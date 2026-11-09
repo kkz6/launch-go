@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"encoding/json"
 	"net/http/httptest"
 	"testing"
 	"time"
@@ -9,6 +10,9 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
+	"github.com/kkz6/launch-go/internal/pkg/i18n"
 )
 
 // appWithImpersonation builds a Fiber app whose route is guarded by
@@ -46,6 +50,10 @@ func TestBlockImpersonationWrites_ReadOnlyBlocksMutations(t *testing.T) {
 		resp, err := app.Test(httptest.NewRequest(method, "/resource", nil))
 		require.NoError(t, err)
 		assert.Equalf(t, fiber.StatusForbidden, resp.StatusCode, "%s should be blocked", method)
+		var body fiberctx.ErrorResponse
+		require.NoError(t, json.NewDecoder(resp.Body).Decode(&body))
+		require.NoError(t, resp.Body.Close())
+		assert.Equal(t, "permission.read_only", body.Code)
 	}
 }
 
@@ -96,6 +104,7 @@ func signImpersonationToken(t *testing.T, readOnly bool) string {
 // so a nil *gorm.DB is sufficient for these JWT-success cases.
 func appWithAuth() *fiber.App {
 	app := fiber.New()
+	app.Use(Locale(i18n.LocaleEnglish))
 
 	handler := func(c *fiber.Ctx) error {
 		return c.SendString("ok")
@@ -120,10 +129,16 @@ func TestAuth_ReadOnlyImpersonationBlocksWrites(t *testing.T) {
 	t.Run("POST with read-only token is blocked", func(t *testing.T) {
 		req := httptest.NewRequest("POST", "/resource", nil)
 		req.Header.Set("Authorization", "Bearer "+readOnlyToken)
+		req.Header.Set("Accept-Language", "ja")
 
 		resp, err := app.Test(req)
 		require.NoError(t, err)
 		assert.Equal(t, fiber.StatusForbidden, resp.StatusCode)
+		defer resp.Body.Close()
+		var body fiberctx.ErrorResponse
+		require.NoError(t, json.NewDecoder(resp.Body).Decode(&body))
+		assert.Equal(t, "permission.read_only", body.Code)
+		assert.Equal(t, "このアカウントは読み取り専用モードで表示されています。変更するには閲覧モードを終了してください。", body.Message)
 	})
 
 	t.Run("GET with read-only token passes", func(t *testing.T) {

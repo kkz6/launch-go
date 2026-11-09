@@ -162,7 +162,7 @@ func Auth(jwtSecret string, db *gorm.DB) fiber.Handler {
 			// bare authMiddleware inline — rejects mutating requests made under a
 			// read-only impersonation token. No-op for normal tokens.
 			if isImpersonationWriteBlocked(c) {
-				return fiberctx.RespondForbidden(c, readOnlyImpersonationMessage)
+				return respondReadOnlyImpersonation(c)
 			}
 
 			// Freeze suspended accounts at the chokepoint: every authenticated

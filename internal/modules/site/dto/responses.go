@@ -212,7 +212,8 @@ type SiteSettingsResponse struct {
 	Repository        *SourceControlRepositoryResponse `json:"repository,omitempty"`
 }
 
-// ToSiteResponse converts a Site model to a response DTO
+// ToSiteResponse is safe for read-only responses and shared team broadcasts.
+// Deploy credentials grant write access and must be added only after authorization.
 func ToSiteResponse(site *models.Site) SiteResponse {
 	repositoryBranch := ""
 	if site.RepositoryBranch != nil {
@@ -226,12 +227,6 @@ func ToSiteResponse(site *models.Site) SiteResponse {
 	pendingPhpVersion := ""
 	if site.PendingPhpVersion != nil {
 		pendingPhpVersion = site.PendingPhpVersion.String()
-	}
-
-	// Build deploy webhook URL if token exists
-	var deployWebhookURL string
-	if site.DeployToken != nil && *site.DeployToken != "" {
-		deployWebhookURL = webhookBaseURL + "/deploy/" + site.ID + "/" + *site.DeployToken
 	}
 
 	// Extract enabled feature names
@@ -265,8 +260,6 @@ func ToSiteResponse(site *models.Site) SiteResponse {
 		HookAfterUpdatingRepository:  site.HookAfterUpdatingRepository,
 		HookBeforeMakingCurrent:      site.HookBeforeMakingCurrent,
 		HookAfterMakingCurrent:       site.HookAfterMakingCurrent,
-		DeployToken:                  site.DeployToken,
-		DeployWebhookURL:             deployWebhookURL,
 		URL:                          site.GetURL(),
 		ApplicationDirectory:         site.GetApplicationDirectory(),
 		Features:                     site.Features,
@@ -298,6 +291,17 @@ func ToSiteResponse(site *models.Site) SiteResponse {
 		resp.LatestDeployment = &deploymentResp
 	}
 
+	return resp
+}
+
+// ToSiteResponseWithDeployCredentials is for authorized deployment writers only.
+// Never use it for lists or broadcasts shared with read-only team members.
+func ToSiteResponseWithDeployCredentials(site *models.Site) SiteResponse {
+	resp := ToSiteResponse(site)
+	if site.DeployToken != nil && *site.DeployToken != "" {
+		resp.DeployToken = site.DeployToken
+		resp.DeployWebhookURL = webhookBaseURL + "/deploy/" + site.ID + "/" + *site.DeployToken
+	}
 	return resp
 }
 

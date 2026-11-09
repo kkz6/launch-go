@@ -8,6 +8,7 @@ import (
 
 	"github.com/kkz6/launch-go/internal/config"
 	"github.com/kkz6/launch-go/internal/modules/auth/contracts"
+	"github.com/kkz6/launch-go/internal/modules/auth/dto"
 	"github.com/kkz6/launch-go/internal/modules/auth/models"
 	"github.com/kkz6/launch-go/internal/modules/notification/channels"
 	"github.com/kkz6/launch-go/internal/pkg/cache"
@@ -55,6 +56,11 @@ func (s *Service) CurrentTeamRole(ctx context.Context, userID, teamID string) st
 		return ""
 	}
 	return role
+}
+
+// UserResponse keeps account and authentication responses consistent.
+func (s *Service) UserResponse(ctx context.Context, user *models.User) dto.UserResponse {
+	return s.Auth.UserResponse(ctx, user)
 }
 
 // NewService creates a new Service instance

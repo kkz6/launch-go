@@ -369,10 +369,8 @@ func (s *AuthService) RefreshToken(ctx context.Context, refreshToken string) (*d
 		return nil, err
 	}
 
-	isSubscribed := s.isTeamSubscribedOrUserAdmin(ctx, user)
-
 	return &dto.AuthResponse{
-		User:         dto.ToUserResponseWithStatus(user, isSubscribed, user.Onboarded),
+		User:         s.UserResponse(ctx, user),
 		AccessToken:  accessToken,
 		RefreshToken: newRefreshToken,
 		ExpiresIn:    s.config.JWT.Expiration * 3600,
@@ -622,6 +620,18 @@ func (s *AuthService) createSession(ctx context.Context, userID, ipAddress, user
 	return session.ID, nil
 }
 
+// UserResponse includes the role for the user's selected team alongside account
+// details. The backend continues to authorize each request independently.
+func (s *AuthService) UserResponse(ctx context.Context, user *models.User) dto.UserResponse {
+	response := dto.ToUserResponseWithStatus(user, s.isTeamSubscribedOrUserAdmin(ctx, user), user.Onboarded)
+	if user.CurrentTeamID != nil && s.membershipCache != nil {
+		if role, err := s.membershipCache.GetRole(ctx, user.ID, *user.CurrentTeamID); err == nil && role != "" {
+			response.Role = &role
+		}
+	}
+	return response
+}
+
 func (s *AuthService) buildAuthResponse(ctx context.Context, user *models.User, sessionID string) (*dto.AuthResponse, error) {
 	accessToken, err := s.generateAccessToken(user, sessionID)
 	if err != nil {
@@ -633,10 +643,8 @@ func (s *AuthService) buildAuthResponse(ctx context.Context, user *models.User, 
 		return nil, err
 	}
 
-	isSubscribed := s.isTeamSubscribedOrUserAdmin(ctx, user)
-
 	return &dto.AuthResponse{
-		User:         dto.ToUserResponseWithStatus(user, isSubscribed, user.Onboarded),
+		User:         s.UserResponse(ctx, user),
 		AccessToken:  accessToken,
 		RefreshToken: refreshToken,
 		ExpiresIn:    s.config.JWT.Expiration * 3600,

@@ -637,6 +637,8 @@
   "workload has no source configuration recorded": "workload has no source configuration recorded",
   "X-Team-ID header is required": "X-Team-ID header is required",
   "You are not a member of this team": "You are not a member of this team",
+  "You are viewing this account in read-only mode. Exit Spectate to make changes.": "You are viewing this account in read-only mode. Exit Spectate to make changes.",
+  "Your team role does not allow this action. Ask a team owner to update your access.": "Your team role does not allow this action. Ask a team owner to update your access.",
   "Accepted": "Accepted",
   "Actions": "Actions",
   "Active": "Active",

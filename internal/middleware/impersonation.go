@@ -10,7 +10,11 @@ import (
 // mutating request is made under a read-only impersonation session. It is the
 // single source of truth for this message, shared by Auth() (the central
 // enforcement point) and BlockImpersonationWrites().
-const readOnlyImpersonationMessage = "Read-only impersonation session"
+const readOnlyImpersonationMessage = "You are viewing this account in read-only mode. Exit Spectate to make changes."
+
+func respondReadOnlyImpersonation(c *fiber.Ctx) error {
+	return fiberctx.ErrorWithCode(c, fiber.StatusForbidden, "permission.read_only", readOnlyImpersonationMessage)
+}
 
 // BlockImpersonationWrites rejects state-changing requests made under a
 // read-only impersonation ("spectate") session. Staff impersonate customers
@@ -32,7 +36,7 @@ const readOnlyImpersonationMessage = "Read-only impersonation session"
 func BlockImpersonationWrites() fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		if isImpersonationWriteBlocked(c) {
-			return fiberctx.RespondForbidden(c, readOnlyImpersonationMessage)
+			return respondReadOnlyImpersonation(c)
 		}
 
 		return c.Next()

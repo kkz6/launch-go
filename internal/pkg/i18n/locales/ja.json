@@ -637,6 +637,8 @@
   "workload has no source configuration recorded": "ワークロードにソース設定が記録されていません",
   "X-Team-ID header is required": "X-Team-IDヘッダーは必須です",
   "You are not a member of this team": "このチームのメンバーではありません",
+  "You are viewing this account in read-only mode. Exit Spectate to make changes.": "このアカウントは読み取り専用モードで表示されています。変更するには閲覧モードを終了してください。",
+  "Your team role does not allow this action. Ask a team owner to update your access.": "現在のチームでの役割では、この操作を実行できません。チームのオーナーに権限の変更を依頼してください。",
   "Accepted": "承諾日時",
   "Actions": "操作",
   "Active": "有効",

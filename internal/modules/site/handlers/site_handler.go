@@ -5,8 +5,11 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 
+	authaccess "github.com/kkz6/launch-go/internal/modules/auth/access"
+	authtypes "github.com/kkz6/launch-go/internal/modules/auth/types"
 	dnscontracts "github.com/kkz6/launch-go/internal/modules/dns/contracts"
 	"github.com/kkz6/launch-go/internal/modules/site/dto"
+	"github.com/kkz6/launch-go/internal/modules/site/models"
 	"github.com/kkz6/launch-go/internal/modules/site/services"
 	sitetypes "github.com/kkz6/launch-go/internal/modules/site/types"
 	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
@@ -30,6 +33,15 @@ func (h *SiteHandler) SetDomainRepository(repo dnscontracts.DomainRepository) {
 	h.domainRepo = repo
 }
 
+func siteResponseForRequest(r *fiberctx.Request, site *models.Site) dto.SiteResponse {
+	actor := authaccess.ActorFromFiber(r.Ctx)
+	if !actor.ReadOnly && actor.UserID != "" && actor.TeamID != "" &&
+		actor.TeamID == site.TeamID && actor.TeamRole.AtLeast(authtypes.TeamRoleEditor) {
+		return dto.ToSiteResponseWithDeployCredentials(site)
+	}
+	return dto.ToSiteResponse(site)
+}
+
 // Show returns a single site enriched with queue count and source-control
 // info — composes 3 service calls so it stays bespoke.
 func (h *SiteHandler) Show(r *fiberctx.Request) error {
@@ -43,7 +55,7 @@ func (h *SiteHandler) Show(r *fiberctx.Request) error {
 		return err
 	}
 
-	resp := dto.ToSiteResponse(site)
+	resp := siteResponseForRequest(r, site)
 	resp.QueueCount = h.siteService.GetQueueCount(r.Context(), site.ID)
 
 	if site.SourceControlID != nil && *site.SourceControlID != "" {
@@ -83,7 +95,7 @@ func (h *SiteHandler) RegenerateDeployToken(r *fiberctx.Request) error {
 	if err != nil {
 		return err
 	}
-	return fiberctx.OK(r.Ctx, "Deploy token regenerated", dto.ToSiteResponse(site))
+	return fiberctx.OK(r.Ctx, "Deploy token regenerated", siteResponseForRequest(r, site))
 }
 
 // UpdateDeploymentSettings updates a subset of site fields. PATCH that
@@ -134,7 +146,7 @@ func (h *SiteHandler) GetSettings(r *fiberctx.Request) error {
 	}
 
 	resp := dto.SiteSettingsResponse{
-		Site:          dto.ToSiteResponse(settingsData.Site),
+		Site:          siteResponseForRequest(r, settingsData.Site),
 		TLSOptions:    tlsOptions,
 		PhpVersions:   settingsData.PhpVersions,
 		SourceControl: settingsData.SourceControl,
