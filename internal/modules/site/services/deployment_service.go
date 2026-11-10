@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strconv"
 	"time"
 
@@ -201,17 +202,33 @@ func (s *DeploymentService) Rollback(ctx context.Context, siteID, serverID, team
 	// Dispatch rollback job
 	task, err := jobs.NewRollbackTask(site.ID, deployment.ID, targetDeploymentID, userID)
 	if err != nil {
-		return nil, err
+		return nil, s.failRollbackDispatch(ctx, deployment, targetDeploymentID, err)
 	}
 
+	if s.Queue == nil {
+		return nil, s.failRollbackDispatch(ctx, deployment, targetDeploymentID, errors.New("queue is unavailable"))
+	}
 	// Add a small delay to ensure the database transaction is fully committed
 	if err := s.EnqueueTaskWithOptions(task, asynq.ProcessIn(1*time.Second)); err != nil {
-		s.LogError(err, "Failed to enqueue rollback job", "deployment_id", deployment.ID)
+		return nil, s.failRollbackDispatch(ctx, deployment, targetDeploymentID, err)
 	}
 
 	s.LogInfo("Rollback initiated", "site_id", site.ID, "deployment_id", deployment.ID, "target_deployment_id", targetDeploymentID)
 
 	return deployment, nil
+}
+
+func (s *DeploymentService) failRollbackDispatch(ctx context.Context, deployment *models.Deployment, targetID string, dispatchErr error) error {
+	if err := s.Repos().Deployment().UpdateStatus(ctx, deployment.ID, sitetypes.DeploymentStatusFailed); err != nil {
+		return fmt.Errorf("enqueue rollback: %w", errors.Join(dispatchErr, err))
+	}
+	s.LogError(dispatchErr, "Failed to enqueue rollback job", "deployment_id", deployment.ID)
+	s.BroadcastToTeam(deployment.TeamID, "deployment.rollback.failed", map[string]any{
+		"team_id": deployment.TeamID, "site_id": deployment.SiteID,
+		"deployment_id": deployment.ID, "target_deployment_id": targetID,
+		"error": "Rollback could not be queued. Please try again.",
+	})
+	return fiberutil.Internal("Rollback could not be queued. Please try again.")
 }
 
 // createDeployment creates a new deployment for a site.
