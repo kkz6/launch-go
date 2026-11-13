@@ -206,7 +206,7 @@ func (p *VultrProvider) LookupImage(ctx context.Context, credentials map[string]
 			return fmt.Errorf("OS %q not found in Vultr catalog", image)
 		}
 		if next == cursor {
-			return fmt.Errorf("Vultr OS catalog repeated its pagination cursor")
+			return fmt.Errorf("repeated pagination cursor in the Vultr OS catalog")
 		}
 		cursor = next
 	}
