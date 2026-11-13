@@ -2,11 +2,9 @@ package jobs
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
-	"strings"
 
 	"github.com/hibiken/asynq"
 	"gorm.io/gorm"
@@ -67,41 +65,15 @@ func (j *DeleteServerJob) Handle(ctx context.Context) error {
 
 		// Workloads may have changed after the request was accepted. Fail closed
 		// when either count fails, before contacting the provider or deleting keys.
-		var count int64
-		if err := tx.Table("sites").Where("server_id = ?", j.server.ID).Count(&count).Error; err != nil {
-			return fmt.Errorf("count server sites: %w", err)
-		}
-		if count > 0 {
-			return errors.New("server still has sites")
-		}
-		if err := tx.Table("docker_projects").Where("server_id = ? AND deleted_at IS NULL", j.server.ID).Count(&count).Error; err != nil {
-			return fmt.Errorf("count server Docker projects: %w", err)
-		}
-		if count > 0 {
-			return errors.New("server still has Docker projects")
+		if err := requireServerWithoutWorkloads(ctx, tx, j.server.ID); err != nil {
+			return err
 		}
 
 		// A custom server is disconnected only; never operate on its remote host.
 		if j.server.Provider != types.ProviderCustom {
-			if j.Deps.ProviderFactory == nil {
-				return errors.New("cloud provider factory is unavailable")
-			}
-			provider, err := j.Deps.ProviderFactory.Create(j.server.Provider)
+			provider, credentials, err := resolveServerProvider(ctx, j.server, repos, j.Deps.ProviderFactory)
 			if err != nil {
-				return errors.New("cloud provider is unsupported")
-			}
-			if j.server.ServerProviderID == nil {
-				return errors.New("cloud provider credentials are unavailable")
-			}
-			account, err := repos.ServerProvider().FindByID(ctx, *j.server.ServerProviderID)
-			if err != nil || account == nil || account.Provider != j.server.Provider ||
-				(account.TeamID != nil && *account.TeamID != j.server.TeamID) {
-				return errors.New("cloud provider credentials are unavailable")
-			}
-			var credentials map[string]any
-			if strings.TrimSpace(account.Credentials.String()) == "" ||
-				json.Unmarshal([]byte(account.Credentials.String()), &credentials) != nil || len(credentials) == 0 {
-				return errors.New("cloud provider credentials are invalid")
+				return err
 			}
 			if err := provider.Delete(ctx, j.server, credentials); err != nil {
 				return fmt.Errorf("cloud provider deletion failed; server record retained: %w", err)

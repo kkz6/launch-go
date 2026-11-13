@@ -2,12 +2,16 @@ package jobs
 
 import (
 	"context"
-	"encoding/json"
+	"errors"
 	"fmt"
+	"time"
 
 	"github.com/hibiken/asynq"
+	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	"github.com/kkz6/launch-go/internal/modules/server/models"
+	"github.com/kkz6/launch-go/internal/modules/server/repositories"
 	"github.com/kkz6/launch-go/internal/modules/server/types"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 	"github.com/kkz6/launch-go/internal/pkg/launch/activity"
@@ -31,7 +35,8 @@ type CleanupFailedProvisioningJob struct {
 	Deps    *JobDeps
 	Payload CleanupFailedProvisioningPayload
 
-	server *models.Server
+	server   *models.Server
+	rejected bool
 }
 
 func NewCleanupFailedProvisioningJob(p CleanupFailedProvisioningPayload) pkgjobs.Handler {
@@ -39,200 +44,106 @@ func NewCleanupFailedProvisioningJob(p CleanupFailedProvisioningPayload) pkgjobs
 }
 
 func (j *CleanupFailedProvisioningJob) Handle(ctx context.Context) error {
-	var err error
-
-	j.server, err = j.Deps.Repos.Server().FindByID(ctx, j.Payload.ServerID)
-	if err != nil {
-		return fmt.Errorf("find server: %w", err)
-	}
-
-	j.Deps.Logger.Info().
-		Str("server_id", j.server.ID).
-		Str("server_name", j.server.Name).
-		Str("reason", j.Payload.Reason).
-		Msg("starting cleanup of failed provisioning")
-
-	if j.server.Status != types.ServerStatusFailed {
-		if err := j.Deps.Repos.Server().UpdateStatus(ctx, j.server.ID, types.ServerStatusFailed); err != nil {
-			j.Deps.Logger.Error().Err(err).
-				Msg("failed to update server status to failed")
+	j.rejected = false
+	cleaned := false
+	// Serialize cleanup with server state changes and workload insertion, as
+	// normal deletion does. A recovered server must not be removed by old work.
+	err := j.Deps.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		j.server = &models.Server{}
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+			Where("id = ? AND team_id = ?", j.Payload.ServerID, j.Payload.TeamID).First(j.server).Error; err != nil {
+			j.rejected = errors.Is(err, gorm.ErrRecordNotFound)
+			return fmt.Errorf("find server: %w", err)
 		}
-	}
-
-	providerServerID := ""
-	if j.server.ProviderData != nil {
-		if id, ok := j.server.ProviderData["provider_server_id"].(string); ok {
-			providerServerID = id
+		if j.server.Status != types.ServerStatusFailed {
+			j.rejected = true
+			return nil
 		}
-	}
-
-	if j.server.Provider != types.ProviderCustom && providerServerID != "" {
-		if err := j.cleanupProviderResources(ctx, providerServerID); err != nil {
-			j.Deps.Logger.Error().Err(err).
-				Str("server_id", j.server.ID).
-				Str("provider", j.server.Provider.String()).
-				Msg("failed to cleanup provider resources")
+		if j.Payload.ServerProviderID != "" &&
+			(j.server.ServerProviderID == nil || *j.server.ServerProviderID != j.Payload.ServerProviderID) {
+			j.rejected = true
+			return errors.New("server provider changed since cleanup was requested")
 		}
-	}
 
-	if j.server.ProviderData != nil {
-		if sshKeyID, ok := j.server.ProviderData["ssh_key_id"].(string); ok && sshKeyID != "" {
-			if err := j.cleanupProviderSSHKey(ctx, sshKeyID); err != nil {
-				j.Deps.Logger.Error().Err(err).
-					Str("server_id", j.server.ID).
-					Str("ssh_key_id", sshKeyID).
-					Msg("failed to cleanup provider SSH key")
+		repos := repositories.NewRegistry(tx)
+		cloud := j.server.Provider != types.ProviderCustom
+		if cloud || j.Payload.DeleteRecord {
+			if err := requireServerWithoutWorkloads(ctx, tx, j.server.ID); err != nil {
+				return err
 			}
 		}
+		if cloud {
+			provider, credentials, err := resolveServerProvider(ctx, j.server, repos, j.Deps.ProviderFactory)
+			if err != nil {
+				return err
+			}
+			// Providers own instance-ID validation and any secondary cleanup.
+			if err := provider.Delete(ctx, j.server, credentials); err != nil {
+				return fmt.Errorf("delete server from provider: %w", err)
+			}
+			if !j.Payload.DeleteRecord {
+				// The removed host can no longer be reached or trusted. Preserve
+				// provider metadata so a repeated deletion remains idempotent.
+				if err := tx.Model(j.server).Updates(map[string]any{
+					"connected":    false,
+					"host_key":     "",
+					"public_ipv4":  nil,
+					"private_ipv4": nil,
+				}).Error; err != nil {
+					return fmt.Errorf("mark removed server disconnected: %w", err)
+				}
+			}
+		}
+		if j.Payload.DeleteRecord {
+			if err := repos.SSHKey().DeleteNonGlobalByServer(ctx, j.server.ID); err != nil {
+				return fmt.Errorf("delete server-specific SSH keys: %w", err)
+			}
+			if err := repos.Server().Delete(ctx, j.server.ID); err != nil {
+				return fmt.Errorf("delete server record: %w", err)
+			}
+		}
+		cleaned = true
+		return nil
+	})
+	if err != nil || !cleaned {
+		return err
 	}
 
-	activity.RecordWithLogAndPropsPtr(ctx, "server", "provisioning_failed", j.Payload.UserID, j.server, "Server provisioning failed and resources were cleaned up", map[string]any{
+	activity.RecordWithLogAndPropsPtr(ctx, "server", "provisioning_failed", j.Payload.UserID, j.server, "Server provisioning cleanup completed", map[string]any{
 		"reason": j.Payload.Reason,
 	})
-
 	j.Deps.BroadcastServerEvent(j.server, "server.provisioning_cleanup_complete", map[string]any{
 		"server_id": j.server.ID,
 		"reason":    j.Payload.Reason,
 		"deleted":   j.Payload.DeleteRecord,
 	})
-
 	if j.Payload.DeleteRecord {
-		if err := j.Deps.Repos.Server().Delete(ctx, j.server.ID); err != nil {
-			return fmt.Errorf("delete server record: %w", err)
-		}
-
-		j.Deps.Logger.Info().
-			Str("server_id", j.server.ID).
-			Msg("server record deleted after failed provisioning")
-
 		j.Deps.BroadcastServerEvent(j.server, "server.deleted", map[string]any{
 			"server_id": j.server.ID,
 			"reason":    "provisioning_failed",
 		})
-	} else {
-		// Note: We intentionally don't reset 'connected' to false here.
-		// If the connection was established before provisioning failed,
-		// we want to preserve that status to allow retry provisioning.
-		j.Deps.Logger.Info().
-			Str("server_id", j.server.ID).
-			Msg("server marked as failed, record preserved for debugging")
 	}
-
 	return nil
-}
-
-func (j *CleanupFailedProvisioningJob) cleanupProviderResources(ctx context.Context, providerServerID string) error {
-	provider, err := j.Deps.ProviderFactory.Create(j.server.Provider)
-	if err != nil {
-		return fmt.Errorf("create provider: %w", err)
-	}
-
-	credentials, err := j.getProviderCredentials(ctx)
-	if err != nil {
-		return fmt.Errorf("get credentials: %w", err)
-	}
-
-	if len(credentials) == 0 {
-		return fmt.Errorf("no credentials found for server provider")
-	}
-
-	j.Deps.Logger.Info().
-		Str("server_id", j.server.ID).
-		Str("provider", j.server.Provider.String()).
-		Str("provider_server_id", providerServerID).
-		Msg("deleting server from cloud provider")
-
-	if err := provider.Delete(ctx, j.server, credentials); err != nil {
-		return fmt.Errorf("delete server from provider: %w", err)
-	}
-
-	j.Deps.Logger.Info().
-		Str("server_id", j.server.ID).
-		Str("provider", j.server.Provider.String()).
-		Msg("server deleted from cloud provider")
-
-	return nil
-}
-
-func (j *CleanupFailedProvisioningJob) cleanupProviderSSHKey(ctx context.Context, sshKeyID string) error {
-	provider, err := j.Deps.ProviderFactory.Create(j.server.Provider)
-	if err != nil {
-		return fmt.Errorf("create provider: %w", err)
-	}
-
-	credentials, err := j.getProviderCredentials(ctx)
-	if err != nil {
-		return fmt.Errorf("get credentials: %w", err)
-	}
-
-	if len(credentials) == 0 {
-		return fmt.Errorf("no credentials found for server provider")
-	}
-
-	j.Deps.Logger.Info().
-		Str("server_id", j.server.ID).
-		Str("ssh_key_id", sshKeyID).
-		Msg("deleting SSH key from cloud provider")
-
-	if deleter, ok := provider.(interface {
-		DeleteSSHKey(ctx context.Context, keyID string, credentials map[string]any) error
-	}); ok {
-		if err := deleter.DeleteSSHKey(ctx, sshKeyID, credentials); err != nil {
-			return fmt.Errorf("delete SSH key: %w", err)
-		}
-		j.Deps.Logger.Info().
-			Str("ssh_key_id", sshKeyID).
-			Msg("SSH key deleted from cloud provider")
-	}
-
-	return nil
-}
-
-func (j *CleanupFailedProvisioningJob) getProviderCredentials(ctx context.Context) (map[string]any, error) {
-	serverProviderID := j.Payload.ServerProviderID
-	if serverProviderID == "" && j.server.ServerProviderID != nil {
-		serverProviderID = *j.server.ServerProviderID
-	}
-
-	if serverProviderID == "" {
-		return nil, fmt.Errorf("no server provider ID")
-	}
-
-	serverProvider, err := j.Deps.Repos.ServerProvider().FindByID(ctx, serverProviderID)
-	if err != nil {
-		return nil, fmt.Errorf("find server provider: %w", err)
-	}
-
-	var credentials map[string]any
-	credStr := serverProvider.Credentials.String()
-	if credStr != "" {
-		if err := json.Unmarshal([]byte(credStr), &credentials); err != nil {
-			return nil, fmt.Errorf("parse credentials: %w", err)
-		}
-	}
-
-	return credentials, nil
 }
 
 func (j *CleanupFailedProvisioningJob) Failed(ctx context.Context, err error) {
+	if j.rejected {
+		return
+	}
 	j.Deps.Logger.Error().Err(err).
 		Str("server_id", j.Payload.ServerID).
-		Str("reason", j.Payload.Reason).
 		Msg("failed to cleanup failed provisioning")
 
-	if updateErr := j.Deps.Repos.Server().UpdateStatus(ctx, j.Payload.ServerID, types.ServerStatusFailed); updateErr != nil {
-		j.Deps.Logger.Error().Err(updateErr).
-			Str("server_id", j.Payload.ServerID).
-			Msg("Failed to mark server as failed during cleanup")
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
+	server, findErr := j.Deps.Repos.Server().FindByIDAndTeam(ctx, j.Payload.ServerID, j.Payload.TeamID)
+	if findErr != nil || server == nil || server.Status != types.ServerStatusFailed {
+		return
 	}
-
-	server, findErr := j.Deps.Repos.Server().FindByID(ctx, j.Payload.ServerID)
-	if findErr == nil {
-		j.Deps.BroadcastServerEvent(server, "server.cleanup_failed", map[string]any{
-			"server_id": j.Payload.ServerID,
-			"error":     err.Error(),
-		})
-	}
+	j.Deps.BroadcastServerEvent(server, "server.cleanup_failed", map[string]any{
+		"server_id": server.ID,
+		"error":     "Provisioning cleanup failed. The server record has been retained; check the provider and try again.",
+	})
 }
 
 func NewCleanupFailedProvisioningTask(serverID, teamID string, serverProviderID string, userID *string, reason string, deleteRecord bool) (*asynq.Task, error) {
