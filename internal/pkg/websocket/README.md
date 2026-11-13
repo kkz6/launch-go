@@ -30,13 +30,20 @@ Provides real-time communication for deployment progress, server status updates,
 
 ### Endpoint
 ```
-GET /ws?token=<jwt_token>
+GET /ws?token=<access_token>&team_id=<team_id>
 ```
 
 ### Authentication
 The JWT token must contain:
+
 - `sub` - User ID
-- `team_id` - Current team ID
+- `type` - `access`
+
+The `team_id` query parameter selects the team; membership is checked at connection time.
+Authentication shares HTTP access-token validation, including session revocation and
+account suspension checks. Terminal access and starting pending scripts also use the
+shared `server.manage` and `script.execute` policies, which require editor access or
+higher and reject read-only impersonation sessions.
 
 ### Auto-Subscription
 On connection, clients are automatically subscribed to their team channel:

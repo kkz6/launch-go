@@ -44,8 +44,9 @@ func TestClientSubscriptionProtocol(t *testing.T) {
 	const jwtSecret = "websocket-test-secret"
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"sub": "user-a",
-		"exp": time.Now().Add(time.Hour).Unix(),
+		"sub":  "user-a",
+		"type": "access",
+		"exp":  time.Now().Add(time.Hour).Unix(),
 	})
 	signedToken, err := token.SignedString([]byte(jwtSecret))
 	require.NoError(t, err)

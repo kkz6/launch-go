@@ -9,7 +9,6 @@ import (
 	"golang.org/x/sync/errgroup"
 	"gorm.io/gorm"
 
-	authmodels "github.com/kkz6/launch-go/internal/modules/auth/models"
 	authrepos "github.com/kkz6/launch-go/internal/modules/auth/repositories"
 	backuprepos "github.com/kkz6/launch-go/internal/modules/backup/repositories"
 	"github.com/kkz6/launch-go/internal/modules/dashboard/dto"
@@ -459,9 +458,6 @@ func mapDeploymentStatus(status string) string {
 		return status
 	}
 }
-
-// Ensure User model is imported for the query
-var _ = authmodels.User{}
 
 // GetOnboardingStatus returns onboarding status for a user
 func (s *DashboardService) GetOnboardingStatus(ctx context.Context, userID string) (*dto.OnboardingStatusResponse, error) {

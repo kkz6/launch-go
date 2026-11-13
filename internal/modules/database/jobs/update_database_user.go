@@ -62,15 +62,8 @@ func (j *UpdateDatabaseUserJob) Handle(ctx context.Context) error {
 			Hosts:         []string{"%"},
 		})
 
-		result, err := j.Deps.RunTask(j.server, task).
-			AsRoot().
-			Dispatch(ctx)
-		if err != nil {
+		if err := j.Deps.runTask(ctx, j.server, task); err != nil {
 			return fmt.Errorf("failed to update database user password: %w", err)
-		}
-
-		if !result.IsSuccessful() {
-			return fmt.Errorf("failed to update database user password: %s", result.GetOutput())
 		}
 	}
 

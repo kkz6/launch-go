@@ -149,22 +149,6 @@ func (s *ComposeBuildSecretService) DeleteBuildSecret(
 	return nil
 }
 
-func (s *ComposeBuildSecretService) scopedCompose(
-	ctx context.Context, composeID, projectID, serverID, teamID string,
-) (*models.Compose, error) {
-	if _, err := s.Repos().Project().FindByIDAndTeamServer(ctx, projectID, teamID, serverID); err != nil {
-		return nil, err
-	}
-	compose, err := s.Repos().Compose().FindByIDAndTeamServer(ctx, composeID, teamID, serverID)
-	if err != nil {
-		return nil, err
-	}
-	if compose.ProjectID != projectID {
-		return nil, fiberutil.NotFound()
-	}
-	return compose, nil
-}
-
 // queueResyncIfGHA mirrors the application service helper. Re-syncs
 // the compose workflow file + repo secrets when the stack is GHA-
 // backed. Best-effort; failures are logged but don't fail the

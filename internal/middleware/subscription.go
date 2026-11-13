@@ -1,8 +1,11 @@
 package middleware
 
 import (
+	"context"
+
 	"github.com/gofiber/fiber/v2"
 
+	billingrepos "github.com/kkz6/launch-go/internal/modules/billing/repositories"
 	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"gorm.io/gorm"
 )
@@ -24,8 +27,8 @@ func InitSubscriptionMiddleware(db *gorm.DB, subscriptionsEnabled bool) {
 // Must be used after Auth and TeamScope middleware.
 //
 // If subscriptions are not enabled (config), this middleware does nothing.
-// If the user is an admin/manager, they bypass subscription checks.
-// If the team is on trial or has an active subscription, request proceeds.
+// Staff bypass subscription checks. Active subscriptions, trials, and cancelled
+// subscriptions within their paid grace period allow the request to proceed.
 // Otherwise, returns a 402 Payment Required error.
 //
 // Usage:
@@ -54,7 +57,7 @@ func VerifySubscription() fiber.Handler {
 		}
 
 		// Check if team has active subscription
-		if isTeamSubscribed(teamID) {
+		if isTeamSubscribed(c.UserContext(), teamID) {
 			return c.Next()
 		}
 
@@ -62,20 +65,14 @@ func VerifySubscription() fiber.Handler {
 	}
 }
 
-// isTeamSubscribed checks if a team has an active subscription or is on trial
-func isTeamSubscribed(teamID string) bool {
+// isTeamSubscribed uses the billing repository's eligibility rules.
+func isTeamSubscribed(ctx context.Context, teamID string) bool {
 	if subscriptionMiddleware.db == nil {
 		return true
 	}
 
-	var count int64
-	subscriptionMiddleware.db.Table("subscriptions").
-		Where("billable_id = ?", teamID).
-		Where("billable_type IN ?", []string{"Modules\\Auth\\Models\\Team", "App\\Models\\Team"}).
-		Where("status IN ?", []string{"active", "on_trial"}).
-		Count(&count)
-
-	return count > 0
+	subscribed, err := billingrepos.NewSubscriptionRepository(subscriptionMiddleware.db).IsTeamSubscribed(ctx, teamID)
+	return err == nil && subscribed
 }
 
 // isUserAdmin reports whether a user has any staff role (support or

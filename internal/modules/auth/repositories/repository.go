@@ -6,6 +6,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/kkz6/launch-go/internal/modules/auth/contracts"
+	billingrepos "github.com/kkz6/launch-go/internal/modules/billing/repositories"
 )
 
 // Registry holds all auth module repositories
@@ -67,17 +68,10 @@ func (r *Registry) Session() contracts.SessionRepository { return r.session }
 // DB returns the underlying database connection
 func (r *Registry) DB() *gorm.DB { return r.db }
 
-// IsTeamSubscribed checks if a team has an active subscription
-// This queries the subscriptions table directly to avoid circular dependencies
+// IsTeamSubscribed uses the same eligibility rules as billing and API access.
 func (r *Registry) IsTeamSubscribed(ctx context.Context, teamID string) bool {
-	var count int64
-	r.db.WithContext(ctx).Table("subscriptions").
-		Where("billable_id = ?", teamID).
-		Where("billable_type IN ?", []string{"Modules\\Auth\\Models\\Team", "App\\Models\\Team"}).
-		Where("status IN ?", []string{"active", "on_trial"}).
-		Count(&count)
-
-	return count > 0
+	subscribed, err := billingrepos.NewSubscriptionRepository(r.db).IsTeamSubscribed(ctx, teamID)
+	return err == nil && subscribed
 }
 
 // IsUserAdmin reports whether the user holds any staff role. Replaces the

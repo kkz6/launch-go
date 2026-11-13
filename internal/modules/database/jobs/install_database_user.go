@@ -11,7 +11,6 @@ import (
 	servermodels "github.com/kkz6/launch-go/internal/modules/server/models"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 	"github.com/kkz6/launch-go/internal/pkg/launch/activity"
-	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 )
 
 const TypeInstallDatabaseUser = "database:user:install"
@@ -63,13 +62,8 @@ func (j *InstallDatabaseUserJob) Handle(ctx context.Context) error {
 		Hosts:         []string{"%"},
 	})
 
-	result, err := j.Deps.RunTask(j.server, createUserTask).AsRoot().Dispatch(ctx)
-	if err != nil {
+	if err := j.Deps.runTask(ctx, j.server, createUserTask); err != nil {
 		return fmt.Errorf("failed to create database user: %w", err)
-	}
-
-	if !result.IsSuccessful() {
-		return fmt.Errorf("failed to create database user: %s", result.GetOutput())
 	}
 
 	for _, db := range j.dbUser.Databases {
@@ -81,10 +75,8 @@ func (j *InstallDatabaseUserJob) Handle(ctx context.Context) error {
 			Hosts:         []string{"%"},
 		})
 
-		if err := j.runTask(ctx, j.server, grantTask); err != nil {
-			j.Deps.Logger.Error().Err(err).
-				Str("database", db.Name).
-				Msg("Failed to grant privileges")
+		if err := j.Deps.runTask(ctx, j.server, grantTask); err != nil {
+			return fmt.Errorf("failed to grant privileges on database %s: %w", db.Name, err)
 		}
 	}
 
@@ -96,19 +88,6 @@ func (j *InstallDatabaseUserJob) Handle(ctx context.Context) error {
 
 	j.Deps.BroadcastUserProgress(j.server, "database_user.progress", j.Payload.DatabaseUserID, "installed", fmt.Sprintf("Database user %s created successfully", j.dbUser.Name))
 
-	return nil
-}
-
-func (j *InstallDatabaseUserJob) runTask(ctx context.Context, server *servermodels.Server, task taskrunner.Task) error {
-	result, err := j.Deps.RunTask(server, task).AsRoot().Dispatch(ctx)
-	if err != nil {
-		return err
-	}
-	if !result.IsSuccessful() {
-		j.Deps.Logger.Info().
-			Str("output", result.GetOutput()).
-			Msg("Task completed with errors")
-	}
 	return nil
 }
 

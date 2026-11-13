@@ -80,8 +80,9 @@ jobs:
           path: coverage.out
           if-no-files-found: error
 
-      - name: Upload coverage to Codecov
+      - name: Upload coverage reports to Codecov
         id: codecov
+        # Reporting failures must not change the result of the test suite.
         continue-on-error: true
         uses: codecov/codecov-action@v7
         with:

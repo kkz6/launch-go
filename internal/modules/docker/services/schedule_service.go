@@ -24,7 +24,7 @@ func NewScheduleService(deps *ServiceDeps) *ScheduleService {
 func (s *ScheduleService) ListSchedules(
 	ctx context.Context, applicationID, projectID, serverID, teamID string,
 ) ([]dto.ScheduleResponse, error) {
-	if _, err := s.scopedAppForSchedule(ctx, applicationID, projectID, serverID, teamID); err != nil {
+	if _, err := s.scopedApp(ctx, applicationID, projectID, serverID, teamID); err != nil {
 		return nil, err
 	}
 	rows, err := s.Repos().Schedule().ListForApplication(ctx, applicationID)
@@ -39,7 +39,7 @@ func (s *ScheduleService) CreateSchedule(
 	req *dto.CreateScheduleRequest,
 ) (dto.ScheduleResponse, error) {
 	_ = userID
-	app, err := s.scopedAppForSchedule(ctx, applicationID, projectID, serverID, teamID)
+	app, err := s.scopedApp(ctx, applicationID, projectID, serverID, teamID)
 	if err != nil {
 		return dto.ScheduleResponse{}, err
 	}
@@ -91,7 +91,7 @@ func (s *ScheduleService) UpdateSchedule(
 	req *dto.UpdateScheduleRequest,
 ) (dto.ScheduleResponse, error) {
 	_ = userID
-	app, err := s.scopedAppForSchedule(ctx, applicationID, projectID, serverID, teamID)
+	app, err := s.scopedApp(ctx, applicationID, projectID, serverID, teamID)
 	if err != nil {
 		return dto.ScheduleResponse{}, err
 	}
@@ -148,7 +148,7 @@ func (s *ScheduleService) DeleteSchedule(
 	ctx context.Context, id, applicationID, projectID, serverID, teamID, userID string,
 ) error {
 	_ = userID
-	app, err := s.scopedAppForSchedule(ctx, applicationID, projectID, serverID, teamID)
+	app, err := s.scopedApp(ctx, applicationID, projectID, serverID, teamID)
 	if err != nil {
 		return err
 	}
@@ -169,22 +169,6 @@ func (s *ScheduleService) DeleteSchedule(
 		"schedule_id":    id,
 	})
 	return nil
-}
-
-func (s *ScheduleService) scopedAppForSchedule(
-	ctx context.Context, applicationID, projectID, serverID, teamID string,
-) (*models.Application, error) {
-	if _, err := s.Repos().Project().FindByIDAndTeamServer(ctx, projectID, teamID, serverID); err != nil {
-		return nil, err
-	}
-	app, err := s.Repos().Application().FindByIDAndTeamServer(ctx, applicationID, teamID, serverID)
-	if err != nil {
-		return nil, err
-	}
-	if app.ProjectID != projectID {
-		return nil, fiberutil.NotFound()
-	}
-	return app, nil
 }
 
 // looksLikeCron is a *very* light syntactic check — exactly 5 whitespace-

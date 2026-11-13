@@ -69,87 +69,28 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 	// Nested under /servers/:serverId/docker/projects/:id/env-vars
 	// — the project id rides in as :id to match the rest of the
 	// project routes' shape.
-	projects.Get("/:id/env-vars", func(c *gofiber.Ctx) error {
-		teamID, err := fiberutil.MustGetTeamID(c)
-		if err != nil {
-			return err
-		}
-		rows, err := projectEnvVarSvc.ListEnvVars(
-			c.Context(),
-			c.Params("id"),
-			c.Params("serverId"),
-			teamID,
-		)
-		if err != nil {
-			return err
-		}
-		return fiberutil.OK(c, "Project env vars retrieved", rows)
-	})
+	projects.Get(
+		"/:id/env-vars",
+		fiberutil.IndexDoubleNested("serverId", "id", "Project env vars retrieved", projectEnvVarSvc.ListEnvVars),
+	)
 
-	projects.Post("/:id/env-vars", middleware.Can("docker.project.env_var.create"), func(c *gofiber.Ctx) error {
-		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
-		if err != nil {
-			return err
-		}
-		req, err := fiberutil.MustParseAndValidate[dto.CreateEnvVarRequest](c)
-		if err != nil {
-			return err
-		}
-		out, err := projectEnvVarSvc.CreateEnvVar(
-			c.Context(),
-			c.Params("id"),
-			c.Params("serverId"),
-			teamID,
-			userID,
-			req,
-		)
-		if err != nil {
-			return err
-		}
-		return fiberutil.Created(c, "Project env var added", out)
-	})
+	projects.Post(
+		"/:id/env-vars",
+		middleware.Can("docker.project.env_var.create"),
+		fiberutil.CreateDoubleNested[dto.CreateEnvVarRequest]("serverId", "id", "Project env var added", projectEnvVarSvc.CreateEnvVar),
+	)
 
-	projects.Patch("/:id/env-vars/:envVarId", middleware.Can("docker.project.env_var.update"), func(c *gofiber.Ctx) error {
-		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
-		if err != nil {
-			return err
-		}
-		req, err := fiberutil.MustParseAndValidate[dto.UpdateEnvVarRequest](c)
-		if err != nil {
-			return err
-		}
-		out, err := projectEnvVarSvc.UpdateEnvVar(
-			c.Context(),
-			c.Params("envVarId"),
-			c.Params("id"),
-			c.Params("serverId"),
-			teamID,
-			userID,
-			req,
-		)
-		if err != nil {
-			return err
-		}
-		return fiberutil.OK(c, "Project env var updated", out)
-	})
+	projects.Patch(
+		"/:id/env-vars/:envVarId",
+		middleware.Can("docker.project.env_var.update"),
+		fiberutil.UpdateDoubleNested[dto.UpdateEnvVarRequest]("serverId", "id", "envVarId", "Project env var updated", projectEnvVarSvc.UpdateEnvVar),
+	)
 
-	projects.Delete("/:id/env-vars/:envVarId", middleware.Can("docker.project.env_var.delete"), func(c *gofiber.Ctx) error {
-		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
-		if err != nil {
-			return err
-		}
-		if err := projectEnvVarSvc.DeleteEnvVar(
-			c.Context(),
-			c.Params("envVarId"),
-			c.Params("id"),
-			c.Params("serverId"),
-			teamID,
-			userID,
-		); err != nil {
-			return err
-		}
-		return fiberutil.NoContent(c)
-	})
+	projects.Delete(
+		"/:id/env-vars/:envVarId",
+		middleware.Can("docker.project.env_var.delete"),
+		fiberutil.DeleteDoubleNested("serverId", "id", "envVarId", projectEnvVarSvc.DeleteEnvVar),
+	)
 
 	// Doubly-nested under projects. Grandparent param is serverId so the
 	// existing RequireProvisionedServer middleware keeps working; the
@@ -390,23 +331,10 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 	}
 
 	// Application-domain CRUD — same triple-nested pattern as deployments.
-	apps.Get("/:id/domains", func(c *gofiber.Ctx) error {
-		teamID, err := fiberutil.MustGetTeamID(c)
-		if err != nil {
-			return err
-		}
-		rows, err := domainSvc.ListDomains(
-			c.Context(),
-			c.Params("id"),
-			c.Params("projectId"),
-			c.Params("serverId"),
-			teamID,
-		)
-		if err != nil {
-			return err
-		}
-		return fiberutil.OK(c, "Domains retrieved", rows)
-	})
+	apps.Get(
+		"/:id/domains",
+		fiberutil.ShowDoubleNested("serverId", "projectId", "id", "Domains retrieved", domainSvc.ListDomains),
+	)
 
 	apps.Post("/:id/domains", middleware.Can("docker.application.domain.add"), func(c *gofiber.Ctx) error {
 		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
@@ -627,23 +555,10 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 	})
 
 	// Env-var routes — list / create / update / delete / bulk-set.
-	apps.Get("/:id/env-vars", func(c *gofiber.Ctx) error {
-		teamID, err := fiberutil.MustGetTeamID(c)
-		if err != nil {
-			return err
-		}
-		rows, err := envVarSvc.ListEnvVars(
-			c.Context(),
-			c.Params("id"),
-			c.Params("projectId"),
-			c.Params("serverId"),
-			teamID,
-		)
-		if err != nil {
-			return err
-		}
-		return fiberutil.OK(c, "Env vars retrieved", rows)
-	})
+	apps.Get(
+		"/:id/env-vars",
+		fiberutil.ShowDoubleNested("serverId", "projectId", "id", "Env vars retrieved", envVarSvc.ListEnvVars),
+	)
 
 	apps.Post("/:id/env-vars", middleware.Can("docker.application.env_var.create"), func(c *gofiber.Ctx) error {
 		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
@@ -743,23 +658,10 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 	// response). When the application is GHA-backed the service also
 	// triggers a workflow re-sync so the YAML's `secrets:` block + the
 	// LAUNCH_BUILD_<NAME> repo secrets stay in lock-step with this list.
-	apps.Get("/:id/build-secrets", func(c *gofiber.Ctx) error {
-		teamID, err := fiberutil.MustGetTeamID(c)
-		if err != nil {
-			return err
-		}
-		rows, err := buildSecretSvc.ListBuildSecrets(
-			c.Context(),
-			c.Params("id"),
-			c.Params("projectId"),
-			c.Params("serverId"),
-			teamID,
-		)
-		if err != nil {
-			return err
-		}
-		return fiberutil.OK(c, "Build secrets retrieved", rows)
-	})
+	apps.Get(
+		"/:id/build-secrets",
+		fiberutil.ShowDoubleNested("serverId", "projectId", "id", "Build secrets retrieved", buildSecretSvc.ListBuildSecrets),
+	)
 
 	apps.Post("/:id/build-secrets", middleware.Can("docker.application.build_secret.create"), func(c *gofiber.Ctx) error {
 		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
@@ -830,23 +732,10 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 	})
 
 	// Volume routes — list / create / update / delete.
-	apps.Get("/:id/volumes", func(c *gofiber.Ctx) error {
-		teamID, err := fiberutil.MustGetTeamID(c)
-		if err != nil {
-			return err
-		}
-		rows, err := volumeSvc.ListVolumes(
-			c.Context(),
-			c.Params("id"),
-			c.Params("projectId"),
-			c.Params("serverId"),
-			teamID,
-		)
-		if err != nil {
-			return err
-		}
-		return fiberutil.OK(c, "Volumes retrieved", rows)
-	})
+	apps.Get(
+		"/:id/volumes",
+		fiberutil.ShowDoubleNested("serverId", "projectId", "id", "Volumes retrieved", volumeSvc.ListVolumes),
+	)
 
 	apps.Post("/:id/volumes", middleware.Can("docker.application.volume.create"), func(c *gofiber.Ctx) error {
 		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
@@ -917,23 +806,10 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 	})
 
 	// Schedule routes — list / create / update / delete.
-	apps.Get("/:id/schedules", func(c *gofiber.Ctx) error {
-		teamID, err := fiberutil.MustGetTeamID(c)
-		if err != nil {
-			return err
-		}
-		rows, err := scheduleSvc.ListSchedules(
-			c.Context(),
-			c.Params("id"),
-			c.Params("projectId"),
-			c.Params("serverId"),
-			teamID,
-		)
-		if err != nil {
-			return err
-		}
-		return fiberutil.OK(c, "Schedules retrieved", rows)
-	})
+	apps.Get(
+		"/:id/schedules",
+		fiberutil.ShowDoubleNested("serverId", "projectId", "id", "Schedules retrieved", scheduleSvc.ListSchedules),
+	)
 	apps.Post("/:id/schedules", middleware.Can("docker.application.schedule.create"), func(c *gofiber.Ctx) error {
 		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
 		if err != nil {
@@ -1343,23 +1219,10 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 	// application build-secret routes above. One secret name is
 	// available to every service in the stack that references it
 	// from its own Dockerfile via id=NAME under --mount=type=secret.
-	composes.Get("/:id/build-secrets", func(c *gofiber.Ctx) error {
-		teamID, err := fiberutil.MustGetTeamID(c)
-		if err != nil {
-			return err
-		}
-		rows, err := composeBuildSecretSvc.ListBuildSecrets(
-			c.Context(),
-			c.Params("id"),
-			c.Params("projectId"),
-			c.Params("serverId"),
-			teamID,
-		)
-		if err != nil {
-			return err
-		}
-		return fiberutil.OK(c, "Build secrets retrieved", rows)
-	})
+	composes.Get(
+		"/:id/build-secrets",
+		fiberutil.ShowDoubleNested("serverId", "projectId", "id", "Build secrets retrieved", composeBuildSecretSvc.ListBuildSecrets),
+	)
 
 	composes.Post("/:id/build-secrets", middleware.Can("docker.compose.build_secret.create"), func(c *gofiber.Ctx) error {
 		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
@@ -1437,23 +1300,10 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 	// the YAML can reference them via `./files/<file_path>`. Bind /
 	// volume rows are informational — the operator wires them into the
 	// YAML themselves; we don't rewrite docker-compose.yml.
-	composes.Get("/:id/volumes", func(c *gofiber.Ctx) error {
-		teamID, err := fiberutil.MustGetTeamID(c)
-		if err != nil {
-			return err
-		}
-		rows, err := volumeSvc.ListComposeVolumes(
-			c.Context(),
-			c.Params("id"),
-			c.Params("projectId"),
-			c.Params("serverId"),
-			teamID,
-		)
-		if err != nil {
-			return err
-		}
-		return fiberutil.OK(c, "Volumes retrieved", rows)
-	})
+	composes.Get(
+		"/:id/volumes",
+		fiberutil.ShowDoubleNested("serverId", "projectId", "id", "Volumes retrieved", volumeSvc.ListComposeVolumes),
+	)
 
 	composes.Post("/:id/volumes", middleware.Can("docker.compose.volume.create"), func(c *gofiber.Ctx) error {
 		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
@@ -1527,23 +1377,10 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 	// (list/create/update/delete + validate-dns). Compose domains
 	// require service_name + container_port on Create because the
 	// Traefik renderer needs both to target the right container.
-	composes.Get("/:id/domains", func(c *gofiber.Ctx) error {
-		teamID, err := fiberutil.MustGetTeamID(c)
-		if err != nil {
-			return err
-		}
-		rows, err := domainSvc.ListComposeDomains(
-			c.Context(),
-			c.Params("id"),
-			c.Params("projectId"),
-			c.Params("serverId"),
-			teamID,
-		)
-		if err != nil {
-			return err
-		}
-		return fiberutil.OK(c, "Domains retrieved", rows)
-	})
+	composes.Get(
+		"/:id/domains",
+		fiberutil.ShowDoubleNested("serverId", "projectId", "id", "Domains retrieved", domainSvc.ListComposeDomains),
+	)
 
 	composes.Post("/:id/domains", middleware.Can("docker.compose.domain.add"), func(c *gofiber.Ctx) error {
 		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
@@ -2321,55 +2158,23 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 	regCreds := router.Group("/registry-credentials",
 		middleware.AuthenticatedChain(authMiddleware)...,
 	)
-	regCreds.Get("/", func(c *gofiber.Ctx) error {
-		teamID, err := fiberutil.MustGetTeamID(c)
-		if err != nil {
-			return err
-		}
-		out, err := registryCredSvc.ListCredentials(c.Context(), teamID)
-		if err != nil {
-			return err
-		}
-		return fiberutil.OK(c, "Registry credentials retrieved", out)
-	})
-	regCreds.Post("/", middleware.Can("docker.registry_credential.create"), func(c *gofiber.Ctx) error {
-		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
-		if err != nil {
-			return err
-		}
-		req, err := fiberutil.MustParseAndValidate[dto.CreateRegistryCredentialRequest](c)
-		if err != nil {
-			return err
-		}
-		out, err := registryCredSvc.CreateCredential(c.Context(), teamID, userID, req)
-		if err != nil {
-			return err
-		}
-		return fiberutil.Created(c, "Registry credential created", out)
-	})
-	regCreds.Patch("/:id", middleware.Can("docker.registry_credential.update"), func(c *gofiber.Ctx) error {
-		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
-		if err != nil {
-			return err
-		}
-		req, err := fiberutil.MustParseAndValidate[dto.UpdateRegistryCredentialRequest](c)
-		if err != nil {
-			return err
-		}
-		out, err := registryCredSvc.UpdateCredential(c.Context(), c.Params("id"), teamID, userID, req)
-		if err != nil {
-			return err
-		}
-		return fiberutil.OK(c, "Registry credential updated", out)
-	})
-	regCreds.Delete("/:id", middleware.Can("docker.registry_credential.delete"), func(c *gofiber.Ctx) error {
-		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
-		if err != nil {
-			return err
-		}
-		if err := registryCredSvc.DeleteCredential(c.Context(), c.Params("id"), teamID, userID); err != nil {
-			return err
-		}
-		return fiberutil.NoContent(c)
-	})
+	regCreds.Get(
+		"/",
+		fiberutil.Index("Registry credentials retrieved", registryCredSvc.ListCredentials),
+	)
+	regCreds.Post(
+		"/",
+		middleware.Can("docker.registry_credential.create"),
+		fiberutil.Create[dto.CreateRegistryCredentialRequest]("Registry credential created", registryCredSvc.CreateCredential),
+	)
+	regCreds.Patch(
+		"/:id",
+		middleware.Can("docker.registry_credential.update"),
+		fiberutil.Update[dto.UpdateRegistryCredentialRequest]("Registry credential updated", registryCredSvc.UpdateCredential),
+	)
+	regCreds.Delete(
+		"/:id",
+		middleware.Can("docker.registry_credential.delete"),
+		fiberutil.Delete(registryCredSvc.DeleteCredential),
+	)
 }
