@@ -1,6 +1,5 @@
 // images:validate — live-check every image configured in server/config/options.go
-// against the cloud provider's current API. Faithful port of the former
-// cmd/validate-images entrypoint.
+// against the cloud provider's current API.
 //
 // Provider configs drift (DigitalOcean retires snapshots, Vultr changes IDs,
 // Canonical reissues AMIs). Static tests catch shape problems; this confirms
@@ -15,11 +14,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/spf13/viper"
-	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
-	"gorm.io/gorm/logger"
 
+	appconfig "github.com/kkz6/launch-go/internal/config"
 	"github.com/kkz6/launch-go/internal/database"
 	"github.com/kkz6/launch-go/internal/modules/server/config"
 	"github.com/kkz6/launch-go/internal/modules/server/models"
@@ -49,16 +46,23 @@ func (imagesValidateCommand) Extend() console.Extend {
 func (imagesValidateCommand) Handle(ctx console.Context) error {
 	providerFilter := ctx.Option("provider")
 
-	imagesLoadEnv()
-	if err := database.InitEncryption(viper.GetString("APP_KEY")); err != nil {
+	cfg, err := appconfig.Load()
+	if err != nil {
+		return fmt.Errorf("load configuration: %w", err)
+	}
+	if err := database.InitEncryption(cfg.App.Key); err != nil {
 		ctx.Error(fmt.Sprintf("APP_KEY init failed: %v", err))
 		return err
 	}
 
-	db, err := imagesConnectDB()
+	db, err := database.Connect(cfg.Database)
 	if err != nil {
 		ctx.Error(fmt.Sprintf("connect db: %v", err))
 		return err
+	}
+
+	if sqlDB, err := db.DB(); err == nil {
+		defer sqlDB.Close()
 	}
 
 	rows, err := imagesLoadProviders(db, providerFilter)
@@ -69,7 +73,7 @@ func (imagesValidateCommand) Handle(ctx console.Context) error {
 	if len(rows) == 0 {
 		ctx.Warning("No matching server providers connected.")
 		ctx.Comment("Connect a provider in the UI first, then re-run this command.")
-		return nil
+		return fmt.Errorf("no matching provider credentials; no images were verified")
 	}
 
 	factory := providers.NewFactory(sshkey.NewGenerator())
@@ -114,106 +118,15 @@ func imagesValidateProvider(runCtx context.Context, ctx console.Context, factory
 		return fmt.Errorf("no provider config in options.go for %q", row.Provider)
 	}
 
-	if row.Provider.String() == "aws" {
-		return imagesValidateAWS(ctx, cfg)
+	findings := providers.ValidateImages(runCtx, provider, cfg, credsMap)
+	for _, finding := range findings {
+		ctx.Line(fmt.Sprintf("  %s → %s: %s", finding.OS, finding.Image, finding.Reason))
 	}
-	return imagesValidateViaList(runCtx, ctx, provider, cfg, credsMap)
-}
-
-func imagesValidateViaList(runCtx context.Context, ctx console.Context, p providers.Provider, cfg config.ProviderConfig, creds map[string]any) error {
-	if p.Type() == "digitalocean" {
-		return imagesValidateDO(runCtx, ctx, p, cfg, creds)
+	if len(findings) != 0 {
+		return fmt.Errorf("%d image checks did not pass", len(findings))
 	}
-
-	hadIssue := false
-	for osKey, raw := range cfg.Images {
-		v, _ := raw.(string)
-		line := fmt.Sprintf("  %-12s → %s", osKey, v)
-		if note := imagesStabilityNote(v); note != "" {
-			line += "   ⚠  " + note
-			hadIssue = true
-		}
-		ctx.Line(line)
-	}
-	if hadIssue {
-		return fmt.Errorf("one or more images use unstable identifiers — consider switching to provider slugs/names")
-	}
+	ctx.Line("  ✓ all configured images verified against provider API")
 	return nil
-}
-
-func imagesValidateDO(runCtx context.Context, ctx console.Context, p providers.Provider, cfg config.ProviderConfig, creds map[string]any) error {
-	doProvider, ok := p.(*providers.DigitalOceanProvider)
-	if !ok {
-		return fmt.Errorf("provider was not a DigitalOceanProvider")
-	}
-	hadFailure := false
-	for osKey, raw := range cfg.Images {
-		slug, _ := raw.(string)
-		if err := doProvider.LookupImage(runCtx, creds, slug); err != nil {
-			ctx.Line(fmt.Sprintf("  %-12s → %s   ✗ %v", osKey, slug, err))
-			hadFailure = true
-		} else {
-			ctx.Line(fmt.Sprintf("  %-12s → %s   ✓ available", osKey, slug))
-		}
-	}
-	if hadFailure {
-		return fmt.Errorf("one or more DO images are no longer available — update options.go")
-	}
-	return nil
-}
-
-func imagesValidateAWS(ctx console.Context, cfg config.ProviderConfig) error {
-	missing := 0
-	for region, regionImages := range cfg.Images {
-		osMap, ok := regionImages.(map[string]string)
-		if !ok {
-			ctx.Line(fmt.Sprintf("  ✗ %s has malformed image map", region))
-			missing++
-			continue
-		}
-		for osName, ami := range osMap {
-			if !strings.HasPrefix(ami, "ami-") {
-				ctx.Line(fmt.Sprintf("  ✗ %s/%s → %q (does not look like an AMI ID)", region, osName, ami))
-				missing++
-			}
-		}
-	}
-	if missing == 0 {
-		ctx.Line(fmt.Sprintf("  ✓ %d region/OS pairs have well-formed AMI IDs", imagesAWSPairCount(cfg)))
-		ctx.Comment("  ℹ  AMIs are reissued frequently by Canonical. Consider using SSM Parameter Store at provision time:")
-		ctx.Comment("       /aws/service/canonical/ubuntu/server/24.04/stable/current/amd64/hvm/ebs-gp3/ami-id")
-		return nil
-	}
-	return fmt.Errorf("%d entries malformed", missing)
-}
-
-func imagesStabilityNote(s string) string {
-	if imagesIsAllDigits(s) {
-		return "looks like a numeric/snapshot ID — these are commonly retired by providers (DO/Vultr). Prefer slugs."
-	}
-	return ""
-}
-
-func imagesIsAllDigits(s string) bool {
-	if s == "" {
-		return false
-	}
-	for _, r := range s {
-		if r < '0' || r > '9' {
-			return false
-		}
-	}
-	return true
-}
-
-func imagesAWSPairCount(cfg config.ProviderConfig) int {
-	n := 0
-	for _, regionImages := range cfg.Images {
-		if m, ok := regionImages.(map[string]string); ok {
-			n += len(m)
-		}
-	}
-	return n
 }
 
 func imagesDecryptCreds(row *models.ServerProvider) (map[string]any, error) {
@@ -245,25 +158,4 @@ func imagesLoadProviders(db *gorm.DB, filter string) ([]models.ServerProvider, e
 		return nil, err
 	}
 	return rows, nil
-}
-
-func imagesLoadEnv() {
-	viper.SetConfigName(".env")
-	viper.SetConfigType("env")
-	viper.AddConfigPath(".")
-	_ = viper.ReadInConfig()
-	viper.AutomaticEnv()
-}
-
-func imagesConnectDB() (*gorm.DB, error) {
-	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?charset=utf8mb4&parseTime=True&loc=Local",
-		viper.GetString("DB_USERNAME"),
-		viper.GetString("DB_PASSWORD"),
-		viper.GetString("DB_HOST"),
-		viper.GetString("DB_PORT"),
-		viper.GetString("DB_DATABASE"),
-	)
-	return gorm.Open(mysql.Open(dsn), &gorm.Config{
-		Logger: logger.Default.LogMode(logger.Silent),
-	})
 }

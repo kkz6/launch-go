@@ -20,3 +20,8 @@ type ServerProvider struct {
 func (ServerProvider) TableName() string {
 	return "server_providers"
 }
+
+// CanProvision reports whether the connection can be used to create a server.
+func (p *ServerProvider) CanProvision(teamID string, provider types.ServerProvider) bool {
+	return p != nil && p.TeamID != nil && *p.TeamID == teamID && p.Provider == provider && p.Connected
+}

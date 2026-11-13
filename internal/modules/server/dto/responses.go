@@ -955,12 +955,14 @@ type CreateServerOptionsResponse struct {
 
 // GetCreateServerOptions builds the create server options response
 func GetCreateServerOptions() CreateServerOptionsResponse {
+	plans := serverconfig.GetProviderConfigs()
+	delete(plans, types.ProviderAWS.String()) // AWS connection and image checks do not provision EC2.
 	return CreateServerOptionsResponse{
 		PhpVersions:      serverconfig.GetPhpVersions(),
 		DatabaseTypes:    serverconfig.GetDatabaseTypes(),
 		ServerTypes:      serverconfig.GetServerTypes(),
 		OperatingSystems: serverconfig.GetOperatingSystems(),
-		Plans:            serverconfig.GetProviderConfigs(),
+		Plans:            plans,
 		CanCreateServer:  true,
 	}
 }

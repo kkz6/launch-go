@@ -160,8 +160,16 @@ func (p *LinodeProvider) LookupImage(ctx context.Context, credentials map[string
 		return err
 	}
 	client := p.NewClient(token)
-	if _, err := DoGet(ctx, client, "/images/"+image); err != nil {
+	var info struct {
+		ID         string `json:"id"`
+		Status     string `json:"status"`
+		Deprecated bool   `json:"deprecated"`
+	}
+	if err := client.Get(ctx, "/images/"+image, &info); err != nil {
 		return WrapHTTPError(err, "lookup image "+image)
+	}
+	if info.ID != image || info.Status != "available" || info.Deprecated {
+		return fmt.Errorf("image %q is unavailable or deprecated on Linode", image)
 	}
 	return nil
 }

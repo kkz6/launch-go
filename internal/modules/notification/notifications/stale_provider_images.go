@@ -11,7 +11,7 @@ import (
 )
 
 // StaleProviderImageFinding is one row of the cron's output: a single
-// configured (provider, os, image) tuple the upstream API rejected.
+// configured (provider, os, image) tuple that could not be verified.
 type StaleProviderImageFinding struct {
 	Provider string
 	OS       string
@@ -20,8 +20,8 @@ type StaleProviderImageFinding struct {
 }
 
 // StaleProviderImagesNotification is sent to team owners when the daily
-// image-validation cron finds configured images that the cloud provider
-// no longer serves. The point of the notification is to surface this in
+// image-validation cron cannot verify configured images. The point of
+// the notification is to surface this in
 // the dashboard / email of the people who can act on it BEFORE an actual
 // server-create attempt blows up with the unhelpful 422.
 //
@@ -38,7 +38,7 @@ type StaleProviderImagesNotification struct {
 // in-app notifications panel; the channel-specific renderers below
 // expand into email/slack/discord/telegram.
 func NewStaleProviderImagesNotification(findings []StaleProviderImageFinding) *StaleProviderImagesNotification {
-	rawText := fmt.Sprintf("%d configured cloud-provider image(s) are no longer available. New servers may fail to provision until the configuration is updated.", len(findings))
+	rawText := fmt.Sprintf("Could not verify %d configured cloud-provider image(s). Review the reported errors before provisioning new servers.", len(findings))
 	return &StaleProviderImagesNotification{
 		BaseNotification: models.NewBaseNotification(notificationtypes.NotificationTypeStaleProviderImages, rawText),
 		Findings:         findings,
@@ -59,12 +59,11 @@ func (n *StaleProviderImagesNotification) findingsTable() string {
 func (n *StaleProviderImagesNotification) ToEmail() *channels.EmailMessage {
 	builder := templates.NewEmail().
 		WithContext("lctl / provider").
-		WithState("CONFIGURATION STALE", "warning").
+		WithState("VALIDATION FAILED", "warning").
 		WithGreeting("Cloud-provider image configuration needs attention").
-		WithIntro(fmt.Sprintf("Launch's daily image-validation check found **%d** configured cloud-provider image(s) that the upstream provider no longer serves.", len(n.Findings))).
-		WithIntro("Until the configuration is updated, new servers on the affected providers may fail to provision with a generic \"image not available\" error.").
+		WithIntro(fmt.Sprintf("Launch's daily check could not verify **%d** configured cloud-provider image(s).", len(n.Findings))).
 		WithPanel(n.findingsTable()).
-		WithIntro("Action: rotate the affected images in the provider config (`internal/modules/server/config/options.go`) or migrate to SSM Parameter Store for AWS regions. Contact the platform team if you don't have access to do this yourself.")
+		WithIntro("Review the error for each image. Check the cloud connection or contact the platform team to update an unavailable image.")
 
 	html, err := builder.Build()
 	if err != nil {
@@ -78,14 +77,12 @@ func (n *StaleProviderImagesNotification) ToEmail() *channels.EmailMessage {
 }
 
 func (n *StaleProviderImagesNotification) plainTextEmail() *channels.EmailMessage {
-	body := fmt.Sprintf(`Launch's daily image-validation check found %d configured cloud-provider image(s) that the upstream provider no longer serves.
-
-Until the configuration is updated, new servers on the affected providers may fail to provision.
+	body := fmt.Sprintf(`Launch's daily check could not verify %d configured cloud-provider image(s).
 
 Affected images:
 %s
 
-Action: rotate the affected images in the provider config or migrate to SSM Parameter Store for AWS regions.`,
+Review the errors, check the cloud connection, or contact the platform team to update an unavailable image.`,
 		len(n.Findings),
 		n.findingsTable(),
 	)
@@ -100,7 +97,7 @@ Action: rotate the affected images in the provider config or migrate to SSM Para
 func (n *StaleProviderImagesNotification) ToSlack() string {
 	return fmt.Sprintf(`*⚠️ Cloud-provider image configuration needs attention*
 
-%d configured image(s) are no longer available on their upstream provider. New servers may fail to provision until the config is updated.
+Could not verify %d configured image(s). Review the errors before provisioning new servers.
 
 %s`, len(n.Findings), n.findingsTable())
 }
@@ -113,7 +110,7 @@ func (n *StaleProviderImagesNotification) ToDiscord() string {
 // ToTelegram returns the Telegram message content (HTML-style)
 func (n *StaleProviderImagesNotification) ToTelegram() string {
 	var b strings.Builder
-	b.WriteString(fmt.Sprintf("<b>⚠️ Cloud-provider image configuration needs attention</b>\n\n%d configured image(s) are no longer available on their upstream provider. New servers may fail to provision until the config is updated.\n\n", len(n.Findings)))
+	b.WriteString(fmt.Sprintf("<b>⚠️ Cloud-provider image configuration needs attention</b>\n\nCould not verify %d configured image(s). Review the errors before provisioning new servers.\n\n", len(n.Findings)))
 	for _, f := range n.Findings {
 		b.WriteString(fmt.Sprintf("• <b>%s</b> · <code>%s</code> — image <code>%s</code> — %s\n", f.Provider, f.OS, f.Image, f.Reason))
 	}

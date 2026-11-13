@@ -21,6 +21,8 @@ func TestStaleProviderImagesEmailUsesTimeline(t *testing.T) {
 
 	require.True(t, message.IsHTML)
 	assert.Contains(t, message.Body, "lctl / provider")
-	assert.Contains(t, message.Body, "CONFIGURATION STALE")
+	assert.Contains(t, message.Body, "VALIDATION FAILED")
+	assert.Contains(t, message.Body, "could not verify")
+	assert.Contains(t, message.Body, "image not found")
 	assert.Contains(t, message.Body, "ami-retired")
 }
