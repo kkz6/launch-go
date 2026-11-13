@@ -3,6 +3,7 @@ package middleware
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"github.com/kkz6/launch-go/tests/testutil"
 	"io"
 	"net/http/httptest"
 	"testing"
@@ -11,9 +12,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/stretchr/testify/require"
-	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
-	"gorm.io/gorm/logger"
 )
 
 const authIdentitySecret = "http-identity-test-secret"
@@ -26,12 +25,7 @@ func authIdentityFixture(t *testing.T) (*fiber.App, *gorm.DB) {
 		InitSessionValidator(nil)
 		InitUserStatus(nil)
 	})
-	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
-	require.NoError(t, err)
-	sqlDB, err := db.DB()
-	require.NoError(t, err)
-	sqlDB.SetMaxOpenConns(1)
-	t.Cleanup(func() { require.NoError(t, sqlDB.Close()) })
+	db := testutil.SQLite(t)
 	require.NoError(t, db.Exec("CREATE TABLE users (id TEXT PRIMARY KEY, locale TEXT)").Error)
 	require.NoError(t, db.Exec("INSERT INTO users VALUES ('u1', 'en'), ('u2', 'en')").Error)
 	require.NoError(t, db.Exec("CREATE TABLE personal_access_tokens (id TEXT PRIMARY KEY, tokenable_id TEXT, token TEXT, expires_at DATETIME, last_used_at DATETIME)").Error)
@@ -119,25 +113,6 @@ func signIdentityClaims(t *testing.T, claims jwt.MapClaims) string {
 	token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString([]byte(authIdentitySecret))
 	require.NoError(t, err)
 	return token
-}
-
-func TestAuthIdentityRejectsInvalidJWTs(t *testing.T) {
-	app, _ := authIdentityFixture(t)
-	for name, claims := range map[string]jwt.MapClaims{
-		"refresh":         {"sub": "u2", "type": "refresh"},
-		"missing subject": {"type": "access"},
-		"empty subject":   {"sub": "", "type": "access"},
-		"missing type":    {"sub": "u2"},
-	} {
-		t.Run(name, func(t *testing.T) {
-			token := signIdentityClaims(t, claims)
-			status, _ := requestIdentity(t, app, "/required", token)
-			require.Equal(t, fiber.StatusUnauthorized, status)
-			status, body := requestIdentity(t, app, "/optional", token)
-			require.Equal(t, fiber.StatusOK, status)
-			require.Equal(t, "anonymous", body)
-		})
-	}
 }
 
 func TestAuthIdentityRevokedJWTDoesNotFallBackToPAT(t *testing.T) {

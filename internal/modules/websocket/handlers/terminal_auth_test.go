@@ -11,9 +11,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
-	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
-	"gorm.io/gorm/logger"
 
 	"github.com/kkz6/launch-go/internal/middleware"
 	authaccess "github.com/kkz6/launch-go/internal/modules/auth/access"
@@ -23,6 +21,7 @@ import (
 	"github.com/kkz6/launch-go/internal/pkg/access"
 	"github.com/kkz6/launch-go/internal/pkg/cache"
 	launchcache "github.com/kkz6/launch-go/internal/pkg/launch/cache"
+	"github.com/kkz6/launch-go/tests/testutil"
 )
 
 const terminalTestSecret = "terminal-auth-test-secret"
@@ -75,12 +74,7 @@ func TestTerminalAuthorizesIdentityAndRoleBeforeSSH(t *testing.T) {
 
 func socketAuthFixture(t *testing.T, role string, withGate bool) (string, *gorm.DB) {
 	t.Helper()
-	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
-	require.NoError(t, err)
-	sqlDB, err := db.DB()
-	require.NoError(t, err)
-	sqlDB.SetMaxOpenConns(1)
-	t.Cleanup(func() { require.NoError(t, sqlDB.Close()) })
+	db := testutil.SQLite(t)
 	for _, statement := range []string{
 		"CREATE TABLE users (id TEXT PRIMARY KEY, status TEXT)",
 		"CREATE TABLE sessions (id TEXT PRIMARY KEY, user_id TEXT)",

@@ -3,6 +3,7 @@ package docker
 import (
 	"bufio"
 	"encoding/json"
+	"github.com/kkz6/launch-go/tests/testutil"
 	"io"
 	"net/http"
 	"strings"
@@ -12,9 +13,7 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
-	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
-	"gorm.io/gorm/logger"
 
 	"github.com/kkz6/launch-go/internal/database/serializers"
 	"github.com/kkz6/launch-go/internal/middleware"
@@ -31,17 +30,11 @@ const routeProjectPath = "/api/servers/" + routeServerID + "/docker/projects/pro
 func setupDockerRoutes(t *testing.T) (*fiber.App, *gorm.DB) {
 	t.Helper()
 	require.NoError(t, serializers.SetEncryptionKey([]byte("0123456789abcdef0123456789abcdef")))
-	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
-	require.NoError(t, err)
-	sqlDB, err := db.DB()
-	require.NoError(t, err)
-	sqlDB.SetMaxOpenConns(1)
-	t.Cleanup(func() { _ = sqlDB.Close() })
-	require.NoError(t, db.AutoMigrate(
+	db := testutil.SQLite(t,
 		&models.Project{}, &models.Application{}, &models.Compose{}, &models.ProjectEnvVar{},
 		&models.RegistryCredential{}, &models.ApplicationEnvVar{}, &models.ApplicationBuildSecret{},
 		&models.ComposeBuildSecret{}, &models.ApplicationDomain{}, &models.ApplicationVolume{}, &models.ApplicationSchedule{},
-	))
+	)
 	require.NoError(t, db.Exec("CREATE TABLE servers (id TEXT PRIMARY KEY, team_id TEXT, status TEXT)").Error)
 	require.NoError(t, db.Exec("INSERT INTO servers VALUES (?, ?, ?)", routeServerID, "team-a", "running").Error)
 	for _, id := range []string{"project-a", "project-b"} {

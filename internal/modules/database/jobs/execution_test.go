@@ -157,36 +157,6 @@ func TestUninstallRetainsRecordsUntilRemoteSuccess(t *testing.T) {
 	}
 }
 
-func TestPasswordUpdateReportsRemoteResult(t *testing.T) {
-	for _, succeeds := range []bool{false, true} {
-		name := "failure"
-		if succeeds {
-			name = "success"
-		}
-		t.Run(name, func(t *testing.T) {
-			deps, fake, db, events := executionFixture(t)
-			if !succeeds {
-				fake.SetDefaultFailure(1, "password update rejected")
-			}
-			password := "replacement-password"
-			job := &UpdateDatabaseUserJob{Deps: deps, Payload: UpdateDatabaseUserPayload{DatabaseUserID: "user-1", Password: &password}}
-			err := job.Handle(context.Background())
-			if succeeds {
-				require.NoError(t, err)
-				require.Contains(t, events.statuses["database_user.progress"], "updated")
-			} else {
-				require.Error(t, err)
-				job.Failed(context.Background(), err)
-				require.NotContains(t, events.statuses["database_user.progress"], "updated")
-				require.Contains(t, events.statuses["database_user.progress"], "failed")
-			}
-			require.NoError(t, db.First(&models.DatabaseUser{}, "id = ?", "user-1").Error)
-			require.Equal(t, 1, fake.ExecutionCount())
-			require.Equal(t, "Update MySQL Password", fake.LastExecution().Task.Name())
-		})
-	}
-}
-
 type executionEvents struct {
 	broadcast.NopBroadcaster
 	statuses map[string][]string

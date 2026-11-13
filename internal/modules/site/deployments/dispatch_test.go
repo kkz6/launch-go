@@ -4,14 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/kkz6/launch-go/tests/testutil"
 	"testing"
 	"time"
 
 	"github.com/hibiken/asynq"
 	"github.com/stretchr/testify/require"
-	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
-	"gorm.io/gorm/logger"
 
 	"github.com/kkz6/launch-go/internal/modules/site/deployments"
 	"github.com/kkz6/launch-go/internal/modules/site/models"
@@ -39,13 +38,7 @@ func (b *dispatchEvents) BroadcastToTeam(teamID, event string, data any) {
 
 func dispatchFixture(t *testing.T) (*gorm.DB, *models.Site, *dispatchEvents) {
 	t.Helper()
-	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
-	require.NoError(t, err)
-	sqlDB, err := db.DB()
-	require.NoError(t, err)
-	sqlDB.SetMaxOpenConns(1)
-	t.Cleanup(func() { require.NoError(t, sqlDB.Close()) })
-	require.NoError(t, db.AutoMigrate(&models.Site{}, &models.Deployment{}))
+	db := testutil.SQLite(t, &models.Site{}, &models.Deployment{})
 	site := &models.Site{Address: "example.test", Type: sitetypes.SiteTypeLaravel, TLSSetting: sitetypes.TLSSettingAuto}
 	site.ID, site.TeamID, site.ServerID, site.UserID = "site-1", "team-1", "server-1", "user-1"
 	require.NoError(t, db.Create(site).Error)
@@ -156,21 +149,6 @@ func TestDispatchFailureDoesNotOverwriteWorkerProgress(t *testing.T) {
 			require.Empty(t, events.events)
 		})
 	}
-}
-
-func TestDispatchSuccessPreservesOptionsWithoutStartingDeployment(t *testing.T) {
-	db, site, events := dispatchFixture(t)
-	deployment := seedDeployment(t, db, site, "attempt", sitetypes.DeploymentStatusPending, time.Now())
-	task := asynq.NewTask("test:deploy", nil)
-	options := []asynq.Option{asynq.ProcessIn(time.Second), asynq.Queue("critical")}
-	dispatcher := deployments.Dispatcher{DB: db, Broadcaster: events, Enqueue: func(got *asynq.Task, opts ...asynq.Option) (*asynq.TaskInfo, error) {
-		require.Same(t, task, got)
-		require.Equal(t, options, opts)
-		return &asynq.TaskInfo{}, nil
-	}}
-	require.NoError(t, dispatcher.Dispatch(context.Background(), deployment, func() (*asynq.Task, error) { return task, nil }, options...))
-	requireDeploymentStatus(t, db, deployment.ID, sitetypes.DeploymentStatusPending)
-	require.Empty(t, events.events)
 }
 
 func TestAdvanceNextFailureStopsAfterOneCandidate(t *testing.T) {

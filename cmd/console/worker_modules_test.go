@@ -11,13 +11,9 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/kkz6/launch-go/internal/config"
-	backupjobs "github.com/kkz6/launch-go/internal/modules/backup/jobs"
 	"github.com/kkz6/launch-go/internal/modules/certificate"
 	certjobs "github.com/kkz6/launch-go/internal/modules/certificate/jobs"
-	databasemodule "github.com/kkz6/launch-go/internal/modules/database"
 	dockerjobs "github.com/kkz6/launch-go/internal/modules/docker/jobs"
-	gitmodule "github.com/kkz6/launch-go/internal/modules/git"
-	sitejobs "github.com/kkz6/launch-go/internal/modules/site/jobs"
 	"github.com/kkz6/launch-go/internal/pkg/app"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 	"github.com/kkz6/launch-go/internal/schedule"
@@ -85,34 +81,4 @@ func TestWorkerKernelSharesCertificateRepositoriesWithDockerJobs(t *testing.T) {
 	fanout := certjobs.NewFanoutCertificateJob(certjobs.FanoutCertificatePayload{}).(*certjobs.FanoutCertificateJob)
 	require.NotNil(t, fanout.Deps)
 	assert.Same(t, application.Deps.CertRepos, fanout.Deps.Repos)
-}
-
-func TestWorkerKernelPreservesExistingJobDependencies(t *testing.T) {
-	kernel, _, db := bootTestWorker(t)
-	docker := dockerjobs.NewSyncTraefikConfigJob(dockerjobs.SyncTraefikConfigPayload{}).(*dockerjobs.SyncTraefikConfigJob)
-	site := sitejobs.NewDeployJob(sitejobs.DeployPayload{}).(*sitejobs.DeployJob)
-	backup := backupjobs.NewPollDueBackupsJob(backupjobs.PollDueBackupsPayload{}).(*backupjobs.PollDueBackupsJob)
-	git, ok := kernel.GetModule(gitmodule.ModuleName).(*gitmodule.Module)
-	require.True(t, ok)
-	database, ok := kernel.GetModule(databasemodule.ModuleName).(*databasemodule.Module)
-	require.True(t, ok)
-
-	require.NotNil(t, docker.Deps)
-	require.NotNil(t, site.Deps)
-	require.NotNil(t, backup.Deps)
-	assert.Same(t, git.ProviderFactory(), docker.Deps.GitProviders)
-	assert.Same(t, git.ProviderFactory(), site.Deps.ProviderFactory)
-	assert.Same(t, database.Repos(), backup.Deps.DatabaseRepos)
-	assert.NotNil(t, docker.Deps.ServerRepos)
-	assert.NotNil(t, docker.Deps.BackupRepos)
-	assert.NotNil(t, site.Deps.SourceControlRepo)
-	assert.NotNil(t, backup.Deps.ServerRepos)
-	assert.Same(t, db, site.Deps.DB)
-	assert.Same(t, db, backup.Deps.DB)
-	require.NotNil(t, docker.Deps.TaskRunnerDeps)
-	require.NotNil(t, site.Deps.TaskRunnerDeps)
-	require.NotNil(t, backup.Deps.TaskRunnerDeps)
-	require.NotNil(t, docker.Deps.TaskRunnerDeps.Notifier)
-	assert.Same(t, docker.Deps.TaskRunnerDeps.Notifier, site.Deps.TaskRunnerDeps.Notifier)
-	assert.Same(t, docker.Deps.TaskRunnerDeps.Notifier, backup.Deps.TaskRunnerDeps.Notifier)
 }

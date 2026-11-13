@@ -2,12 +2,10 @@ package services
 
 import (
 	"context"
+	"github.com/kkz6/launch-go/tests/testutil"
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	"gorm.io/driver/sqlite"
-	"gorm.io/gorm"
-	"gorm.io/gorm/logger"
 
 	"github.com/kkz6/launch-go/internal/modules/docker/models"
 	"github.com/kkz6/launch-go/internal/modules/docker/repositories"
@@ -16,19 +14,12 @@ import (
 )
 
 func TestChildResourceListsRequireCompleteOwnershipChain(t *testing.T) {
-	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{
-		Logger: logger.Default.LogMode(logger.Silent),
-	})
-	require.NoError(t, err)
-	sqlDB, err := db.DB()
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = sqlDB.Close() })
-	require.NoError(t, db.AutoMigrate(
+	db := testutil.SQLite(t,
 		&models.Project{}, &models.Application{}, &models.Compose{},
 		&models.ApplicationEnvVar{}, &models.ApplicationBuildSecret{},
 		&models.ComposeBuildSecret{}, &models.ApplicationSchedule{},
 		&models.ApplicationDomain{}, &models.ApplicationVolume{},
-	))
+	)
 
 	for _, fixture := range []struct{ id, team, server string }{
 		{"owned", "team-a", "server-a"},

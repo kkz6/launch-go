@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"context"
+	"github.com/kkz6/launch-go/tests/testutil"
 	"net/http/httptest"
 	"testing"
 	"time"
@@ -9,9 +10,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
-	"gorm.io/gorm/logger"
 
 	authrepos "github.com/kkz6/launch-go/internal/modules/auth/repositories"
 	billingmodels "github.com/kkz6/launch-go/internal/modules/billing/models"
@@ -24,17 +23,8 @@ import (
 func setupSubscriptionDB(t *testing.T) *gorm.DB {
 	t.Helper()
 
-	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{
-		Logger: logger.Default.LogMode(logger.Silent),
-	})
-	require.NoError(t, err)
-	sqlDB, err := db.DB()
-	require.NoError(t, err)
-	sqlDB.SetMaxOpenConns(1)
-	t.Cleanup(func() {
-		InitSubscriptionMiddleware(nil, false)
-		require.NoError(t, sqlDB.Close())
-	})
+	db := testutil.SQLite(t)
+	t.Cleanup(func() { InitSubscriptionMiddleware(nil, false) })
 
 	require.NoError(t, db.Exec(`CREATE TABLE users (
 		id TEXT PRIMARY KEY,

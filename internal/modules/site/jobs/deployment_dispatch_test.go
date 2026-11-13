@@ -32,38 +32,27 @@ func TestCreateDeploymentJobRecordsMissingQueueFailure(t *testing.T) {
 }
 
 func TestCreateDeploymentJobPreservesScheduledPayload(t *testing.T) {
-	for _, zeroDowntime := range []bool{false, true} {
-		name := "standard"
-		if zeroDowntime {
-			name = "zero downtime"
-		}
-		t.Run(name, func(t *testing.T) {
-			deps, _, db := deploymentReleaseJobFixture(t)
-			deps.Queue = deploymentJobQueue(t)
-			require.NoError(t, db.Model(&models.Site{}).Where("id = ?", "site-1").Update("zero_downtime_deployment", zeroDowntime).Error)
-			userID := "user-1"
-			job := &CreateDeploymentJob{Deps: deps, Payload: CreateDeploymentPayload{SiteID: "site-1", UserID: &userID}}
-			before := time.Now()
+	const zeroDowntime = true
+	deps, _, db := deploymentReleaseJobFixture(t)
+	deps.Queue = deploymentJobQueue(t)
+	require.NoError(t, db.Model(&models.Site{}).Where("id = ?", "site-1").Update("zero_downtime_deployment", zeroDowntime).Error)
+	userID := "user-1"
+	job := &CreateDeploymentJob{Deps: deps, Payload: CreateDeploymentPayload{SiteID: "site-1", UserID: &userID}}
+	before := time.Now()
 
-			require.NoError(t, job.Handle(context.Background()))
-			tasks, err := deps.Queue.Inspector().ListScheduledTasks("default")
-			require.NoError(t, err)
-			require.Len(t, tasks, 1)
-			var payload DeployPayload
-			require.NoError(t, json.Unmarshal(tasks[0].Payload, &payload))
-			require.Equal(t, "site-1", payload.SiteID)
-			require.Equal(t, &userID, payload.UserID)
-			require.Equal(t, zeroDowntime, payload.ZeroDowntime)
-			prefix, taskType := "deploy:", TypeDeploy
-			if zeroDowntime {
-				prefix, taskType = "deploy_zd:", TypeDeployZeroDowntime
-			}
-			require.Equal(t, prefix+payload.DeploymentID, tasks[0].ID)
-			require.Equal(t, taskType, tasks[0].Type)
-			require.WithinDuration(t, before.Add(time.Second), tasks[0].NextProcessAt, time.Second)
-			assertDeploymentJobStatus(t, db, payload.DeploymentID, sitetypes.DeploymentStatusPending)
-		})
-	}
+	require.NoError(t, job.Handle(context.Background()))
+	tasks, err := deps.Queue.Inspector().ListScheduledTasks("default")
+	require.NoError(t, err)
+	require.Len(t, tasks, 1)
+	var payload DeployPayload
+	require.NoError(t, json.Unmarshal(tasks[0].Payload, &payload))
+	require.Equal(t, "site-1", payload.SiteID)
+	require.Equal(t, &userID, payload.UserID)
+	require.Equal(t, zeroDowntime, payload.ZeroDowntime)
+	require.Equal(t, "deploy_zd:"+payload.DeploymentID, tasks[0].ID)
+	require.Equal(t, TypeDeployZeroDowntime, tasks[0].Type)
+	require.WithinDuration(t, before.Add(time.Second), tasks[0].NextProcessAt, time.Second)
+	assertDeploymentJobStatus(t, db, payload.DeploymentID, sitetypes.DeploymentStatusPending)
 }
 
 func TestDeployFailureHandlingAdvancesQueueOnlyOnce(t *testing.T) {

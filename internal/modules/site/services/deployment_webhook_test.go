@@ -10,37 +10,32 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 
 	"github.com/kkz6/launch-go/internal/config"
 	"github.com/kkz6/launch-go/internal/modules/site/models"
 	"github.com/kkz6/launch-go/internal/modules/site/repositories"
 	sitetypes "github.com/kkz6/launch-go/internal/modules/site/types"
+	"github.com/kkz6/launch-go/internal/pkg/broadcast"
 	"github.com/kkz6/launch-go/internal/pkg/queue"
 	"github.com/kkz6/launch-go/internal/pkg/service"
+	"github.com/kkz6/launch-go/tests/testutil"
 )
 
 func setupWebhookTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
-
-	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
-	require.NoError(t, err)
-	sqlDB, err := db.DB()
-	require.NoError(t, err)
-	sqlDB.SetMaxOpenConns(1)
-	t.Cleanup(func() { require.NoError(t, sqlDB.Close()) })
-
-	err = db.AutoMigrate(&models.Site{}, &models.Deployment{})
-	require.NoError(t, err)
-
-	return db
+	return testutil.SQLite(t, &models.Site{}, &models.Deployment{})
 }
 
 func newTestDeploymentService(t *testing.T, db *gorm.DB) *DeploymentService {
 	t.Helper()
+	svc, _ := newQueuedDeploymentService(t, db, nil)
+	return svc
+}
+
+func newQueuedDeploymentService(t *testing.T, db *gorm.DB, broadcaster broadcast.ModelBroadcaster) (*DeploymentService, *miniredis.Miniredis) {
+	t.Helper()
 	logger := zerolog.Nop()
-	repos := repositories.NewRegistry(db)
 	redis := miniredis.RunT(t)
 	client := queue.NewClient(config.RedisConfig{Address: redis.Addr()})
 	t.Cleanup(func() { require.NoError(t, client.Close()) })
@@ -48,15 +43,16 @@ func newTestDeploymentService(t *testing.T, db *gorm.DB) *DeploymentService {
 	deps := &ServiceDeps{
 		ModuleDeps: service.ModuleDeps[*repositories.Registry]{
 			Dependencies: service.Dependencies{
-				DB:     db,
-				Logger: &logger,
-				Queue:  client,
+				DB:          db,
+				Logger:      &logger,
+				Queue:       client,
+				Broadcaster: broadcaster,
 			},
-			Repos: repos,
+			Repos: repositories.NewRegistry(db),
 		},
 	}
 
-	return NewDeploymentService(deps)
+	return NewDeploymentService(deps), redis
 }
 
 func createTestSite(t *testing.T, db *gorm.DB, deployToken *string, branch *string) *models.Site {

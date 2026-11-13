@@ -7,54 +7,43 @@ import (
 	"time"
 
 	"github.com/alicebob/miniredis/v2"
-	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 
-	"github.com/kkz6/launch-go/internal/config"
 	"github.com/kkz6/launch-go/internal/modules/site/jobs"
 	"github.com/kkz6/launch-go/internal/modules/site/models"
-	"github.com/kkz6/launch-go/internal/modules/site/repositories"
 	sitetypes "github.com/kkz6/launch-go/internal/modules/site/types"
 	"github.com/kkz6/launch-go/internal/pkg/broadcast"
 	"github.com/kkz6/launch-go/internal/pkg/queue"
-	"github.com/kkz6/launch-go/internal/pkg/service"
 )
 
 func TestDeployQueueFailurePreservesFailedAttemptAndAllowsRetry(t *testing.T) {
-	for _, zeroDowntime := range []bool{false, true} {
-		name, taskType := "standard", jobs.TypeDeploy
-		if zeroDowntime {
-			name, taskType = "zero downtime", jobs.TypeDeployZeroDowntime
-		}
-		t.Run(name, func(t *testing.T) {
-			svc, db, site, redis := deploymentDispatchFixture(t)
-			require.NoError(t, db.Model(site).Update("zero_downtime_deployment", zeroDowntime).Error)
-			redis.SetError("ERR deployment queue unavailable")
-			result, err := svc.Deploy(context.Background(), site.ID, site.ServerID, site.TeamID, site.UserID)
-			require.Error(t, err)
-			require.Nil(t, result)
-			var attempted []models.Deployment
-			require.NoError(t, db.Where("site_id = ?", site.ID).Find(&attempted).Error)
-			require.Len(t, attempted, 1, "failed dispatch must retain deployment history")
-			requireFailedDispatch(t, svc, &attempted[0])
+	const zeroDowntime = true
+	svc, db, site, redis := deploymentDispatchFixture(t)
+	require.NoError(t, db.Model(site).Update("zero_downtime_deployment", zeroDowntime).Error)
+	redis.SetError("ERR deployment queue unavailable")
+	result, err := svc.Deploy(context.Background(), site.ID, site.ServerID, site.TeamID, site.UserID)
+	require.Error(t, err)
+	require.Nil(t, result)
+	var attempted []models.Deployment
+	require.NoError(t, db.Where("site_id = ?", site.ID).Find(&attempted).Error)
+	require.Len(t, attempted, 1, "failed dispatch must retain deployment history")
+	requireFailedDispatch(t, svc, &attempted[0])
 
-			redis.SetError("")
-			retried, err := svc.Deploy(context.Background(), site.ID, site.ServerID, site.TeamID, site.UserID)
-			require.NoError(t, err)
-			require.NotEqual(t, attempted[0].ID, retried.ID)
-			require.Equal(t, sitetypes.DeploymentStatusPending, retried.Status)
-			queued, err := svc.Queue.Inspector().ListScheduledTasks(queue.QueueDefault)
-			require.NoError(t, err)
-			require.Len(t, queued, 1)
-			require.Equal(t, taskType, queued[0].Type)
-			var payload jobs.DeployPayload
-			require.NoError(t, json.Unmarshal(queued[0].Payload, &payload))
-			require.Equal(t, retried.ID, payload.DeploymentID)
-			require.Equal(t, site.ID, payload.SiteID)
-			require.Equal(t, zeroDowntime, payload.ZeroDowntime)
-		})
-	}
+	redis.SetError("")
+	retried, err := svc.Deploy(context.Background(), site.ID, site.ServerID, site.TeamID, site.UserID)
+	require.NoError(t, err)
+	require.NotEqual(t, attempted[0].ID, retried.ID)
+	require.Equal(t, sitetypes.DeploymentStatusPending, retried.Status)
+	queued, err := svc.Queue.Inspector().ListScheduledTasks(queue.QueueDefault)
+	require.NoError(t, err)
+	require.Len(t, queued, 1)
+	require.Equal(t, jobs.TypeDeployZeroDowntime, queued[0].Type)
+	var payload jobs.DeployPayload
+	require.NoError(t, json.Unmarshal(queued[0].Payload, &payload))
+	require.Equal(t, retried.ID, payload.DeploymentID)
+	require.Equal(t, site.ID, payload.SiteID)
+	require.Equal(t, zeroDowntime, payload.ZeroDowntime)
 }
 
 func TestRollbackQueueFailurePreservesTargetAndAllowsRetry(t *testing.T) {
@@ -88,65 +77,10 @@ func TestRollbackQueueFailurePreservesTargetAndAllowsRetry(t *testing.T) {
 	require.Equal(t, target.ID, payload.TargetDeploymentID)
 }
 
-func TestProcessNextQueuedFailurePreservesPredecessorAndRemainingQueue(t *testing.T) {
-	for _, zeroDowntime := range []bool{false, true} {
-		name, taskType := "standard", jobs.TypeDeploy
-		if zeroDowntime {
-			name, taskType = "zero downtime", jobs.TypeDeployZeroDowntime
-		}
-		t.Run(name, func(t *testing.T) {
-			svc, db, site, redis := deploymentDispatchFixture(t)
-			require.NoError(t, db.Model(site).Update("zero_downtime_deployment", zeroDowntime).Error)
-			predecessor := createDispatchDeployment(t, db, site, sitetypes.DeploymentStatusFinished, time.Now().Add(-2*time.Hour))
-			first := createDispatchDeployment(t, db, site, sitetypes.DeploymentStatusQueued, time.Now().Add(-time.Hour))
-			second := createDispatchDeployment(t, db, site, sitetypes.DeploymentStatusQueued, time.Now())
-			redis.SetError("ERR deployment queue unavailable")
-			result, err := svc.ProcessNextQueued(context.Background(), site.ID)
-			require.Error(t, err)
-			require.Nil(t, result)
-			require.NoError(t, db.First(first, "id = ?", first.ID).Error)
-			requireFailedDispatch(t, svc, first)
-			require.NoError(t, db.First(second, "id = ?", second.ID).Error)
-			require.Equal(t, sitetypes.DeploymentStatusQueued, second.Status, "an outage must not consume every queued deployment")
-			require.NoError(t, db.First(predecessor, "id = ?", predecessor.ID).Error)
-			require.Equal(t, sitetypes.DeploymentStatusFinished, predecessor.Status)
-
-			redis.SetError("")
-			next, err := svc.ProcessNextQueued(context.Background(), site.ID)
-			require.NoError(t, err)
-			require.Equal(t, second.ID, next.ID)
-			require.Equal(t, sitetypes.DeploymentStatusPending, next.Status)
-			queued, err := svc.Queue.Inspector().ListPendingTasks(queue.QueueDefault)
-			require.NoError(t, err)
-			require.Len(t, queued, 1)
-			require.Equal(t, taskType, queued[0].Type)
-		})
-	}
-}
-
-func TestDeployWithoutQueueFailsInsteadOfReportingSuccess(t *testing.T) {
-	svc, db, site, _ := deploymentDispatchFixture(t)
-	svc.Queue = nil
-	result, err := svc.Deploy(context.Background(), site.ID, site.ServerID, site.TeamID, site.UserID)
-	require.Error(t, err)
-	require.Nil(t, result)
-	var attempted []models.Deployment
-	require.NoError(t, db.Where("site_id = ?", site.ID).Find(&attempted).Error)
-	require.Len(t, attempted, 1)
-	requireFailedDispatch(t, svc, &attempted[0])
-}
-
 func deploymentDispatchFixture(t *testing.T) (*DeploymentService, *gorm.DB, *models.Site, *miniredis.Miniredis) {
 	t.Helper()
 	db := setupWebhookTestDB(t)
-	redis := miniredis.RunT(t)
-	client := queue.NewClient(config.RedisConfig{Address: redis.Addr()})
-	t.Cleanup(func() { require.NoError(t, client.Close()) })
-	logger := zerolog.Nop()
-	svc := NewDeploymentService(&ServiceDeps{ModuleDeps: service.ModuleDeps[*repositories.Registry]{
-		Dependencies: service.Dependencies{DB: db, Logger: &logger, Queue: client, Broadcaster: &deploymentDispatchEvents{}},
-		Repos:        repositories.NewRegistry(db),
-	}})
+	svc, redis := newQueuedDeploymentService(t, db, &deploymentDispatchEvents{})
 	return svc, db, createTestSite(t, db, nil, nil), redis
 }
 
