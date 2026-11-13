@@ -38,11 +38,12 @@ type recordingCache struct{ deleted []string }
 
 type recordingEmailSender struct {
 	body string
+	err  error
 }
 
 func (s *recordingEmailSender) Send(_ context.Context, _, _, body string, _ bool) error {
 	s.body = body
-	return nil
+	return s.err
 }
 
 func (c *recordingCache) Get(context.Context, string) (string, error) {
@@ -86,8 +87,14 @@ func (m *mockUserRepo) FindByEmail(_ context.Context, email string) (*models.Use
 	return nil, nil
 }
 
-func (m *mockUserRepo) SetCurrentTeam(_ context.Context, _, _ string) error {
-	return m.setCurrentTeamErr
+func (m *mockUserRepo) SetCurrentTeam(_ context.Context, userID, teamID string) error {
+	if m.setCurrentTeamErr != nil {
+		return m.setCurrentTeamErr
+	}
+	if user := m.users[userID]; user != nil {
+		user.CurrentTeamID = &teamID
+	}
+	return nil
 }
 
 type mockTeamRepo struct {
@@ -281,7 +288,11 @@ func newTestRegistry() (*mockRepoRegistry, *TeamMemberService) {
 	reg.team.teams["team_001"].ID = "team_001"
 
 	logger := zerolog.New(os.Stderr).With().Timestamp().Logger()
-	svc := &TeamMemberService{repos: reg, logger: &logger}
+	svc := &TeamMemberService{
+		repos: reg, logger: &logger,
+		emailSender: &recordingEmailSender{},
+		config:      &config.Config{App: config.AppConfig{FrontendURL: "https://launchctl.io"}},
+	}
 	return reg, svc
 }
 
@@ -325,7 +336,7 @@ func TestInvitationEmailUsesFrontendAcceptancePage(t *testing.T) {
 	invitation := &models.TeamInvitation{Email: "member@example.com"}
 	invitation.ID = "invitation_001"
 
-	svc.sendInvitationEmail(context.Background(), invitation, "Shared Team")
+	require.NoError(t, svc.sendInvitationEmail(context.Background(), invitation, "Shared Team"))
 
 	require.True(t, strings.Contains(sender.body, "https://launchctl.io/invite/invitation_001"))
 	require.False(t, strings.Contains(sender.body, "/api/auth/team-invitations/"))
@@ -369,6 +380,24 @@ func TestInviteTeamMember_OwnerCanInvite(t *testing.T) {
 	assert.Equal(t, "newuser@example.com", reg.teamInvitation.created.Email)
 	assert.Equal(t, "team_001", reg.teamInvitation.created.TeamID)
 	assert.Equal(t, "editor", *reg.teamInvitation.created.Role)
+}
+
+func TestInvitationDeliveryFailurePreservesInvitationForResend(t *testing.T) {
+	reg, svc := newTestRegistry()
+	ctx := context.Background()
+	sender := &recordingEmailSender{err: errors.New("provider unavailable")}
+	svc.emailSender = sender
+	req := &dto.InviteTeamMemberRequest{Email: "newuser@example.com", Role: "member"}
+
+	require.ErrorIs(t, svc.InviteTeamMember(ctx, "owner_001", "team_001", req), ErrInvitationEmailDelivery)
+	id := reg.teamInvitation.created.ID
+	require.ErrorIs(t, svc.ResendTeamInvitation(ctx, "owner_001", "team_001", id), ErrInvitationEmailDelivery)
+	require.Contains(t, reg.teamInvitation.invitations, id)
+
+	sender.err = nil
+	require.NoError(t, svc.ResendTeamInvitation(ctx, "owner_001", "team_001", id))
+	require.Contains(t, sender.body, "/invite/"+id)
+	require.Len(t, reg.teamInvitation.invitations, 1)
 }
 
 func TestInviteTeamMember_AdminCanInvite(t *testing.T) {
@@ -692,6 +721,10 @@ func TestRemoveTeamMember_OwnerCanRemove(t *testing.T) {
 func TestRemoveTeamMember_MemberCanRemoveSelf(t *testing.T) {
 	reg, svc := newTestRegistry()
 	ctx := context.Background()
+	reg.user.users["user_001"].CurrentTeamID = strPtr("team_001")
+	personal := &models.Team{UserID: "user_001", PersonalTeam: true}
+	personal.ID = "personal"
+	reg.team.teams[personal.ID] = personal
 
 	reg.teamMember.members["team_001"]["user_001"] = &models.TeamMember{
 		TeamID: "team_001",
@@ -704,6 +737,7 @@ func TestRemoveTeamMember_MemberCanRemoveSelf(t *testing.T) {
 
 	_, exists := reg.teamMember.members["team_001"]["user_001"]
 	assert.False(t, exists)
+	require.Equal(t, personal.ID, *reg.user.users["user_001"].CurrentTeamID)
 }
 
 func TestRemoveTeamMember_CannotRemoveOwner(t *testing.T) {

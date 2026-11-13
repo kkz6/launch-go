@@ -32,6 +32,8 @@ type TeamMemberService struct {
 	membershipCache *launchcache.TeamMembershipCache
 }
 
+var ErrInvitationEmailDelivery = errors.New("team invitation email delivery failed")
+
 // SetMembershipCache wires the shared membership cache so mutations cannot
 // leave stale authorization data behind.
 func (s *TeamMemberService) SetMembershipCache(c *launchcache.TeamMembershipCache) {
@@ -98,10 +100,7 @@ func (s *TeamMemberService) InviteTeamMember(ctx context.Context, userID, teamID
 		return err
 	}
 
-	// Send invitation email
-	s.sendInvitationEmail(ctx, invitation, team.Name)
-
-	return nil
+	return s.sendInvitationEmail(ctx, invitation, team.Name)
 }
 
 // AcceptTeamInvitation accepts a team invitation
@@ -171,9 +170,7 @@ func (s *TeamMemberService) ResendTeamInvitation(ctx context.Context, userID, te
 		return fiberutil.NotFound()
 	}
 
-	s.sendInvitationEmail(ctx, invitation, team.Name)
-
-	return nil
+	return s.sendInvitationEmail(ctx, invitation, team.Name)
 }
 
 // CancelTeamInvitation cancels a team invitation
@@ -383,10 +380,10 @@ func (s *TeamMemberService) GenerateInvitationURL(invitationID string) string {
 }
 
 // sendInvitationEmail sends an invitation email to the invitee
-func (s *TeamMemberService) sendInvitationEmail(ctx context.Context, invitation *models.TeamInvitation, teamName string) {
+func (s *TeamMemberService) sendInvitationEmail(ctx context.Context, invitation *models.TeamInvitation, teamName string) error {
 	if s.emailSender == nil {
 		s.logger.Warn().Str("email", invitation.Email).Msg("Skipping invitation email: email sender not configured (check MAIL_DRIVER/RESEND_API_KEY/SMTP_HOST)")
-		return
+		return ErrInvitationEmailDelivery
 	}
 
 	frontend := strings.TrimRight(s.config.App.Frontend(), "/")
@@ -394,12 +391,14 @@ func (s *TeamMemberService) sendInvitationEmail(ctx context.Context, invitation 
 	htmlContent, _, err := templates.TeamInvitationEmail(teamName, invitationURL, "", false)
 	if err != nil {
 		s.logger.Error().Err(err).Str("email", invitation.Email).Msg("Failed to build invitation email template")
-		return
+		return ErrInvitationEmailDelivery
 	}
 
 	if err := s.emailSender.Send(ctx, invitation.Email, fmt.Sprintf("You've been invited to join %s", teamName), htmlContent, true); err != nil {
 		s.logger.Error().Err(err).Str("email", invitation.Email).Msg("Failed to send invitation email")
+		return ErrInvitationEmailDelivery
 	}
+	return nil
 }
 
 func (s *TeamMemberService) getTeam(ctx context.Context, teamID string) (*models.Team, error) {
