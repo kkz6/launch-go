@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -10,15 +11,12 @@ import (
 
 	"github.com/gofiber/contrib/websocket"
 	"github.com/gofiber/fiber/v2"
-	"github.com/rs/zerolog"
 	"golang.org/x/crypto/ssh"
-	"gorm.io/gorm"
 
 	scriptModels "github.com/kkz6/launch-go/internal/modules/script/models"
 	"github.com/kkz6/launch-go/internal/modules/script/support"
 	scripttypes "github.com/kkz6/launch-go/internal/modules/script/types"
 	serverModels "github.com/kkz6/launch-go/internal/modules/server/models"
-	launchcache "github.com/kkz6/launch-go/internal/pkg/launch/cache"
 )
 
 // ScriptExecutionHandler handles WebSocket connections for script execution streaming
@@ -33,12 +31,6 @@ func NewScriptExecutionHandler(base Base) *ScriptExecutionHandler {
 	return &ScriptExecutionHandler{
 		Base: base.WithComponent("script-execution"),
 	}
-}
-
-// NewScriptExecutionHandlerWithDeps creates a new script execution handler with individual dependencies (legacy).
-// Deprecated: Use NewScriptExecutionHandler with Base instead.
-func NewScriptExecutionHandlerWithDeps(db *gorm.DB, jwtSecret string, logger zerolog.Logger, membershipCache *launchcache.TeamMembershipCache) *ScriptExecutionHandler {
-	return NewScriptExecutionHandler(NewBase(db, jwtSecret, logger, membershipCache))
 }
 
 // Handler returns a Fiber handler for script execution WebSocket connections
@@ -107,6 +99,10 @@ func (h *ScriptExecutionHandler) Handler() fiber.Handler {
 		// If execution is still pending, update to running and execute
 		switch execution.Status {
 		case scriptModels.ExecutionStatusPending:
+			if err := h.Authorize(context.Background(), claims, "script.execute"); err != nil {
+				h.sendError(c, "Permission denied")
+				return
+			}
 			h.executeScript(c, &execution, &script, &server)
 		case scriptModels.ExecutionStatusRunning:
 			// Already running elsewhere - just notify and close

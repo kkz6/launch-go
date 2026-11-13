@@ -42,7 +42,7 @@ func (a *Application) registerRoutes(modules moduleSet) {
 
 	registerPolicies(modules)
 	a.kernel.BootHTTP(app.BootHTTPOptions{Router: api, AuthMiddleware: authMiddleware, TeamContextMiddleware: middleware.TeamScope()})
-	modules.server.RegisterRoutes(api, authMiddleware, modules.site.SiteRepository())
+	modules.Server.RegisterRoutes(api, authMiddleware, modules.Site.SiteRepository())
 	a.kernel.BootWebhooks(a.fiber)
 	a.kernel.BootWebSocket(api)
 }

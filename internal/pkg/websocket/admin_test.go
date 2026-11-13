@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/kkz6/launch-go/internal/pkg/broadcast"
+	"github.com/kkz6/launch-go/internal/pkg/security"
 )
 
 type staffChannelTestAuthorizer struct{ allowed atomic.Bool }
@@ -72,7 +73,8 @@ func TestAdminChannelRejectsExpiredOrSpectateSessions(t *testing.T) {
 			for key, value := range tc.extra {
 				claims[key] = value
 			}
-			expires := staffTokenExpiry(valid(claims), secret)
+			validated, _ := security.ParseJWTToken(valid(claims), secret)
+			expires := staffTokenExpiry(validated)
 			require.Equal(t, tc.allowed, !expires.IsZero())
 			auth := &staffChannelTestAuthorizer{}
 			auth.allowed.Store(true)

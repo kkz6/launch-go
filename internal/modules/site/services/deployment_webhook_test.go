@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/alicebob/miniredis/v2"
 	"github.com/gofiber/fiber/v2"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
@@ -12,9 +13,11 @@ import (
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 
+	"github.com/kkz6/launch-go/internal/config"
 	"github.com/kkz6/launch-go/internal/modules/site/models"
 	"github.com/kkz6/launch-go/internal/modules/site/repositories"
 	sitetypes "github.com/kkz6/launch-go/internal/modules/site/types"
+	"github.com/kkz6/launch-go/internal/pkg/queue"
 	"github.com/kkz6/launch-go/internal/pkg/service"
 )
 
@@ -23,6 +26,10 @@ func setupWebhookTestDB(t *testing.T) *gorm.DB {
 
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
+	sqlDB, err := db.DB()
+	require.NoError(t, err)
+	sqlDB.SetMaxOpenConns(1)
+	t.Cleanup(func() { require.NoError(t, sqlDB.Close()) })
 
 	err = db.AutoMigrate(&models.Site{}, &models.Deployment{})
 	require.NoError(t, err)
@@ -30,14 +37,20 @@ func setupWebhookTestDB(t *testing.T) *gorm.DB {
 	return db
 }
 
-func newTestDeploymentService(db *gorm.DB) *DeploymentService {
+func newTestDeploymentService(t *testing.T, db *gorm.DB) *DeploymentService {
+	t.Helper()
 	logger := zerolog.Nop()
 	repos := repositories.NewRegistry(db)
+	redis := miniredis.RunT(t)
+	client := queue.NewClient(config.RedisConfig{Address: redis.Addr()})
+	t.Cleanup(func() { require.NoError(t, client.Close()) })
 
 	deps := &ServiceDeps{
 		ModuleDeps: service.ModuleDeps[*repositories.Registry]{
 			Dependencies: service.Dependencies{
+				DB:     db,
 				Logger: &logger,
+				Queue:  client,
 			},
 			Repos: repos,
 		},
@@ -71,7 +84,7 @@ func createTestSite(t *testing.T, db *gorm.DB, deployToken *string, branch *stri
 
 func TestDeployFromWebhook_ValidToken(t *testing.T) {
 	db := setupWebhookTestDB(t)
-	svc := newTestDeploymentService(db)
+	svc := newTestDeploymentService(t, db)
 
 	token := "abc123token"
 	site := createTestSite(t, db, &token, nil)
@@ -87,7 +100,7 @@ func TestDeployFromWebhook_ValidToken(t *testing.T) {
 
 func TestDeployFromWebhook_NilDeployToken(t *testing.T) {
 	db := setupWebhookTestDB(t)
-	svc := newTestDeploymentService(db)
+	svc := newTestDeploymentService(t, db)
 
 	site := createTestSite(t, db, nil, nil)
 
@@ -101,7 +114,7 @@ func TestDeployFromWebhook_NilDeployToken(t *testing.T) {
 
 func TestDeployFromWebhook_WrongToken(t *testing.T) {
 	db := setupWebhookTestDB(t)
-	svc := newTestDeploymentService(db)
+	svc := newTestDeploymentService(t, db)
 
 	token := "correct-token"
 	site := createTestSite(t, db, &token, nil)
@@ -116,7 +129,7 @@ func TestDeployFromWebhook_WrongToken(t *testing.T) {
 
 func TestDeployFromWebhook_EmptyToken(t *testing.T) {
 	db := setupWebhookTestDB(t)
-	svc := newTestDeploymentService(db)
+	svc := newTestDeploymentService(t, db)
 
 	token := "valid-token"
 	site := createTestSite(t, db, &token, nil)
@@ -131,7 +144,7 @@ func TestDeployFromWebhook_EmptyToken(t *testing.T) {
 
 func TestDeployFromWebhook_BranchMismatch(t *testing.T) {
 	db := setupWebhookTestDB(t)
-	svc := newTestDeploymentService(db)
+	svc := newTestDeploymentService(t, db)
 
 	token := "valid-token"
 	branch := "production"
@@ -151,7 +164,7 @@ func TestDeployFromWebhook_BranchMismatch(t *testing.T) {
 
 func TestDeployFromWebhook_BranchMatch(t *testing.T) {
 	db := setupWebhookTestDB(t)
-	svc := newTestDeploymentService(db)
+	svc := newTestDeploymentService(t, db)
 
 	token := "valid-token"
 	branch := "main"
@@ -171,7 +184,7 @@ func TestDeployFromWebhook_BranchMatch(t *testing.T) {
 
 func TestDeployFromWebhook_SiteNotFound(t *testing.T) {
 	db := setupWebhookTestDB(t)
-	svc := newTestDeploymentService(db)
+	svc := newTestDeploymentService(t, db)
 
 	err := svc.DeployFromWebhook(context.Background(), "nonexistent-id", "token", nil)
 	assert.Error(t, err)
@@ -179,7 +192,7 @@ func TestDeployFromWebhook_SiteNotFound(t *testing.T) {
 
 func TestParseWebhookPayload_GitHub(t *testing.T) {
 	db := setupWebhookTestDB(t)
-	svc := newTestDeploymentService(db)
+	svc := newTestDeploymentService(t, db)
 
 	site := &models.Site{}
 	payload := map[string]any{
@@ -209,7 +222,7 @@ func TestParseWebhookPayload_GitHub(t *testing.T) {
 
 func TestParseWebhookPayload_GitLab(t *testing.T) {
 	db := setupWebhookTestDB(t)
-	svc := newTestDeploymentService(db)
+	svc := newTestDeploymentService(t, db)
 
 	site := &models.Site{}
 	payload := map[string]any{
@@ -240,7 +253,7 @@ func TestParseWebhookPayload_GitLab(t *testing.T) {
 
 func TestParseWebhookPayload_Bitbucket(t *testing.T) {
 	db := setupWebhookTestDB(t)
-	svc := newTestDeploymentService(db)
+	svc := newTestDeploymentService(t, db)
 
 	site := &models.Site{}
 	payload := map[string]any{
@@ -282,7 +295,7 @@ func TestParseWebhookPayload_Bitbucket(t *testing.T) {
 
 func TestParseWebhookPayload_NilPayload(t *testing.T) {
 	db := setupWebhookTestDB(t)
-	svc := newTestDeploymentService(db)
+	svc := newTestDeploymentService(t, db)
 
 	result := svc.parseWebhookPayload(nil, &models.Site{})
 	assert.Nil(t, result)
@@ -290,7 +303,7 @@ func TestParseWebhookPayload_NilPayload(t *testing.T) {
 
 func TestParseWebhookPayload_EmptyPayload(t *testing.T) {
 	db := setupWebhookTestDB(t)
-	svc := newTestDeploymentService(db)
+	svc := newTestDeploymentService(t, db)
 
 	result := svc.parseWebhookPayload(map[string]any{}, &models.Site{})
 	assert.Nil(t, result)
@@ -298,7 +311,7 @@ func TestParseWebhookPayload_EmptyPayload(t *testing.T) {
 
 func TestDeployFromWebhook_DefaultBranchIsMain(t *testing.T) {
 	db := setupWebhookTestDB(t)
-	svc := newTestDeploymentService(db)
+	svc := newTestDeploymentService(t, db)
 
 	token := "valid-token"
 	// No branch set — should default to "main"

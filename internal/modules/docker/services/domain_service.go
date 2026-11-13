@@ -449,25 +449,6 @@ var wildcardDNSSuffixes = []string{
 	".localtest.me",
 }
 
-// scopedApp resolves the (server, project, application) triple inside the
-// caller's team. Returns the application so the caller can dispatch
-// follow-up work without an extra DB hit.
-func (s *DomainService) scopedApp(
-	ctx context.Context, applicationID, projectID, serverID, teamID string,
-) (*models.Application, error) {
-	if _, err := s.Repos().Project().FindByIDAndTeamServer(ctx, projectID, teamID, serverID); err != nil {
-		return nil, err
-	}
-	app, err := s.Repos().Application().FindByIDAndTeamServer(ctx, applicationID, teamID, serverID)
-	if err != nil {
-		return nil, err
-	}
-	if app.ProjectID != projectID {
-		return nil, fiberutil.NotFound()
-	}
-	return app, nil
-}
-
 // dispatchTraefikSync enqueues an async job that re-renders the Traefik
 // config for the application. Idempotent: re-running it with the same
 // inputs produces the same file content, so we can safely fire it on
@@ -785,24 +766,6 @@ func (s *DomainService) ValidateComposeDNS(
 		return dto.ValidateDNSResponse{}, fiberutil.NotFound()
 	}
 	return s.validateDNSAgainstServer(ctx, d.Host, c.ServerID)
-}
-
-// scopedCompose resolves (server, project, compose) inside the
-// caller's team — mirrors scopedApp but on the compose repo.
-func (s *DomainService) scopedCompose(
-	ctx context.Context, composeID, projectID, serverID, teamID string,
-) (*models.Compose, error) {
-	if _, err := s.Repos().Project().FindByIDAndTeamServer(ctx, projectID, teamID, serverID); err != nil {
-		return nil, err
-	}
-	c, err := s.Repos().Compose().FindByIDAndTeamServer(ctx, composeID, teamID, serverID)
-	if err != nil {
-		return nil, err
-	}
-	if c.ProjectID != projectID {
-		return nil, fiberutil.NotFound()
-	}
-	return c, nil
 }
 
 // validHostname accepts a minimal RFC-1035-ish hostname: labels of

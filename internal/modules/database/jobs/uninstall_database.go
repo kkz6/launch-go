@@ -3,6 +3,7 @@ package jobs
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/hibiken/asynq"
 
@@ -58,24 +59,15 @@ func (j *UninstallDatabaseJob) Handle(ctx context.Context) error {
 		AdminPassword: j.server.DatabasePassword.String(),
 	})
 
-	result, err := j.Deps.RunTask(j.server, task).
-		AsRoot().
-		Dispatch(ctx)
-	if err != nil {
+	if err := j.Deps.runTask(ctx, j.server, task); err != nil {
 		return fmt.Errorf("failed to drop database: %w", err)
 	}
-
-	if !result.IsSuccessful() {
-		j.Deps.Logger.Info().
-			Str("output", result.GetOutput()).
-			Msg("Database drop completed with errors")
-	}
-
-	activity.RecordEventPtr(ctx, "uninstalled", j.Payload.UserID, j.database, "Database was uninstalled")
 
 	if err := j.Deps.Repos.Database().Delete(ctx, j.database.ID); err != nil {
 		return fmt.Errorf("failed to delete database record: %w", err)
 	}
+
+	activity.RecordEventPtr(ctx, "uninstalled", j.Payload.UserID, j.database, "Database was uninstalled")
 
 	j.Deps.BroadcastDatabaseProgress(j.server, "database.progress", j.Payload.DatabaseID, "deleted", fmt.Sprintf("Database %s deleted successfully", j.database.Name))
 
@@ -87,12 +79,22 @@ func (j *UninstallDatabaseJob) Failed(ctx context.Context, err error) {
 		Str("database_id", j.Payload.DatabaseID).
 		Msg("Failed to uninstall database")
 
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
+
 	if j.database == nil {
 		database, findErr := j.Deps.Repos.Database().FindByID(ctx, j.Payload.DatabaseID)
 		if findErr != nil {
 			return
 		}
 		j.database = database
+	}
+
+	if markErr := j.Deps.Repos.Database().MarkUninstallationFailed(ctx, j.Payload.DatabaseID); markErr != nil {
+		j.Deps.Logger.Error().Err(markErr).
+			Str("database_id", j.Payload.DatabaseID).
+			Msg("Failed to mark database uninstallation as failed")
+		return
 	}
 
 	if j.server == nil {

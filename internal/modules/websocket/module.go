@@ -4,6 +4,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 
 	"github.com/kkz6/launch-go/internal/modules/websocket/handlers"
+	"github.com/kkz6/launch-go/internal/pkg/access"
 	"github.com/kkz6/launch-go/internal/pkg/app"
 	launchcache "github.com/kkz6/launch-go/internal/pkg/launch/cache"
 	ws "github.com/kkz6/launch-go/internal/pkg/websocket"
@@ -36,12 +37,13 @@ type Module struct {
 // NewModule creates a new WebSocket module. The hub is deliberately passed
 // separately from app dependencies: application modules publish events via
 // the shared Redis broadcaster, while this module alone owns socket clients.
-func NewModule(b *app.Builder, hub *ws.Hub) *Module {
+func NewModule(b *app.Builder, hub *ws.Hub, gate *access.Gate) *Module {
 	deps := b.Deps()
 	jwtSecret := deps.Config.JWT.Secret
 
 	// Create shared base for all WebSocket handlers
 	handlerBase := handlers.NewBase(deps.DB, jwtSecret, *deps.Logger, deps.MembershipCache)
+	handlerBase.Gate = gate
 
 	return &Module{
 		Base:                   app.NewBase(ModuleName, b),

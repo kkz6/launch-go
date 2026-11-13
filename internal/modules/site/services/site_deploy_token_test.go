@@ -26,7 +26,7 @@ func TestRegenerateDeployToken_FitsStorageAndReplacesOldToken(t *testing.T) {
 	site := createTestSite(t, db, &oldToken, nil)
 	ctx := context.Background()
 
-	deployments := newTestDeploymentService(db)
+	deployments := newTestDeploymentService(t, db)
 	currentToken := oldToken
 	// Sample multiple rotations so a Base64URL token that happens to contain
 	// only letters and numbers cannot mask a regression in the generator.
@@ -54,7 +54,7 @@ func TestRegenerateDeployToken_FitsStorageAndReplacesOldToken(t *testing.T) {
 
 func TestDeployFromWebhook_PreservesURLSafeTokenCharacters(t *testing.T) {
 	db := setupWebhookTestDB(t)
-	svc := newTestDeploymentService(db)
+	svc := newTestDeploymentService(t, db)
 	token := "-test_TOKEN-with-hyphens_012345678"
 	site := createTestSite(t, db, &token, nil)
 	ctx := context.Background()

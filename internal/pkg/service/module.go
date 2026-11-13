@@ -28,7 +28,7 @@ type ModuleBase[R any] struct {
 // NewModuleBase creates a new module base service
 func NewModuleBase[R any](deps *ModuleDeps[R]) *ModuleBase[R] {
 	return &ModuleBase[R]{
-		Base:  NewBaseFromDeps(deps.Dependencies),
+		Base:  NewBase(deps.Dependencies),
 		deps:  deps,
 		repos: deps.Repos,
 	}
@@ -88,7 +88,7 @@ type ModuleBaseWithRegistry[R any, S any] struct {
 // NewModuleBaseWithRegistry creates a new module base service with registry access
 func NewModuleBaseWithRegistry[R any, S any](deps *ModuleDepsWithRegistry[R, S]) *ModuleBaseWithRegistry[R, S] {
 	return &ModuleBaseWithRegistry[R, S]{
-		Base:     NewBaseFromDeps(deps.Dependencies),
+		Base:     NewBase(deps.Dependencies),
 		deps:     deps,
 		repos:    deps.Repos,
 		registry: deps.Registry,
