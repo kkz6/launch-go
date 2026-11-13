@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/gofiber/contrib/websocket"
+	"github.com/golang-jwt/jwt/v5"
 
 	launchcache "github.com/kkz6/launch-go/internal/pkg/launch/cache"
 	"github.com/kkz6/launch-go/internal/pkg/security"
@@ -13,9 +14,11 @@ import (
 
 // Claims represents the JWT claims for WebSocket authentication
 type Claims struct {
-	UserID string
-	TeamID string
-	// Zero for spectate/refresh/undated tokens. Only a normal unexpired access
+	UserID   string
+	TeamID   string
+	TeamRole string
+	ReadOnly bool
+	// Zero for spectate/undated tokens. Only a normal unexpired access
 	// token may subscribe to the cross-team staff invalidation stream.
 	StaffTokenExpiresAt time.Time
 }
@@ -25,29 +28,10 @@ var (
 	ErrMissingTeamID         = errors.New("missing team_id parameter")
 	ErrNotTeamMember         = errors.New("not a member of this team")
 	ErrMembershipUnavailable = errors.New("team membership validation unavailable")
+	ErrAccountSuspended      = errors.New("account suspended")
 )
 
 const websocketMembershipTimeout = 5 * time.Second
-
-// ValidateToken validates a JWT token and extracts user claims
-// Note: team_id is no longer in the JWT, it's passed separately
-func ValidateToken(tokenString, jwtSecret string) (string, error) {
-	if tokenString == "" {
-		return "", ErrMissingToken
-	}
-
-	claims, err := security.ParseJWTToken(tokenString, jwtSecret)
-	if err != nil {
-		return "", security.ErrInvalidToken
-	}
-
-	userID, err := security.ExtractJWTClaim(claims, "sub")
-	if err != nil {
-		return "", security.ErrMissingClaim
-	}
-
-	return userID, nil
-}
 
 // AuthenticateWebSocket validates the token and team_id from WebSocket query params
 // Connection URL: /ws?token=xxx&team_id=xxx
@@ -55,10 +39,16 @@ func AuthenticateWebSocket(c *websocket.Conn, jwtSecret string, membershipCache 
 	token := c.Query("token")
 	teamID := c.Query("team_id")
 
-	// Validate JWT token
-	userID, err := ValidateToken(token, jwtSecret)
+	if token == "" {
+		return nil, ErrMissingToken
+	}
+	identity, err := security.ParseAccessToken(token, jwtSecret)
 	if err != nil {
 		return nil, err
+	}
+	userID := identity["sub"].(string)
+	if security.IsUserSuspended(userID) {
+		return nil, ErrAccountSuspended
 	}
 
 	// Validate team_id parameter
@@ -68,72 +58,38 @@ func AuthenticateWebSocket(c *websocket.Conn, jwtSecret string, membershipCache 
 
 	ctx, cancel := context.WithTimeout(context.Background(), websocketMembershipTimeout)
 	defer cancel()
-	if err := validateTeamMembership(ctx, userID, teamID, membershipCache); err != nil {
+	membership, err := validateTeamMembership(ctx, userID, teamID, membershipCache)
+	if err != nil {
 		return nil, err
 	}
 
 	return &Claims{
 		UserID:              userID,
 		TeamID:              teamID,
-		StaffTokenExpiresAt: staffTokenExpiry(token, jwtSecret),
+		TeamRole:            membership.Role,
+		ReadOnly:            security.IsReadOnlyImpersonation(identity),
+		StaffTokenExpiresAt: staffTokenExpiry(identity),
 	}, nil
 }
 
-func validateTeamMembership(ctx context.Context, userID, teamID string, membershipCache *launchcache.TeamMembershipCache) error {
+func validateTeamMembership(ctx context.Context, userID, teamID string, membershipCache *launchcache.TeamMembershipCache) (*launchcache.TeamMembership, error) {
 	if membershipCache == nil {
-		return ErrMembershipUnavailable
+		return nil, ErrMembershipUnavailable
 	}
-	isMember, err := membershipCache.IsMember(ctx, userID, teamID)
+	membership, err := membershipCache.GetMembership(ctx, userID, teamID)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	if !isMember {
-		return ErrNotTeamMember
+	if !membership.IsMember {
+		return nil, ErrNotTeamMember
 	}
-	return nil
+	return membership, nil
 }
 
-// AuthenticateWebSocketLegacy validates token with team_id in JWT (for backward compatibility)
-// Deprecated: Use AuthenticateWebSocket with team_id query parameter instead
-func AuthenticateWebSocketLegacy(c *websocket.Conn, jwtSecret string) (*Claims, error) {
-	token := c.Query("token")
-
-	if token == "" {
-		return nil, ErrMissingToken
-	}
-
-	claims, err := security.ParseJWTToken(token, jwtSecret)
-	if err != nil {
-		return nil, security.ErrInvalidToken
-	}
-
-	userID, err := security.ExtractJWTClaim(claims, "sub")
-	if err != nil {
-		return nil, security.ErrMissingClaim
-	}
-
-	// Try to get team_id from query param first (new approach)
-	teamID := c.Query("team_id")
-
-	// Fall back to JWT claim (legacy support)
-	if teamID == "" {
-		teamID, _ = claims["team_id"].(string)
-	}
-
-	if teamID == "" {
-		return nil, ErrMissingTeamID
-	}
-
-	return &Claims{
-		UserID: userID,
-		TeamID: teamID,
-	}, nil
-}
-
-func staffTokenExpiry(token, secret string) time.Time {
-	claims, err := security.ParseJWTToken(token, secret)
+// staffTokenExpiry applies the stricter staff-channel rules to validated claims.
+func staffTokenExpiry(claims jwt.MapClaims) time.Time {
 	readOnly, _ := claims["read_only"].(bool)
-	if err != nil || claims["type"] != "access" || readOnly {
+	if claims["type"] != "access" || readOnly {
 		return time.Time{}
 	}
 	if impersonator, ok := claims["impersonator_id"].(string); ok && impersonator != "" {

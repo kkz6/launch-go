@@ -112,36 +112,8 @@ func (j *CleanupPendingSiteDeploymentJob) Handle(ctx context.Context) error {
 
 // processNextQueuedDeployment processes the next queued deployment for the site
 func (j *CleanupPendingSiteDeploymentJob) processNextQueuedDeployment(ctx context.Context, site *models.Site) {
-	queuedDeployments, err := j.Deps.Repos.Deployment().FindQueuedBySite(ctx, site.ID)
-	if err != nil || len(queuedDeployments) == 0 {
-		return
-	}
-
-	nextDeployment := &queuedDeployments[0]
-	nextDeployment.Status = sitetypes.DeploymentStatusPending
-
-	if err := j.Deps.Repos.Deployment().Update(ctx, nextDeployment); err != nil {
-		j.Deps.Logger.Error().Err(err).Msg("Failed to update queued deployment status")
-		return
-	}
-
-	// Dispatch next deployment
-	var task *asynq.Task
-	var taskErr error
-
-	if site.ZeroDowntimeDeployment {
-		task, taskErr = NewDeployZeroDowntimeTask(site.ID, nextDeployment.ID, "", nil)
-	} else {
-		task, taskErr = NewDeployTask(site.ID, nextDeployment.ID, "", nil)
-	}
-
-	if taskErr != nil {
-		j.Deps.Logger.Error().Err(taskErr).Msg("Failed to create deployment task for queued deployment")
-		return
-	}
-
-	if err := j.Deps.DispatchTask(task); err != nil {
-		j.Deps.Logger.Error().Err(err).Msg("Failed to enqueue next deployment")
+	if _, err := j.Deps.DeploymentDispatcher().AdvanceNext(ctx, site.ID); err != nil {
+		j.Deps.Logger.Error().Err(err).Str("site_id", site.ID).Msg("Failed to enqueue next deployment")
 	}
 }
 

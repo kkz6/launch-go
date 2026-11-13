@@ -1,29 +1,30 @@
 package middleware
 
 import (
+	"context"
+	"github.com/kkz6/launch-go/tests/testutil"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
-	"gorm.io/gorm/logger"
+
+	authrepos "github.com/kkz6/launch-go/internal/modules/auth/repositories"
+	billingmodels "github.com/kkz6/launch-go/internal/modules/billing/models"
+	billingrepos "github.com/kkz6/launch-go/internal/modules/billing/repositories"
 )
 
 // setupSubscriptionDB returns an in-memory sqlite DB holding the minimal
 // `users` and `subscriptions` tables that the subscription middleware queries.
-// The middleware only touches plain string columns (users.staff_role and
-// subscriptions.billable_id/billable_type/status) and a few IN clauses, all of
-// which translate cleanly to sqlite — no Postgres-specific SQL is involved.
+// Eligibility queries use string columns and the cancellation end timestamp.
 func setupSubscriptionDB(t *testing.T) *gorm.DB {
 	t.Helper()
 
-	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{
-		Logger: logger.Default.LogMode(logger.Silent),
-	})
-	require.NoError(t, err)
+	db := testutil.SQLite(t)
+	t.Cleanup(func() { InitSubscriptionMiddleware(nil, false) })
 
 	require.NoError(t, db.Exec(`CREATE TABLE users (
 		id TEXT PRIMARY KEY,
@@ -34,7 +35,8 @@ func setupSubscriptionDB(t *testing.T) *gorm.DB {
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		billable_id TEXT,
 		billable_type TEXT,
-		status TEXT
+		status TEXT,
+		ends_at DATETIME
 	)`).Error)
 
 	return db
@@ -196,4 +198,81 @@ func TestSeparationGuarantee(t *testing.T) {
 		assert.Equal(t, fiber.StatusPaymentRequired, resp.StatusCode,
 			"a non-staff customer never inherits a staff bypass")
 	})
+}
+
+func TestVerifySubscriptionMatchesBillingEligibility(t *testing.T) {
+	past, future := time.Now().Add(-time.Hour), time.Now().Add(time.Hour)
+	for _, billableType := range billingmodels.TeamBillableTypes() {
+		t.Run(billableType, func(t *testing.T) {
+			for _, tc := range []struct {
+				name       string
+				status     string
+				endsAt     *time.Time
+				subscribed bool
+			}{
+				{"active", "active", nil, true},
+				{"trial", "on_trial", nil, true},
+				{"cancelled within grace period", "cancelled", &future, true},
+				{"cancelled after grace period", "cancelled", &past, false},
+				{"cancelled without end date", "cancelled", nil, false},
+				{"expired", "expired", &future, false},
+				{"paused", "paused", &future, false},
+			} {
+				t.Run(tc.name, func(t *testing.T) {
+					db := setupSubscriptionDB(t)
+					InitSubscriptionMiddleware(db, true)
+					seedUser(t, db, "customer", nil)
+					require.NoError(t, db.Exec(
+						"INSERT INTO subscriptions (billable_id, billable_type, status, ends_at) VALUES (?, ?, ?, ?)",
+						"team-1", billableType, tc.status, tc.endsAt,
+					).Error)
+					subscribed, err := billingrepos.NewSubscriptionRepository(db).IsTeamSubscribed(context.Background(), "team-1")
+					require.NoError(t, err)
+					require.Equal(t, tc.subscribed, subscribed)
+					require.Equal(t, tc.subscribed, authrepos.NewRegistry(db).IsTeamSubscribed(context.Background(), "team-1"),
+						"user subscription flags must agree with billing and API access")
+
+					response, err := appWithSubscription("customer", "team-1").Test(httptest.NewRequest("GET", "/protected", nil))
+					require.NoError(t, err)
+					defer response.Body.Close()
+					wantStatus := fiber.StatusPaymentRequired
+					if tc.subscribed {
+						wantStatus = fiber.StatusOK
+					}
+					assert.Equal(t, wantStatus, response.StatusCode)
+				})
+			}
+		})
+	}
+}
+
+func TestVerifySubscriptionKeepsEligibilityTeamScoped(t *testing.T) {
+	db := setupSubscriptionDB(t)
+	InitSubscriptionMiddleware(db, true)
+	seedUser(t, db, "customer", nil)
+	seedSubscription(t, db, "other-team", "active")
+	require.NoError(t, db.Exec(
+		"INSERT INTO subscriptions (billable_id, billable_type, status, ends_at) VALUES (?, ?, ?, ?)",
+		"team-1", "User", "cancelled", time.Now().Add(time.Hour),
+	).Error)
+	require.False(t, authrepos.NewRegistry(db).IsTeamSubscribed(context.Background(), "team-1"))
+	response, err := appWithSubscription("customer", "team-1").Test(httptest.NewRequest("GET", "/protected", nil))
+	require.NoError(t, err)
+	defer response.Body.Close()
+	assert.Equal(t, fiber.StatusPaymentRequired, response.StatusCode)
+}
+
+func TestVerifySubscriptionStorageErrorRemainsPaymentRequired(t *testing.T) {
+	db := setupSubscriptionDB(t)
+	InitSubscriptionMiddleware(db, true)
+	seedUser(t, db, "customer", nil)
+	require.NoError(t, db.Exec("DROP TABLE subscriptions").Error)
+	subscribed, err := billingrepos.NewSubscriptionRepository(db).IsTeamSubscribed(context.Background(), "team-1")
+	require.Error(t, err)
+	require.False(t, subscribed)
+	require.False(t, authrepos.NewRegistry(db).IsTeamSubscribed(context.Background(), "team-1"))
+	response, err := appWithSubscription("customer", "team-1").Test(httptest.NewRequest("GET", "/protected", nil))
+	require.NoError(t, err)
+	defer response.Body.Close()
+	assert.Equal(t, fiber.StatusPaymentRequired, response.StatusCode)
 }

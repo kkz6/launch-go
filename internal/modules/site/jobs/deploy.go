@@ -10,6 +10,7 @@ import (
 	gitmodels "github.com/kkz6/launch-go/internal/modules/git/models"
 	gitproviders "github.com/kkz6/launch-go/internal/modules/git/providers"
 	servermodels "github.com/kkz6/launch-go/internal/modules/server/models"
+	"github.com/kkz6/launch-go/internal/modules/site/deployments"
 	"github.com/kkz6/launch-go/internal/modules/site/models"
 	"github.com/kkz6/launch-go/internal/modules/site/tasks"
 	sitetypes "github.com/kkz6/launch-go/internal/modules/site/types"
@@ -18,18 +19,12 @@ import (
 )
 
 const (
-	TypeDeploy             = "site:deploy"
-	TypeDeployZeroDowntime = "site:deploy_zero_downtime"
+	TypeDeploy             = deployments.TypeDeploy
+	TypeDeployZeroDowntime = deployments.TypeDeployZeroDowntime
 )
 
 // DeployPayload holds data for site deployment
-type DeployPayload struct {
-	SiteID       string            `json:"site_id"`
-	DeploymentID string            `json:"deployment_id"`
-	UserID       *string           `json:"user_id,omitempty"`
-	EnvVariables map[string]string `json:"env_variables,omitempty"`
-	ZeroDowntime bool              `json:"zero_downtime,omitempty"`
-}
+type DeployPayload = deployments.Payload
 
 // DeployJob handles both standard and zero-downtime site deployment
 type DeployJob struct {
@@ -118,8 +113,8 @@ func (j *DeployJob) Handle(ctx context.Context) error {
 	// - In local mode: via SSH streaming with direct callback invocation
 	taskModel, err := j.Deps.RunTask(j.server, task).AsUser(j.site.User).TrackInDB().RunInBackground(ctx)
 	if err != nil {
-		j.handleDeploymentFailure(ctx, j.deployment, j.site, fmt.Sprintf("Failed to start deployment: %v", err))
-		return err
+		// Failed handles the terminal state and queue advancement once.
+		return fmt.Errorf("failed to start deployment: %w", err)
 	}
 
 	// Update deployment with task ID
@@ -332,11 +327,20 @@ func (j *DeployJob) broadcastDeploymentProgress(ctx context.Context, siteID, dep
 }
 
 func (j *DeployJob) handleDeploymentFailure(ctx context.Context, deployment *models.Deployment, site *models.Site, message string) {
-	deployment.Status = sitetypes.DeploymentStatusFailed
-
-	if err := j.Deps.Repos.Deployment().Update(ctx, deployment); err != nil {
-		j.Deps.Logger.Error().Err(err).Msg("Failed to update deployment status to failed")
+	// A preflight task callback may already have recorded this failure and
+	// advanced the queue before Handle returns its error to Failed.
+	result := j.Deps.DB.WithContext(ctx).Model(&models.Deployment{}).
+		Where("id = ? AND status IN ?", deployment.ID, []sitetypes.DeploymentStatus{
+			sitetypes.DeploymentStatusPending, sitetypes.DeploymentStatusInstalling,
+		}).Update("status", sitetypes.DeploymentStatusFailed)
+	if result.Error != nil {
+		j.Deps.Logger.Error().Err(result.Error).Msg("Failed to update deployment status to failed")
+		return
 	}
+	if result.RowsAffected == 0 {
+		return
+	}
+	deployment.Status = sitetypes.DeploymentStatusFailed
 
 	// If first deployment failed, mark site installation as failed
 	if site != nil && site.InstalledAt == nil {
@@ -360,47 +364,8 @@ func (j *DeployJob) handleDeploymentFailure(ctx context.Context, deployment *mod
 }
 
 func (j *DeployJob) processNextQueuedDeployment(ctx context.Context, siteID string) {
-	// Find next queued deployment
-	queuedDeployments, err := j.Deps.Repos.Deployment().FindQueuedBySite(ctx, siteID)
-	if err != nil || len(queuedDeployments) == 0 {
-		return
-	}
-
-	// Update the first queued deployment to pending and dispatch
-	nextDeployment := &queuedDeployments[0]
-	nextDeployment.Status = sitetypes.DeploymentStatusPending
-
-	if err := j.Deps.Repos.Deployment().Update(ctx, nextDeployment); err != nil {
-		j.Deps.Logger.Error().Err(err).Msg("Failed to update queued deployment status")
-		return
-	}
-
-	// Get site for zero downtime check
-	site, err := j.Deps.Repos.Site().FindByID(ctx, siteID)
-	if err != nil {
-		j.Deps.Logger.Error().Err(err).Msg("Failed to find site for queued deployment")
-		return
-	}
-
-	// Dispatch next deployment
-	if site.ZeroDowntimeDeployment {
-		task, taskErr := NewDeployZeroDowntimeTask(siteID, nextDeployment.ID, "", nil)
-		if taskErr != nil {
-			j.Deps.Logger.Error().Err(taskErr).Msg("Failed to create deployment task for queued deployment")
-			return
-		}
-		if err := j.Deps.DispatchTask(task); err != nil {
-			j.Deps.Logger.Error().Err(err).Msg("Failed to enqueue next deployment")
-		}
-	} else {
-		task, taskErr := NewDeployTask(siteID, nextDeployment.ID, "", nil)
-		if taskErr != nil {
-			j.Deps.Logger.Error().Err(taskErr).Msg("Failed to create deployment task for queued deployment")
-			return
-		}
-		if err := j.Deps.DispatchTask(task); err != nil {
-			j.Deps.Logger.Error().Err(err).Msg("Failed to enqueue next deployment")
-		}
+	if _, err := j.Deps.DeploymentDispatcher().AdvanceNext(ctx, siteID); err != nil {
+		j.Deps.Logger.Error().Err(err).Str("site_id", siteID).Msg("Failed to enqueue next deployment")
 	}
 }
 
@@ -541,30 +506,11 @@ func getProjectIDFromRepo(repo *gitmodels.SourceControlRepository) string {
 // NewDeployTask creates a deploy job
 // Uses TaskID for deduplication to prevent the same deployment from running multiple times
 func NewDeployTask(siteID, deploymentID string, userID string, envVars map[string]string) (*asynq.Task, error) {
-	var userIDPtr *string
-	if userID != "" {
-		userIDPtr = &userID
-	}
-	return pkgjobs.Task(TypeDeploy, DeployPayload{
-		SiteID:       siteID,
-		DeploymentID: deploymentID,
-		UserID:       userIDPtr,
-		EnvVariables: envVars,
-	}, asynq.TaskID(pkgjobs.Dedup("deploy", deploymentID)))
+	return deployments.NewTask(siteID, deploymentID, userID, envVars, false)
 }
 
 // NewDeployZeroDowntimeTask creates a zero-downtime deploy job
 // Uses TaskID for deduplication to prevent the same deployment from running multiple times
 func NewDeployZeroDowntimeTask(siteID, deploymentID string, userID string, envVars map[string]string) (*asynq.Task, error) {
-	var userIDPtr *string
-	if userID != "" {
-		userIDPtr = &userID
-	}
-	return pkgjobs.Task(TypeDeployZeroDowntime, DeployPayload{
-		SiteID:       siteID,
-		DeploymentID: deploymentID,
-		UserID:       userIDPtr,
-		EnvVariables: envVars,
-		ZeroDowntime: true,
-	}, asynq.TaskID(pkgjobs.Dedup("deploy_zd", deploymentID)))
+	return deployments.NewTask(siteID, deploymentID, userID, envVars, true)
 }

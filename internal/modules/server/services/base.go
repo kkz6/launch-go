@@ -43,7 +43,7 @@ type Service struct {
 // NewService creates a new Service instance from ServiceDeps
 func NewService(deps ServiceDeps) *Service {
 	return &Service{
-		Base:            service.NewBaseFromDeps(deps.Dependencies),
+		Base:            service.NewBase(deps.Dependencies),
 		ActivityMixin:   activity.NewActivityMixin(deps.DB, "server"),
 		repos:           deps.Repos,
 		dispatcher:      deps.Dispatcher,

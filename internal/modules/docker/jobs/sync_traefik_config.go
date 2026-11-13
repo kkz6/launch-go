@@ -159,8 +159,8 @@ func NewRetryTraefikConfigTask(applicationID, serverID, teamID string) (*asynq.T
 // SyncComposeTraefikConfig (compose) — same resolution semantics
 // across the two YAML writers.
 //
-// Returns an empty slice when CertRepos is nil (defensive — the wiring
-// in cmd/api/main.go sets it, but if a test boots without that we
+// Returns an empty slice when CertRepos is nil (defensive — the shared
+// API/worker bootstrap sets it, but if a test boots without that we
 // degrade to "no stored certs" rather than panic).
 func resolveStoredCertMaterials(
 	ctx context.Context,

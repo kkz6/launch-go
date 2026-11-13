@@ -7,6 +7,7 @@ import (
 
 	"github.com/hibiken/asynq"
 
+	"github.com/kkz6/launch-go/internal/modules/site/deployments"
 	"github.com/kkz6/launch-go/internal/modules/site/models"
 	sitetypes "github.com/kkz6/launch-go/internal/modules/site/types"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
@@ -96,28 +97,10 @@ func (j *CreateDeploymentJob) Handle(ctx context.Context) error {
 		return nil
 	}
 
-	// Dispatch the appropriate deploy job
-	var task *asynq.Task
-	var taskErr error
-
-	if site.ZeroDowntimeDeployment {
-		task, taskErr = NewDeployZeroDowntimeTask(site.ID, deployment.ID, stringPtrValue(j.Payload.UserID), nil)
-	} else {
-		task, taskErr = NewDeployTask(site.ID, deployment.ID, stringPtrValue(j.Payload.UserID), nil)
-	}
-
-	if taskErr != nil {
-		return fmt.Errorf("failed to create deploy task: %w", taskErr)
-	}
-
 	// Add a small delay to ensure DB transaction is committed
-	if err := j.Deps.DispatchTaskIn(task, time.Second); err != nil {
-		// Cleanup: mark deployment as failed if we can't dispatch the job
-		if updateErr := j.Deps.Repos.Deployment().UpdateStatus(ctx, deployment.ID, sitetypes.DeploymentStatusFailed); updateErr != nil {
-			j.Deps.Logger.Error().Err(updateErr).
-				Str("deployment_id", deployment.ID).
-				Msg("Failed to mark deployment as failed after dispatch error")
-		}
+	if err := j.Deps.DeploymentDispatcher().Dispatch(ctx, deployment, func() (*asynq.Task, error) {
+		return deployments.NewTask(site.ID, deployment.ID, stringPtrValue(j.Payload.UserID), nil, site.ZeroDowntimeDeployment)
+	}, asynq.ProcessIn(time.Second)); err != nil {
 		return fmt.Errorf("failed to enqueue deploy job: %w", err)
 	}
 

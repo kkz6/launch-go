@@ -2,6 +2,7 @@ package jobs
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -80,6 +81,26 @@ func NewJobDepsWithParams(
 // RunTask creates a task runner for a server with a task.
 func (d *JobDeps) RunTask(server *servermodels.Server, task pkgtaskrunner.Task) *servertasks.TaskRunner {
 	return d.TaskRunnerDeps.NewRunner(server, task).TrackInDB()
+}
+
+func (d *JobDeps) runTask(ctx context.Context, server *servermodels.Server, task pkgtaskrunner.Task) error {
+	result, err := d.RunTask(server, task).AsRoot().Dispatch(ctx)
+	if err != nil {
+		return err
+	}
+	if result == nil {
+		return fmt.Errorf("task returned no result")
+	}
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.TaskResult == nil {
+		return fmt.Errorf("task returned no result")
+	}
+	if !result.IsSuccessful() {
+		return fmt.Errorf("task failed with exit code %d: %s", result.GetExitCode(), result.GetOutput())
+	}
+	return nil
 }
 
 // BroadcastServerEvent broadcasts an event for a server to its team channel.

@@ -47,16 +47,15 @@ func setAuthContext(c *fiber.Ctx, claims jwt.MapClaims) {
 	// Surface the read-only flag so the auth chokepoint can enforce the
 	// spectate contract. Only present on minted impersonation tokens; absent
 	// on normal staff/customer tokens.
-	if _, ok := claims["impersonation_sid"].(string); ok {
-		if ro, ok := claims["read_only"].(bool); ok {
-			c.Locals(fiberctx.KeyImpersonationReadOnly, ro)
-		}
-	}
+	c.Locals(fiberctx.KeyImpersonationReadOnly, security.IsReadOnlyImpersonation(claims))
 }
 
 // validatePAT validates a bearer token as a Personal Access Token.
 // Returns the user ID if valid, or an error if not found/expired.
 func validatePAT(ctx context.Context, db *gorm.DB, token string) (string, error) {
+	if db == nil {
+		return "", errors.New("token storage unavailable")
+	}
 	hash := sha256.Sum256([]byte(token))
 	hashedToken := hex.EncodeToString(hash[:])
 
@@ -95,23 +94,13 @@ func tryAuthenticate(c *fiber.Ctx, jwtSecret string, db *gorm.DB) bool {
 		return false
 	}
 
-	claims, err := security.ParseJWTToken(token, jwtSecret)
+	claims, err := security.ParseAccessToken(token, jwtSecret)
 	if err == nil {
-		if err := security.ValidateJWTTokenType(claims, "access"); err == nil {
-			// Reject tokens whose backing session has been revoked (logout,
-			// "log out other devices", session revocation). Session-bound
-			// tokens carry session_id; PATs and sessionless tokens skip this
-			// and remain valid. Mirrors the revocation check the refresh path
-			// already enforces in AuthService.RefreshToken.
-			if sessionID, ok := claims["session_id"].(string); ok && sessionID != "" {
-				if !sessionIsLive(sessionID) {
-					return false
-				}
-			}
-
-			setAuthContext(c, claims)
-			return true
-		}
+		setAuthContext(c, claims)
+		return true
+	}
+	if errors.Is(err, security.ErrSessionRevoked) {
+		return false
 	}
 
 	userID, patErr := validatePAT(c.UserContext(), db, token)

@@ -11,6 +11,7 @@ import (
 	gitmodels "github.com/kkz6/launch-go/internal/modules/git/models"
 	gitproviders "github.com/kkz6/launch-go/internal/modules/git/providers"
 	"github.com/kkz6/launch-go/internal/modules/site/contracts"
+	"github.com/kkz6/launch-go/internal/modules/site/deployments"
 	"github.com/kkz6/launch-go/internal/modules/site/dto"
 	"github.com/kkz6/launch-go/internal/modules/site/jobs"
 	"github.com/kkz6/launch-go/internal/modules/site/models"
@@ -198,15 +199,11 @@ func (s *DeploymentService) Rollback(ctx context.Context, siteID, serverID, team
 		return nil, err
 	}
 
-	// Dispatch rollback job
-	task, err := jobs.NewRollbackTask(site.ID, deployment.ID, targetDeploymentID, userID)
-	if err != nil {
-		return nil, err
-	}
-
-	// Add a small delay to ensure the database transaction is fully committed
-	if err := s.EnqueueTaskWithOptions(task, asynq.ProcessIn(1*time.Second)); err != nil {
+	if err := s.deploymentDispatcher().Dispatch(ctx, deployment, func() (*asynq.Task, error) {
+		return jobs.NewRollbackTask(site.ID, deployment.ID, targetDeploymentID, userID)
+	}, asynq.ProcessIn(time.Second)); err != nil {
 		s.LogError(err, "Failed to enqueue rollback job", "deployment_id", deployment.ID)
+		return nil, err
 	}
 
 	s.LogInfo("Rollback initiated", "site_id", site.ID, "deployment_id", deployment.ID, "target_deployment_id", targetDeploymentID)
@@ -266,24 +263,11 @@ func (s *DeploymentService) createDeployment(ctx context.Context, site *models.S
 		return nil, err
 	}
 
-	// Dispatch deployment job
-	var task *asynq.Task
-	var dispatchErr error
-
-	if site.ZeroDowntimeDeployment {
-		task, dispatchErr = jobs.NewDeployZeroDowntimeTask(site.ID, deployment.ID, userID, envVars)
-	} else {
-		task, dispatchErr = jobs.NewDeployTask(site.ID, deployment.ID, userID, envVars)
-	}
-
-	if dispatchErr != nil {
-		return nil, dispatchErr
-	}
-
-	// Add a small delay to ensure the database transaction is fully committed
-	// before the job starts processing
-	if err := s.EnqueueTaskWithOptions(task, asynq.ProcessIn(1*time.Second)); err != nil {
+	if err := s.deploymentDispatcher().Dispatch(ctx, deployment, func() (*asynq.Task, error) {
+		return deployments.NewTask(site.ID, deployment.ID, userID, envVars, site.ZeroDowntimeDeployment)
+	}, asynq.ProcessIn(time.Second)); err != nil {
 		s.LogError(err, "Failed to enqueue deployment job", "deployment_id", deployment.ID)
+		return nil, err
 	}
 
 	s.LogInfo("Deployment started", "site_id", site.ID, "deployment_id", deployment.ID)
@@ -363,56 +347,18 @@ func (s *DeploymentService) FindByID(ctx context.Context, id, siteID, serverID s
 
 // ProcessNextQueued processes the next queued deployment
 func (s *DeploymentService) ProcessNextQueued(ctx context.Context, siteID string) (*models.Deployment, error) {
-	site, err := s.Repos().Site().FindByID(ctx, siteID)
-	if err != nil {
-		return nil, err
+	return s.deploymentDispatcher().AdvanceNext(ctx, siteID)
+}
+
+func (s *DeploymentService) deploymentDispatcher() deployments.Dispatcher {
+	dispatcher := deployments.Dispatcher{
+		DB:          s.Repos().Deployment().DB,
+		Broadcaster: s.GetBroadcaster(),
 	}
-
-	// Check for active deployment
-	activeDeployment, err := s.Repos().Deployment().FindActiveBySite(ctx, site.ID)
-	if err != nil {
-		return nil, errors.New("failed to check for active deployment")
+	if s.Queue != nil {
+		dispatcher.Enqueue = s.Queue.Enqueue
 	}
-	if activeDeployment != nil {
-		return nil, nil
-	}
-
-	// Get next queued deployment
-	queuedDeployments, err := s.Repos().Deployment().FindQueuedBySite(ctx, site.ID)
-	if err != nil {
-		return nil, err
-	}
-
-	if len(queuedDeployments) == 0 {
-		return nil, nil
-	}
-
-	deployment := &queuedDeployments[0]
-	deployment.Status = sitetypes.DeploymentStatusPending
-
-	if err := s.Repos().Deployment().Update(ctx, deployment); err != nil {
-		return nil, err
-	}
-
-	// Dispatch deployment job
-	var task *asynq.Task
-	var dispatchErr error
-
-	if site.ZeroDowntimeDeployment {
-		task, dispatchErr = jobs.NewDeployZeroDowntimeTask(site.ID, deployment.ID, "", nil)
-	} else {
-		task, dispatchErr = jobs.NewDeployTask(site.ID, deployment.ID, "", nil)
-	}
-
-	if dispatchErr != nil {
-		return nil, dispatchErr
-	}
-
-	if err := s.EnqueueTask(task); err != nil {
-		s.LogError(err, "Failed to enqueue deployment job", "deployment_id", deployment.ID)
-	}
-
-	return deployment, nil
+	return dispatcher
 }
 
 // GetQueuedCount returns the count of queued deployments

@@ -1,13 +1,18 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"github.com/gofiber/contrib/websocket"
 	"github.com/rs/zerolog"
 	"gorm.io/gorm"
 
+	authaccess "github.com/kkz6/launch-go/internal/modules/auth/access"
+	authtypes "github.com/kkz6/launch-go/internal/modules/auth/types"
+	"github.com/kkz6/launch-go/internal/pkg/access"
 	"github.com/kkz6/launch-go/internal/pkg/i18n"
 	launchcache "github.com/kkz6/launch-go/internal/pkg/launch/cache"
 	ws "github.com/kkz6/launch-go/internal/pkg/websocket"
@@ -27,6 +32,7 @@ type Base struct {
 	JWTSecret       string
 	Logger          zerolog.Logger
 	MembershipCache *launchcache.TeamMembershipCache
+	Gate            *access.Gate
 }
 
 // NewBase creates a new Base handler with all dependencies.
@@ -41,18 +47,27 @@ func NewBase(db *gorm.DB, jwtSecret string, logger zerolog.Logger, membershipCac
 
 // WithComponent returns a copy of the base with a component-specific logger.
 func (b Base) WithComponent(component string) Base {
-	return Base{
-		DB:              b.DB,
-		JWTSecret:       b.JWTSecret,
-		Logger:          b.Logger.With().Str("component", component).Logger(),
-		MembershipCache: b.MembershipCache,
-	}
+	b.Logger = b.Logger.With().Str("component", component).Logger()
+	return b
 }
 
 // Authenticate validates the WebSocket connection using JWT and team membership.
 // Returns the claims on success, or an error on failure.
 func (b *Base) Authenticate(c *websocket.Conn) (*ws.Claims, error) {
 	return ws.AuthenticateWebSocket(c, b.JWTSecret, b.MembershipCache)
+}
+
+// Authorize uses the same action policies as HTTP after socket authentication.
+func (b *Base) Authorize(ctx context.Context, claims *ws.Claims, ability string) error {
+	if b.Gate == nil {
+		return errors.New("authorization unavailable")
+	}
+	return b.Gate.Authorize(ctx, authaccess.Actor{
+		UserID:   claims.UserID,
+		TeamID:   claims.TeamID,
+		TeamRole: authtypes.TeamRole(claims.TeamRole),
+		ReadOnly: claims.ReadOnly,
+	}, ability, nil)
 }
 
 // SendError sends a structured JSON error message to the WebSocket client and logs it.

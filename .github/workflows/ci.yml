@@ -7,7 +7,7 @@ on:
     branches: [main, develop]
 
 env:
-  GO_VERSION: "1.27.3"
+  GO_VERSION: "1.27.4"
 
 jobs:
   lint:
@@ -74,6 +74,8 @@ jobs:
         run: go test -coverprofile=coverage.out ./...
 
       - name: Upload coverage reports to Codecov
+        # Reporting failures must not change the result of the test suite.
+        continue-on-error: true
         uses: codecov/codecov-action@v7
         with:
           files: ./coverage.out

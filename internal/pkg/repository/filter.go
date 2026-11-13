@@ -268,7 +268,6 @@ func WithPreload(relation string) FilterOption {
 }
 
 // WithMultiplePreloads adds preloads for multiple relations.
-// Note: Use this instead of WithPreloads from preloads.go when working with FilterOption.
 func WithMultiplePreloads(relations ...string) FilterOption {
 	return func(db *gorm.DB) *gorm.DB {
 		for _, rel := range relations {

@@ -461,7 +461,7 @@ type BaseService struct {
 
 func NewBaseService(deps *ServiceDeps) *BaseService {
     return &BaseService{
-        Base:  service.NewBaseFromDeps(deps.Dependencies),
+        Base:  service.NewBase(deps.Dependencies),
         deps:  deps,
         repos: deps.Repos,
     }

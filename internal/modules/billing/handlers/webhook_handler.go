@@ -3,7 +3,6 @@ package handlers
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 	"time"
@@ -18,30 +17,19 @@ import (
 	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
 )
 
-// Webhook errors
-var (
-	ErrInvalidSignature     = errors.New("invalid webhook signature")
-	ErrMissingSignature     = errors.New("missing webhook signature")
-	ErrInvalidPayload       = errors.New("invalid webhook payload")
-	ErrUnknownEventType     = errors.New("unknown webhook event type")
-	ErrWebhookProcessFailed = errors.New("webhook processing failed")
-)
-
 // WebhookHandler handles incoming webhooks from Polar.
 type WebhookHandler struct {
 	logger         *zerolog.Logger
 	provider       *providers.PolarClient
-	service        *services.BillingService
 	webhookService *services.WebhookService
 	maxRetries     int
 }
 
 // NewWebhookHandler creates a new webhook handler
-func NewWebhookHandler(service *services.BillingService, webhookService *services.WebhookService, provider *providers.PolarClient, logger *zerolog.Logger) *WebhookHandler {
+func NewWebhookHandler(webhookService *services.WebhookService, provider *providers.PolarClient, logger *zerolog.Logger) *WebhookHandler {
 	return &WebhookHandler{
 		logger:         logger,
 		provider:       provider,
-		service:        service,
 		webhookService: webhookService,
 		maxRetries:     3,
 	}

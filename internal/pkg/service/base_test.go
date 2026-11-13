@@ -34,19 +34,6 @@ func TestNewBase(t *testing.T) {
 	}
 }
 
-func TestNewBaseFromDeps(t *testing.T) {
-	logger := zerolog.Nop()
-	deps := Dependencies{
-		Logger: &logger,
-	}
-
-	base := NewBaseFromDeps(deps)
-
-	if base.Logger == nil {
-		t.Error("Expected logger to be set from deps")
-	}
-}
-
 func TestBase_LogInfo(t *testing.T) {
 	var buf bytes.Buffer
 	logger := zerolog.New(&buf)

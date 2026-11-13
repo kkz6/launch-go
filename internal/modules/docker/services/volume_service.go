@@ -23,7 +23,7 @@ func NewVolumeService(deps *ServiceDeps) *VolumeService {
 func (s *VolumeService) ListVolumes(
 	ctx context.Context, applicationID, projectID, serverID, teamID string,
 ) ([]dto.VolumeResponse, error) {
-	if _, err := s.scopedAppForVolume(ctx, applicationID, projectID, serverID, teamID); err != nil {
+	if _, err := s.scopedApp(ctx, applicationID, projectID, serverID, teamID); err != nil {
 		return nil, err
 	}
 	rows, err := s.Repos().Volume().ListForApplication(ctx, applicationID)
@@ -38,7 +38,7 @@ func (s *VolumeService) CreateVolume(
 	req *dto.CreateVolumeRequest,
 ) (dto.VolumeResponse, error) {
 	_ = userID
-	app, err := s.scopedAppForVolume(ctx, applicationID, projectID, serverID, teamID)
+	app, err := s.scopedApp(ctx, applicationID, projectID, serverID, teamID)
 	if err != nil {
 		return dto.VolumeResponse{}, err
 	}
@@ -139,7 +139,7 @@ func (s *VolumeService) UpdateVolume(
 	req *dto.UpdateVolumeRequest,
 ) (dto.VolumeResponse, error) {
 	_ = userID
-	app, err := s.scopedAppForVolume(ctx, applicationID, projectID, serverID, teamID)
+	app, err := s.scopedApp(ctx, applicationID, projectID, serverID, teamID)
 	if err != nil {
 		return dto.VolumeResponse{}, err
 	}
@@ -212,7 +212,7 @@ func (s *VolumeService) DeleteVolume(
 	ctx context.Context, id, applicationID, projectID, serverID, teamID, userID string,
 ) error {
 	_ = userID
-	app, err := s.scopedAppForVolume(ctx, applicationID, projectID, serverID, teamID)
+	app, err := s.scopedApp(ctx, applicationID, projectID, serverID, teamID)
 	if err != nil {
 		return err
 	}
@@ -235,22 +235,6 @@ func (s *VolumeService) DeleteVolume(
 	return nil
 }
 
-func (s *VolumeService) scopedAppForVolume(
-	ctx context.Context, applicationID, projectID, serverID, teamID string,
-) (*models.Application, error) {
-	if _, err := s.Repos().Project().FindByIDAndTeamServer(ctx, projectID, teamID, serverID); err != nil {
-		return nil, err
-	}
-	app, err := s.Repos().Application().FindByIDAndTeamServer(ctx, applicationID, teamID, serverID)
-	if err != nil {
-		return nil, err
-	}
-	if app.ProjectID != projectID {
-		return nil, fiberutil.NotFound()
-	}
-	return app, nil
-}
-
 // --- Compose-scoped operations -------------------------------------
 //
 // The same persistence row (`ApplicationVolume`) backs both
@@ -271,7 +255,7 @@ func (s *VolumeService) scopedAppForVolume(
 func (s *VolumeService) ListComposeVolumes(
 	ctx context.Context, composeID, projectID, serverID, teamID string,
 ) ([]dto.VolumeResponse, error) {
-	if _, err := s.scopedComposeForVolume(ctx, composeID, projectID, serverID, teamID); err != nil {
+	if _, err := s.scopedCompose(ctx, composeID, projectID, serverID, teamID); err != nil {
 		return nil, err
 	}
 	rows, err := s.Repos().Volume().ListForCompose(ctx, composeID)
@@ -286,7 +270,7 @@ func (s *VolumeService) CreateComposeVolume(
 	req *dto.CreateVolumeRequest,
 ) (dto.VolumeResponse, error) {
 	_ = userID
-	c, err := s.scopedComposeForVolume(ctx, composeID, projectID, serverID, teamID)
+	c, err := s.scopedCompose(ctx, composeID, projectID, serverID, teamID)
 	if err != nil {
 		return dto.VolumeResponse{}, err
 	}
@@ -378,7 +362,7 @@ func (s *VolumeService) UpdateComposeVolume(
 	req *dto.UpdateVolumeRequest,
 ) (dto.VolumeResponse, error) {
 	_ = userID
-	c, err := s.scopedComposeForVolume(ctx, composeID, projectID, serverID, teamID)
+	c, err := s.scopedCompose(ctx, composeID, projectID, serverID, teamID)
 	if err != nil {
 		return dto.VolumeResponse{}, err
 	}
@@ -447,7 +431,7 @@ func (s *VolumeService) DeleteComposeVolume(
 	ctx context.Context, id, composeID, projectID, serverID, teamID, userID string,
 ) error {
 	_ = userID
-	c, err := s.scopedComposeForVolume(ctx, composeID, projectID, serverID, teamID)
+	c, err := s.scopedCompose(ctx, composeID, projectID, serverID, teamID)
 	if err != nil {
 		return err
 	}
@@ -468,22 +452,6 @@ func (s *VolumeService) DeleteComposeVolume(
 		"volume_id":  id,
 	})
 	return nil
-}
-
-func (s *VolumeService) scopedComposeForVolume(
-	ctx context.Context, composeID, projectID, serverID, teamID string,
-) (*models.Compose, error) {
-	if _, err := s.Repos().Project().FindByIDAndTeamServer(ctx, projectID, teamID, serverID); err != nil {
-		return nil, err
-	}
-	c, err := s.Repos().Compose().FindByIDAndTeamServer(ctx, composeID, teamID, serverID)
-	if err != nil {
-		return nil, err
-	}
-	if c.ProjectID != projectID {
-		return nil, fiberutil.NotFound()
-	}
-	return c, nil
 }
 
 // validVolumeName: docker's allowed pattern for named volumes.
