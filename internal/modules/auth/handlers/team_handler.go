@@ -30,7 +30,7 @@ func (h *TeamHandler) CreateTeam(c *fiber.Ctx, req *dto.CreateTeamRequest) error
 		return fiberctx.HandleError(c, err)
 	}
 
-	return fiberctx.Created(c, "Team created successfully", dto.ToTeamResponse(*team))
+	return fiberctx.Created(c, "Team created successfully", dto.ToTeamResponseForUser(*team, userID))
 }
 
 // GetTeam retrieves a team with details

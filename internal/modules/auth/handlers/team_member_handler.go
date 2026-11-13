@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"errors"
+
 	"github.com/gofiber/fiber/v2"
 
 	"github.com/kkz6/launch-go/internal/modules/auth/dto"
@@ -27,7 +29,7 @@ func (h *TeamMemberHandler) InviteTeamMember(c *fiber.Ctx, req *dto.InviteTeamMe
 	teamID := c.Params("teamId")
 
 	if err := h.Service().TeamMember.InviteTeamMember(c.Context(), userID, teamID, req); err != nil {
-		return fiberctx.HandleError(c, err)
+		return handleInvitationDeliveryError(c, err)
 	}
 
 	return fiberctx.Created(c, "Invitation sent successfully", nil)
@@ -58,10 +60,18 @@ func (h *TeamMemberHandler) ResendTeamInvitation(c *fiber.Ctx) error {
 	invitationID := c.Params("invitationId")
 
 	if err := h.Service().TeamMember.ResendTeamInvitation(c.Context(), userID, teamID, invitationID); err != nil {
-		return fiberctx.HandleError(c, err)
+		return handleInvitationDeliveryError(c, err)
 	}
 
 	return fiberctx.OK(c, "Invitation resent", nil)
+}
+
+func handleInvitationDeliveryError(c *fiber.Ctx, err error) error {
+	if errors.Is(err, services.ErrInvitationEmailDelivery) {
+		return fiberctx.ErrorWithCode(c, fiber.StatusServiceUnavailable, "team.invitation_email_failed",
+			"The invitation is pending, but its email could not be sent. Use Resend to try again.")
+	}
+	return fiberctx.HandleError(c, err)
 }
 
 // CancelTeamInvitation cancels a team invitation

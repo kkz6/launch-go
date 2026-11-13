@@ -6,11 +6,13 @@ import (
 	"testing"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 
 	"github.com/kkz6/launch-go/internal/modules/auth/handlers"
 	"github.com/kkz6/launch-go/internal/modules/auth/models"
 	"github.com/kkz6/launch-go/internal/modules/auth/services"
+	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
 )
 
 func TestInvitationDetailsIdentifiesTheTeam(t *testing.T) {
@@ -47,4 +49,37 @@ func TestInvitationDetailsIdentifiesTheTeam(t *testing.T) {
 	require.Equal(t, team.ID, data.TeamID)
 	require.Equal(t, team.Name, data.TeamName)
 	require.True(t, data.UserExists)
+}
+
+func TestInviteAndResendReportUnavailableEmailDelivery(t *testing.T) {
+	registry := newMockRegistry()
+	team := &models.Team{UserID: "owner", Name: "Shared"}
+	team.ID = "team"
+	registry.team.teams[team.ID] = team
+	logger := zerolog.Nop()
+	handler := handlers.NewTeamMemberHandler(&services.Service{
+		TeamMember: services.NewTeamMemberService(registry, testConfig(), nil, &logger),
+	})
+	app := fiber.New()
+	app.Use(func(c *fiber.Ctx) error {
+		c.Locals("userID", "owner")
+		return c.Next()
+	})
+	app.Post("/teams/:teamId/invitations", fiberctx.Validate(handler.InviteTeamMember))
+	app.Post("/teams/:teamId/invitations/:invitationId/resend", handler.ResendTeamInvitation)
+
+	invitations := "/teams/team/invitations"
+	for _, request := range []*http.Request{
+		makeJSONRequest(http.MethodPost, invitations, map[string]string{"email": "invitee@example.com", "role": "member"}),
+		makeJSONRequest(http.MethodPost, invitations+"/generated_invitation_id/resend", nil),
+	} {
+		response, err := app.Test(request, testTimeout)
+		require.NoError(t, err)
+		require.Equal(t, http.StatusServiceUnavailable, response.StatusCode)
+		var payload fiberctx.ErrorResponse
+		require.NoError(t, json.NewDecoder(response.Body).Decode(&payload))
+		require.Equal(t, "team.invitation_email_failed", payload.Code)
+		require.False(t, payload.Success)
+		require.NoError(t, response.Body.Close())
+	}
 }
