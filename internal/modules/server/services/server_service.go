@@ -17,6 +17,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/kkz6/launch-go/internal/config"
+	serverconfig "github.com/kkz6/launch-go/internal/modules/server/config"
 	"github.com/kkz6/launch-go/internal/modules/server/dto"
 	"github.com/kkz6/launch-go/internal/modules/server/jobs"
 	"github.com/kkz6/launch-go/internal/modules/server/models"
@@ -97,10 +98,26 @@ func (s *Service) buildAndDispatchServer(ctx context.Context, teamID, userID str
 	if err != nil {
 		return nil, ErrInvalidProvider
 	}
+	if provider == types.ProviderAWS {
+		return nil, fiberutil.BadRequest("AWS EC2 provisioning is not supported")
+	}
 
 	serverType, err := types.ParseServerType(req.Type)
 	if err != nil {
 		return nil, ErrInvalidServerType
+	}
+
+	if provider != types.ProviderCustom {
+		if !serverconfig.IsPlanAvailableInRegion(provider, req.Size, req.Region) {
+			return nil, fiberutil.BadRequest("Select a server size available in this region")
+		}
+		account, err := s.repos.ServerProvider().FindByID(ctx, req.CredentialID)
+		if err != nil && !fiberutil.IsNotFound(err) {
+			return nil, err
+		}
+		if !account.CanProvision(teamID, provider) {
+			return nil, fiberutil.BadRequest("Select a connected account for this cloud provider")
+		}
 	}
 
 	os := types.OSUbuntu24

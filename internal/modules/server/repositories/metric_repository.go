@@ -28,11 +28,11 @@ func (r *MetricRepository) FindByServer(ctx context.Context, serverID string, fr
 	query := r.DB.WithContext(ctx).Where("server_id = ?", serverID)
 
 	query = repository.ApplyFilters(query,
-		repository.WithDateRange("recorded_at", from, to),
+		repository.WithDateRange("created_at", from, to),
 		repository.WithOptionalLimit(limit),
 	)
 
-	err := query.Order("recorded_at DESC").Find(&metrics).Error
+	err := query.Order("created_at DESC, id DESC").Find(&metrics).Error
 	return metrics, err
 }
 
@@ -40,14 +40,15 @@ func (r *MetricRepository) FindByServer(ctx context.Context, serverID string, fr
 func (r *MetricRepository) FindLatestByServer(ctx context.Context, serverID string) (*models.Metric, error) {
 	return repository.FindOneOrNil[models.Metric](ctx, r.DB,
 		repository.WithServerID(serverID),
-		repository.OrderBy("recorded_at", "DESC"),
+		repository.OrderBy("created_at", "DESC"),
+		repository.OrderBy("id", "DESC"),
 	)
 }
 
 // DeleteOld deletes metrics older than a certain time for a specific server
 func (r *MetricRepository) DeleteOld(ctx context.Context, serverID string, before time.Time) error {
 	return r.DB.WithContext(ctx).
-		Where("server_id = ? AND recorded_at < ?", serverID, before).
+		Where("server_id = ? AND created_at < ?", serverID, before).
 		Delete(&models.Metric{}).Error
 }
 

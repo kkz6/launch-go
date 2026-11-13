@@ -3,6 +3,8 @@ package providers
 import (
 	"context"
 	"fmt"
+	"net/url"
+	"strconv"
 	"strings"
 
 	"github.com/kkz6/launch-go/internal/modules/server/config"
@@ -54,6 +56,10 @@ func (p *VultrProvider) Create(ctx context.Context, server *models.Server, crede
 	if err != nil {
 		return nil, err
 	}
+	osID, err := strconv.Atoi(p.GetImage(p.getOperatingSystem(server)))
+	if err != nil || osID <= 0 {
+		return nil, fmt.Errorf("invalid Vultr OS image ID")
+	}
 
 	client := p.NewClient(token)
 
@@ -75,9 +81,6 @@ func (p *VultrProvider) Create(ctx context.Context, server *models.Server, crede
 	providerData := GetProviderData(server.ProviderData)
 	region := GetStringField(providerData, "region", "")
 	plan := GetStringField(providerData, "plan", "")
-	os := p.getOperatingSystem(server)
-	osID := p.GetImage(os)
-
 	// Create instance
 	serverName := strings.ReplaceAll(strings.ToLower(server.Name), " ", "-")
 	instanceResp, err := p.createInstance(ctx, client, serverName, region, plan, osID, sshKeyID)
@@ -166,28 +169,47 @@ func (p *VultrProvider) GetImage(os types.OperatingSystem) string {
 	return p.GetImageFromConfig(os, "2284") // Ubuntu 24.04
 }
 
-// LookupImage asks Vultr whether the given OS id is still served.
-// Vultr identifies OS images by numeric ID (e.g. "2284" = Ubuntu
-// 24.04 at time of writing). GET /v2/os/{os-id} returns 200 with the
-// record on success, 404 otherwise. Mirrors DigitalOceanProvider's
-// LookupImage so checkProviderImages can switch on provider.Type()
-// without ad-hoc dispatch logic.
-//
-// Numeric IDs are the exact class of identifier that bit us on DO
-// (snapshot 168977420 got retired silently); having a live API check
-// for Vultr means we'll spot the same kind of incident here.
-//
-// API ref: https://www.vultr.com/api/#tag/os/operation/get-os
+// LookupImage checks the paginated Vultr OS catalog. Vultr does not
+// provide an OS detail endpoint.
 func (p *VultrProvider) LookupImage(ctx context.Context, credentials map[string]interface{}, image string) error {
 	token, err := ExtractToken(credentials)
 	if err != nil {
 		return err
 	}
 	client := p.NewClient(token)
-	if _, err := DoGet(ctx, client, "/os/"+image); err != nil {
-		return WrapHTTPError(err, "lookup OS "+image)
+	var cursor string
+	for {
+		path := "/os?per_page=500"
+		if cursor != "" {
+			path += "&cursor=" + url.QueryEscape(cursor)
+		}
+		var page struct {
+			OS []struct {
+				ID int `json:"id"`
+			} `json:"os"`
+			Meta struct {
+				Links struct {
+					Next string `json:"next"`
+				} `json:"links"`
+			} `json:"meta"`
+		}
+		if err := client.Get(ctx, path, &page); err != nil {
+			return WrapHTTPError(err, "list Vultr operating systems")
+		}
+		for _, os := range page.OS {
+			if fmt.Sprint(os.ID) == image {
+				return nil
+			}
+		}
+		next := page.Meta.Links.Next
+		if next == "" {
+			return fmt.Errorf("OS %q not found in Vultr catalog", image)
+		}
+		if next == cursor {
+			return fmt.Errorf("Vultr OS catalog repeated its pagination cursor")
+		}
+		cursor = next
 	}
-	return nil
 }
 
 // CredentialRules returns validation rules
@@ -245,7 +267,7 @@ type vultrInstanceResponse struct {
 	Disk      int
 }
 
-func (p *VultrProvider) createInstance(ctx context.Context, client *httpclient.Client, name, region, plan, osID, sshKeyID string) (*vultrInstanceResponse, error) {
+func (p *VultrProvider) createInstance(ctx context.Context, client *httpclient.Client, name, region, plan string, osID int, sshKeyID string) (*vultrInstanceResponse, error) {
 	body := map[string]interface{}{
 		"label":     name,
 		"region":    region,

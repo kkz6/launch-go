@@ -2,7 +2,10 @@ package providers
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"net/url"
+	"strconv"
 	"strings"
 
 	"github.com/kkz6/launch-go/internal/modules/server/config"
@@ -162,31 +165,35 @@ func (p *HetznerProvider) GetImage(os types.OperatingSystem) string {
 	return p.GetImageFromConfig(os, "ubuntu-24.04")
 }
 
-// LookupImage asks Hetzner whether the given image identifier is still
-// served. Hetzner accepts both numeric IDs and named system images
-// (e.g. "ubuntu-24.04") at /v1/images?name=... — we hit the named
-// endpoint because our configured values in options.go are names,
-// not numeric IDs. Returns nil on a 1+ result, an error otherwise.
-// Mirrors DigitalOceanProvider.LookupImage so checkProviderImages can
-// switch on provider.Type() without ad-hoc dispatch logic.
-//
-// API ref: https://docs.hetzner.cloud/#images-list-images
+// LookupImage checks both architectures because Hetzner chooses the image
+// architecture by server type when provisioning from an image name.
 func (p *HetznerProvider) LookupImage(ctx context.Context, credentials map[string]interface{}, image string) error {
 	token, err := ExtractToken(credentials)
 	if err != nil {
 		return err
 	}
 	client := p.NewClient(token)
-	// /v1/images?name=ubuntu-24.04&type=system returns {"images":[…]} —
-	// empty array means "the name we have in options.go isn't a current
-	// system image", which is exactly the failure mode we want flagged.
-	resp, err := DoGet(ctx, client, "/images?name="+image+"&type=system")
-	if err != nil {
+	var result struct {
+		Images []struct {
+			Name         string           `json:"name"`
+			Architecture string           `json:"architecture"`
+			Status       string           `json:"status"`
+			Deprecation  *json.RawMessage `json:"deprecation"`
+		} `json:"images"`
+	}
+	if err := client.Get(ctx, "/images?name="+url.QueryEscape(image)+"&type=system", &result); err != nil {
 		return WrapHTTPError(err, "lookup image "+image)
 	}
-	images, _ := resp["images"].([]interface{})
-	if len(images) == 0 {
-		return fmt.Errorf("image %q not found on Hetzner (name lookup returned 0 results)", image)
+	available := make(map[string]bool, 2)
+	for _, record := range result.Images {
+		if record.Name == image && record.Status == "available" && record.Deprecation == nil {
+			available[record.Architecture] = true
+		}
+	}
+	for _, architecture := range []string{"x86", "arm"} {
+		if !available[architecture] {
+			return fmt.Errorf("image %q is unavailable or deprecated on Hetzner for %s", image, architecture)
+		}
 	}
 	return nil
 }
@@ -244,10 +251,14 @@ type hetznerServerResponse struct {
 }
 
 func (p *HetznerProvider) createServer(ctx context.Context, client *httpclient.Client, name, region, plan, image, sshKeyID string) (*hetznerServerResponse, error) {
+	numericKeyID, err := strconv.ParseInt(sshKeyID, 10, 64)
+	if err != nil || numericKeyID <= 0 {
+		return nil, fmt.Errorf("invalid Hetzner SSH key ID")
+	}
 	body := map[string]interface{}{
 		"automount":   false,
 		"image":       image,
-		"ssh_keys":    []interface{}{sshKeyID},
+		"ssh_keys":    []int64{numericKeyID},
 		"name":        name,
 		"location":    region,
 		"server_type": plan,
