@@ -14,6 +14,7 @@ import (
 
 	"github.com/kkz6/launch-go/internal/config"
 	"github.com/kkz6/launch-go/internal/modules/auth/contracts/mocks"
+	"github.com/kkz6/launch-go/internal/modules/auth/dto"
 	"github.com/kkz6/launch-go/internal/modules/auth/models"
 	"github.com/kkz6/launch-go/internal/modules/auth/repositories"
 	authtypes "github.com/kkz6/launch-go/internal/modules/auth/types"
@@ -258,4 +259,34 @@ func TestAcceptTeamInvitationRegistersNewInvitee(t *testing.T) {
 	require.EqualValues(1, membershipCount)
 	require.Zero(invitationCount)
 	require.Zero(personalTeamCount)
+}
+
+func TestRegisterCreatesAndSelectsPersonalTeam(t *testing.T) {
+	db := newTeamServiceTestDB(t)
+	require := testrequire.New(t)
+	require.NoError(db.AutoMigrate(&models.Session{}))
+	require.NoError(db.Exec("CREATE TABLE subscriptions (id INTEGER PRIMARY KEY, billable_id TEXT, billable_type TEXT, status TEXT)").Error)
+	logger := zerolog.Nop()
+	service := NewAuthService(
+		repositories.NewRegistry(db),
+		&config.Config{JWT: config.JWTConfig{Secret: "secret", Expiration: 1}},
+		&logger,
+		nil,
+	)
+	service.SetMembershipCache(launchcache.NewTeamMembershipCache(&recordingCache{}, db))
+	ctx := context.Background()
+	result, err := service.Register(ctx, &dto.RegisterRequest{
+		Name: "New Customer", Email: "customer@example.com", Password: "password123",
+	})
+	require.NoError(err)
+	require.NotNil(result.User.CurrentTeamID)
+	require.NotNil(result.User.CurrentTeam)
+	require.Equal(*result.User.CurrentTeamID, result.User.CurrentTeam.ID)
+	require.True(result.User.CurrentTeam.PersonalTeam)
+	require.False(result.User.CurrentTeam.IsSubscribed)
+	require.NotNil(result.User.Role)
+	require.Equal("owner", *result.User.Role)
+	saved, err := service.repos.User().FindByID(ctx, result.User.ID)
+	require.NoError(err)
+	require.Equal(result.User.CurrentTeamID, saved.CurrentTeamID)
 }

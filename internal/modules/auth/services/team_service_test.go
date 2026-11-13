@@ -252,6 +252,23 @@ func TestTeamRequestNormalization(t *testing.T) {
 	require.Equal(t, "Renamed", update.Name)
 }
 
+func TestCreateTeamSelectsItForAnAccountWithoutAnActiveTeam(t *testing.T) {
+	db := newTeamServiceTestDB(t)
+	user := &models.User{Name: "Customer", Email: "customer@example.com"}
+	require.NoError(t, db.Create(user).Error)
+	repos := repositories.NewRegistry(db)
+	service := NewTeamService(repos, nil, nil)
+	ctx := context.Background()
+	first, err := service.CreateTeam(ctx, user.ID, &dto.CreateTeamRequest{Name: "First team"})
+	require.NoError(t, err)
+	_, err = service.CreateTeam(ctx, user.ID, &dto.CreateTeamRequest{Name: "Second team"})
+	require.NoError(t, err)
+	saved, err := repos.User().FindByID(ctx, user.ID)
+	require.NoError(t, err)
+	require.NotNil(t, saved.CurrentTeamID)
+	require.Equal(t, first.ID, *saved.CurrentTeamID)
+}
+
 func TestDeleteTeamRepositoryErrors(t *testing.T) {
 	ctx := context.Background()
 	wanted := fmt.Errorf("database unavailable")
