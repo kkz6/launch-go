@@ -73,13 +73,26 @@ jobs:
           MIGRATION_TEST_DSN: postgres://launch:launch@localhost:5432/launch_migration_test?sslmode=disable
         run: go test -coverprofile=coverage.out ./...
 
-      - name: Upload coverage reports to Codecov
+      - name: Save coverage report
+        uses: actions/upload-artifact@v7
+        with:
+          name: go-coverage
+          path: coverage.out
+          if-no-files-found: error
+
+      - name: Upload coverage to Codecov
+        id: codecov
+        continue-on-error: true
         uses: codecov/codecov-action@v7
         with:
           files: ./coverage.out
           disable_search: true
           fail_ci_if_error: true
           token: ${{ secrets.CODECOV_TOKEN }}
+
+      - name: Report Codecov upload failure
+        if: steps.codecov.outcome == 'failure'
+        run: echo "::warning::Codecov upload failed. Download the go-coverage artifact from this run."
 
   race-test:
     name: Race test
