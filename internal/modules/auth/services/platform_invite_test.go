@@ -56,6 +56,7 @@ func userWithTeam(email, teamID string) *models.User {
 		BaseModel:     basemodels.BaseModel{ID: "user_1"},
 		Email:         email,
 		CurrentTeamID: &teamID,
+		CurrentTeam:   &models.Team{PersonalTeam: true, UserID: "user_1"},
 	}
 }
 
