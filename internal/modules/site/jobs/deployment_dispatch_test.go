@@ -20,6 +20,7 @@ import (
 
 func TestCreateDeploymentJobRecordsMissingQueueFailure(t *testing.T) {
 	deps, _, db := deploymentReleaseJobFixture(t)
+	deps.Queue = nil
 	job := &CreateDeploymentJob{Deps: deps, Payload: CreateDeploymentPayload{SiteID: "site-1"}}
 
 	require.ErrorIs(t, job.Handle(context.Background()), deployments.ErrQueueUnavailable)
@@ -128,6 +129,7 @@ func TestDeployJobFailurePreservesAlreadyTerminalDeployment(t *testing.T) {
 
 func TestDeploymentCleanupPreservesTimeoutWhenNextDispatchFails(t *testing.T) {
 	deps, _, db := deploymentReleaseJobFixture(t)
+	deps.Queue = nil
 	current := createReleaseDeployment(t, db, "current", nil)
 	require.NoError(t, db.Model(current).Update("status", sitetypes.DeploymentStatusPending).Error)
 	queuedDeploymentForJob(t, db, "waiting-1", time.Now().Add(-time.Minute))

@@ -116,9 +116,11 @@ func (m *Module) registerSiteRoutes(router gofiber.Router, handler *handlers.Sit
 func (m *Module) registerDeploymentRoutes(router gofiber.Router, handler *handlers.DeploymentHandler, svc *services.ServiceRegistry) {
 	d := svc.Deployment()
 	router.Post("/:id/deploy", middleware.Can("site.deployment.create"), handler.Deploy)
+	router.Get("/:id/releases", middleware.Can("site.view"), handler.Releases)
 	router.Get("/:id/deployments", fiberutil.IndexDoubleNested("serverId", "id", "Deployments retrieved", d.ListResponses))
 	router.Get("/:id/deployments/:deploymentId", fiberutil.ShowDoubleNested("serverId", "id", "deploymentId", "Deployment retrieved", d.ShowResponse))
 	router.Post("/:id/rollback/:deploymentId", middleware.Can("site.deployment.rollback"), handler.Rollback)
+	router.Post("/:id/runtime/refresh", middleware.Can("site.deployment.rollback"), handler.RefreshRuntime)
 	router.Delete("/:id/deployments/queued", middleware.Can("site.deployment.cancel"), handler.CancelQueuedDeployments)
 
 	router.Post("/:id/autodeploy", middleware.Can("site.deployment.autodeploy"), handler.ToggleAutoDeployment)
