@@ -3,9 +3,11 @@ package services
 import (
 	"context"
 	"encoding/json"
+	"strings"
 
 	"github.com/kkz6/launch-go/internal/modules/server/dto"
 	"github.com/kkz6/launch-go/internal/modules/server/models"
+	"github.com/kkz6/launch-go/internal/modules/server/providers"
 	"github.com/kkz6/launch-go/internal/modules/server/types"
 	"github.com/kkz6/launch-go/internal/pkg/dbtype"
 	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
@@ -26,11 +28,7 @@ func (s *Service) ListServerProviders(ctx context.Context, teamID string) ([]dto
 }
 
 // CreateServerProvider connects a new cloud provider account for the team.
-// Credentials are normalised into the map shape the providers/ package's
-// Extract* helpers expect (e.g. {"token": ...} for token providers, AWS keys
-// for AWS), then verified against the upstream API via Provider.Connect
-// before being JSON-encoded and stored encrypted. A bogus token fails fast
-// with a 400 instead of being silently saved.
+// Credentials are checked against the provider API before they are stored encrypted.
 //
 // Signature matches CreateFunc[CreateServerProviderRequest, ServerProviderResponse].
 func (s *Service) CreateServerProvider(ctx context.Context, teamID, userID string, req *dto.CreateServerProviderRequest) (dto.ServerProviderResponse, error) {
@@ -39,22 +37,32 @@ func (s *Service) CreateServerProvider(ctx context.Context, teamID, userID strin
 		return dto.ServerProviderResponse{}, ErrInvalidProvider
 	}
 
-	creds, err := buildCredentialsMap(providerType, req)
-	if err != nil {
-		return dto.ServerProviderResponse{}, err
-	}
-
-	// Verify the credentials against the upstream API before persisting.
-	// The factory is nil only in unit tests that exercise buildCredentialsMap
-	// directly; production wiring (module.go) always sets it.
-	if s.providerFactory != nil {
-		provider, factoryErr := s.providerFactory.Create(providerType)
-		if factoryErr != nil {
-			return dto.ServerProviderResponse{}, ErrInvalidProvider
+	var creds any
+	if providerType == types.ProviderContabo {
+		contabo := providers.ContaboCredentials{
+			ClientID: strings.TrimSpace(req.ClientID), ClientSecret: req.ClientSecret,
+			APIUser: strings.TrimSpace(req.APIUser), APIPassword: req.APIPassword,
 		}
-		if connectErr := provider.Connect(ctx, creds); connectErr != nil {
-			return dto.ServerProviderResponse{}, connectErr
+		if _, err := s.contabo.ListInstances(ctx, contabo, 1, 1); err != nil {
+			return dto.ServerProviderResponse{}, err
 		}
+		creds = contabo
+	} else {
+		cloud, err := buildCredentialsMap(providerType, req)
+		if err != nil {
+			return dto.ServerProviderResponse{}, err
+		}
+		// Verify credentials before persisting the connection.
+		if s.providerFactory != nil {
+			provider, err := s.providerFactory.Create(providerType)
+			if err != nil {
+				return dto.ServerProviderResponse{}, ErrInvalidProvider
+			}
+			if err := provider.Connect(ctx, cloud); err != nil {
+				return dto.ServerProviderResponse{}, err
+			}
+		}
+		creds = cloud
 	}
 
 	credsJSON, err := json.Marshal(creds)

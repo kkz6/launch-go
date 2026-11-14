@@ -86,20 +86,23 @@ func (s *Service) GetServerWithRelations(ctx context.Context, id, teamID string)
 // CreateServer creates a new server and returns the response DTO.
 // Signature matches CreateFunc.
 func (s *Service) CreateServer(ctx context.Context, teamID, userID string, req *dto.CreateServerRequest) (dto.ServerResponse, error) {
-	server, err := s.buildAndDispatchServer(ctx, teamID, userID, req)
+	server, err := s.buildAndDispatchServer(ctx, teamID, userID, req, nil)
 	if err != nil {
 		return dto.ServerResponse{}, err
 	}
 	return dto.ToServerResponse(server), nil
 }
 
-func (s *Service) buildAndDispatchServer(ctx context.Context, teamID, userID string, req *dto.CreateServerRequest) (*models.Server, error) {
+func (s *Service) buildAndDispatchServer(ctx context.Context, teamID, userID string, req *dto.CreateServerRequest, contaboInstanceKey *string) (*models.Server, error) {
 	provider, err := types.ParseServerProvider(req.Provider)
 	if err != nil {
 		return nil, ErrInvalidProvider
 	}
 	if provider == types.ProviderAWS {
 		return nil, fiberutil.BadRequest("AWS EC2 provisioning is not supported")
+	}
+	if provider == types.ProviderContabo {
+		return nil, fiberutil.BadRequest("Import an existing VPS from your Contabo connection")
 	}
 
 	serverType, err := types.ParseServerType(req.Type)
@@ -168,6 +171,7 @@ func (s *Service) buildAndDispatchServer(ctx context.Context, teamID, userID str
 	}
 	server.TeamID = teamID
 	server.UserID = userID
+	server.ContaboInstanceKey = contaboInstanceKey
 
 	if req.SSHPort > 0 {
 		server.SSHPort = &req.SSHPort
@@ -193,7 +197,15 @@ func (s *Service) buildAndDispatchServer(ctx context.Context, teamID, userID str
 		}
 	}
 
-	if err := s.repos.Server().Create(ctx, server); err != nil {
+	if contaboInstanceKey != nil {
+		created, err := s.repos.Server().CreateContaboImport(ctx, server)
+		if err != nil {
+			return nil, fmt.Errorf("failed to import Contabo VPS: %w", err)
+		}
+		if !created {
+			return nil, fiberutil.Conflict("This Contabo VPS is already imported into this team")
+		}
+	} else if err := s.repos.Server().Create(ctx, server); err != nil {
 		return nil, fmt.Errorf("failed to create server: %w", err)
 	}
 
@@ -203,7 +215,7 @@ func (s *Service) buildAndDispatchServer(ctx context.Context, teamID, userID str
 	}
 
 	// Create default firewall rules (SSH, HTTP, HTTPS)
-	if err := s.CreateDefaultFirewallRules(ctx, server.ID); err != nil {
+	if err := s.CreateDefaultFirewallRules(ctx, server.ID, server.GetSSHPort()); err != nil {
 		s.LogError(err, "Failed to create default firewall rules", "server_id", server.ID)
 	}
 

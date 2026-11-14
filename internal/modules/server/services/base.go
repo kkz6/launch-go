@@ -37,6 +37,7 @@ type Service struct {
 	repos           contracts.RepositoryRegistry
 	dispatcher      *taskrunner.Dispatcher
 	providerFactory *providers.Factory
+	contabo         contaboAPI
 	taskRunnerDeps  *servertasks.TaskRunnerDeps
 }
 
@@ -48,6 +49,7 @@ func NewService(deps ServiceDeps) *Service {
 		repos:           deps.Repos,
 		dispatcher:      deps.Dispatcher,
 		providerFactory: deps.ProviderFactory,
+		contabo:         providers.NewContaboClient(),
 		taskRunnerDeps:  deps.TaskRunnerDeps,
 	}
 }

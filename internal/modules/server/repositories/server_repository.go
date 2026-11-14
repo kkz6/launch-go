@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	"github.com/kkz6/launch-go/internal/modules/server/models"
 	"github.com/kkz6/launch-go/internal/modules/server/types"
@@ -22,6 +23,21 @@ func NewServerRepository(db *gorm.DB) *ServerRepository {
 	return &ServerRepository{
 		Base: repository.NewBase[models.Server](db, "Services"),
 	}
+}
+
+func (r *ServerRepository) CreateContaboImport(ctx context.Context, server *models.Server) (bool, error) {
+	result := r.DB.WithContext(ctx).Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "team_id"}, {Name: "contabo_instance_key"}},
+		DoNothing: true,
+	}).Create(server)
+	return result.RowsAffected == 1, result.Error
+}
+
+func (r *ServerRepository) FindContaboImports(ctx context.Context, teamID string, keys []string) ([]models.Server, error) {
+	var servers []models.Server
+	err := r.DB.WithContext(ctx).Select("id", "contabo_instance_key").
+		Where("team_id = ? AND contabo_instance_key IN ?", teamID, keys).Find(&servers).Error
+	return servers, err
 }
 
 // UpdateHostKey persists the SSH host key discovered the first time

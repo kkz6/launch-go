@@ -108,12 +108,13 @@ const (
 	ProviderLinode       ServerProvider = "linode"
 	ProviderVultr        ServerProvider = "vultr"
 	ProviderAWS          ServerProvider = "aws"
+	ProviderContabo      ServerProvider = "contabo"
 	ProviderCustom       ServerProvider = "custom_server"
 )
 
 var allServerProviders = []ServerProvider{
 	ProviderDigitalOcean, ProviderHetzner, ProviderLinode,
-	ProviderVultr, ProviderAWS, ProviderCustom,
+	ProviderVultr, ProviderAWS, ProviderContabo, ProviderCustom,
 }
 
 var serverProviderLabels = map[ServerProvider]string{
@@ -122,6 +123,7 @@ var serverProviderLabels = map[ServerProvider]string{
 	ProviderLinode:       "Linode",
 	ProviderVultr:        "Vultr",
 	ProviderAWS:          "AWS",
+	ProviderContabo:      "Contabo",
 	ProviderCustom:       "Custom",
 }
 

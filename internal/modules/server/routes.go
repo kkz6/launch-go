@@ -1,6 +1,7 @@
 package server
 
 import (
+	sentryfiber "github.com/getsentry/sentry-go/fiber"
 	"github.com/gofiber/fiber/v2"
 
 	"github.com/kkz6/launch-go/internal/middleware"
@@ -36,12 +37,30 @@ func (m *Module) RegisterRoutes(router fiber.Router, authMiddleware fiber.Handle
 
 // registerServerProviderRoutes registers server provider routes
 func (m *Module) registerServerProviderRoutes(router fiber.Router, authMiddleware fiber.Handler, _ *handlers.Handler) {
+	router.Post("/server-providers", scrubProviderCredentials)
 	providers := router.Group("/server-providers", authMiddleware, middleware.TeamScope(), middleware.VerifySubscription())
 	{
 		providers.Get("/", fiberutil.Index("Server providers retrieved", m.service.ListServerProviders))
 		providers.Post("/", middleware.Can("server_provider.create"), fiberutil.Create[dto.CreateServerProviderRequest]("Server provider connected", m.service.CreateServerProvider))
 		providers.Delete("/:id", middleware.Can("server_provider.delete"), fiberutil.Delete(m.service.DeleteServerProvider))
+		providers.Get("/:id/contabo/instances", middleware.Can("server_provider.view"), fiberutil.Handler(func(r *fiberutil.Request) error {
+			page := fiberutil.ParseIntParam(r.Ctx, fiberutil.IntParamConfig{Name: "page", Default: 1, Min: 1})
+			result, err := m.service.ListContaboVPSs(r.Context(), r.Params("id"), r.TeamID, page)
+			if err != nil {
+				return err
+			}
+			return fiberutil.OK(r.Ctx, "Contabo VPSs retrieved", result)
+		}))
+		providers.Post("/:id/contabo/import", middleware.Can("server.create"), fiberutil.CreateNested[dto.ImportContaboVPSRequest]("id", "Contabo VPS imported", m.service.ImportContaboVPS))
 	}
+}
+
+func scrubProviderCredentials(c *fiber.Ctx) error {
+	c.Set("Cache-Control", "no-store")
+	if hub := sentryfiber.GetHubFromContext(c); hub != nil {
+		hub.Scope().SetRequestBody(nil)
+	}
+	return c.Next()
 }
 
 // registerServerRoutes registers all server-related routes
