@@ -365,39 +365,54 @@ func (h *AdminHandler) UnsuspendUser(c *fiber.Ctx) error {
 	})
 }
 
-// DeleteUser hard-deletes a customer account. Super-admin only
-// (RequireStaff(StaffRoleSuperAdmin) runs ahead of it). This is a DESTRUCTIVE
-// operation: deleting the users row cascades at the DB level to every resource
-// the user owns (teams, servers, sites, ssh keys, providers, ...). It is only
-// permitted when the user never had a paying/active subscription and never
-// placed a paid order, and never for a staff member or the actor themselves.
-//
-// The actor id is taken from the request context, never the body, so the
-// service can enforce the self-delete guard. The deletability check runs first
-// to surface a precise 409 reason; the service then re-checks the guards inside
-// its delete transaction so a lost race can never delete a paying user.
+// PreviewUserDeletion reports any billing warning before the operator confirms.
+func (h *AdminHandler) PreviewUserDeletion(c *fiber.Ctx) error {
+	actorID, err := fiberutil.MustGetUserID(c)
+	if err != nil {
+		return err
+	}
+	targetID := c.Params("id")
+	if actorID == targetID {
+		return mapUserDeleteError(c, services.ErrCannotDeleteSelf)
+	}
+	allowed, reason, err := h.service.CanDeleteUser(c.UserContext(), targetID)
+	if err != nil {
+		return mapUserDeleteError(c, err)
+	}
+	var warning string
+	if !allowed {
+		refusal := &services.NotDeletableError{Reason: reason}
+		warning = refusal.BillingHistoryCode()
+		if warning == "" {
+			return mapUserDeleteError(c, refusal)
+		}
+	}
+	return fiberutil.OK(c, "User deletion preview", fiber.Map{"billing_warning": warning})
+}
+
+// DeleteUser hard-deletes a customer account. Billing history requires explicit
+// confirmation and the staff-role and self-deletion checks always apply.
 func (h *AdminHandler) DeleteUser(c *fiber.Ctx) error {
 	targetID := c.Params("id")
 	if targetID == "" {
 		return fiberutil.RespondBadRequest(c, "User id is required")
 	}
 
-	actorID, _ := c.Locals(fiberutil.KeyUserID).(string)
-
-	if actorID != "" && actorID == targetID {
-		return fiberutil.RespondConflict(c, services.ErrCannotDeleteSelf.Error())
-	}
-
-	deletable, reason, err := h.service.CanDeleteUser(c.Context(), targetID)
+	actorID, err := fiberutil.MustGetUserID(c)
 	if err != nil {
-		return mapUserDeleteError(c, err)
+		return err
 	}
 
-	if !deletable {
-		return fiberutil.RespondConflict(c, reason)
+	var request struct {
+		BillingConfirmation string `json:"billing_confirmation"`
+	}
+	if len(c.Body()) > 0 {
+		if err := c.BodyParser(&request); err != nil {
+			return fiberutil.RespondBadRequest(c, "Invalid request body")
+		}
 	}
 
-	if err := h.service.DeleteUser(c.Context(), actorID, targetID); err != nil {
+	if err := h.service.DeleteUserWithBillingConfirmation(c.UserContext(), actorID, targetID, request.BillingConfirmation); err != nil {
 		return mapUserDeleteError(c, err)
 	}
 
@@ -556,6 +571,9 @@ func mapUserDeleteError(c *fiber.Ctx, err error) error {
 
 	var notDeletable *services.NotDeletableError
 	if errors.As(err, &notDeletable) {
+		if code := notDeletable.BillingHistoryCode(); code != "" {
+			return fiberutil.ErrorWithCode(c, fiber.StatusConflict, code, notDeletable.Reason)
+		}
 		return fiberutil.RespondConflict(c, notDeletable.Reason)
 	}
 

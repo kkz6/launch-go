@@ -1,15 +1,27 @@
 {{ shellDefaults }}
 {{ caddyReloadFunc }}
 
-# Update Caddy site imports
-{
-    echo "# import /home/user/example.com/Caddyfile"
-
-    # Loop through each site and generate the import statements
-    {{ range .Sites }}
-        echo "import {{ .Path }}/Caddyfile"
+# Keep imports for sites that are no longer managed by launchctl.
+imports=/etc/caddy/Sites.caddy
+exec 9>/etc/caddy/.sites.lock
+flock 9
+temp=$(mktemp /etc/caddy/.sites.XXXXXX)
+trap 'rm -f -- "$temp"' EXIT
+if [[ -f "$imports" ]]; then
+    {{ if .RemovePath }}
+    grep -Fxv -- 'import {{ escape .RemovePath }}/Caddyfile' "$imports" > "$temp" || [[ $? -eq 1 ]]
+    {{ else }}
+    cp -- "$imports" "$temp"
     {{ end }}
-} | sudo tee /etc/caddy/Sites.caddy > /dev/null
+fi
+{{ if .AddPath }}
+line='import {{ escape .AddPath }}/Caddyfile'
+if ! grep -Fxq -- "$line" "$temp"; then
+    printf '%s\n' "$line" >> "$temp"
+fi
+{{ end }}
+chmod 0644 "$temp"
+mv -- "$temp" "$imports"
 
 # Reload Caddy
 reloadCaddy

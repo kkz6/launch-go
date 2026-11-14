@@ -31,8 +31,9 @@ func serverDeleteFixture(t *testing.T, provider types.ServerProvider) (*Service,
 	sqlDB.SetMaxOpenConns(1)
 	t.Cleanup(func() { require.NoError(t, sqlDB.Close()) })
 	require.NoError(t, db.AutoMigrate(&models.Server{}, &models.InstalledService{}))
-	require.NoError(t, db.Exec("CREATE TABLE sites (id text PRIMARY KEY, server_id text)").Error)
-	require.NoError(t, db.Exec("CREATE TABLE docker_projects (id text PRIMARY KEY, server_id text, deleted_at timestamp)").Error)
+	require.NoError(t, db.Exec("PRAGMA foreign_keys = ON").Error)
+	require.NoError(t, db.Exec("CREATE TABLE sites (id text PRIMARY KEY, server_id text REFERENCES servers(id) ON DELETE CASCADE, uninstallation_requested_at timestamp)").Error)
+	require.NoError(t, db.Exec("CREATE TABLE docker_projects (id text PRIMARY KEY, server_id text REFERENCES servers(id) ON DELETE CASCADE, deleted_at timestamp)").Error)
 	server := models.Server{BaseModel: basemodels.BaseModel{ID: "server-delete"}, TeamScoped: basemodels.TeamScoped{TeamID: "customer-team"}, Name: "Customer server", Provider: provider, Status: types.ServerStatusRunning}
 	require.NoError(t, db.Create(&server).Error)
 	log := zerolog.Nop()
@@ -42,7 +43,7 @@ func serverDeleteFixture(t *testing.T, provider types.ServerProvider) (*Service,
 
 func TestDeleteServerChecksResourcesAndScopeBeforeMutation(t *testing.T) {
 	for _, tc := range []struct{ name, setup, team string }{
-		{"sites", "INSERT INTO sites VALUES ('site', 'server-delete')", "customer-team"},
+		{"sites", "INSERT INTO sites (id, server_id) VALUES ('site', 'server-delete')", "customer-team"},
 		{"projects", "INSERT INTO docker_projects (id, server_id) VALUES ('project', 'server-delete')", "customer-team"},
 		{"wrong team", "", "other-team"},
 		{"provisioning", "UPDATE servers SET status = 'provisioning'", "customer-team"},
@@ -137,8 +138,7 @@ func TestRemoveCloudServerRecordNeedsNeitherConnectionCredentialsNorQueue(t *tes
 
 func TestRemoveServerRecordPreservesResourceLifecycleAndTeamGuards(t *testing.T) {
 	for _, tc := range []struct{ name, setup, team string }{
-		{"sites", "INSERT INTO sites VALUES ('site', 'server-delete')", "customer-team"},
-		{"projects", "INSERT INTO docker_projects (id, server_id) VALUES ('project', 'server-delete')", "customer-team"},
+		{"pending site uninstall", "INSERT INTO sites VALUES ('site', 'server-delete', CURRENT_TIMESTAMP)", "customer-team"},
 		{"wrong team", "", "other-team"},
 		{"provisioning", "UPDATE servers SET status = 'provisioning'", "customer-team"},
 		{"starting", "UPDATE servers SET status = 'starting'", "customer-team"},
@@ -156,5 +156,26 @@ func TestRemoveServerRecordPreservesResourceLifecycleAndTeamGuards(t *testing.T)
 			require.NoError(t, db.First(&after, "id = ?", server.ID).Error)
 			require.Equal(t, before.Status, after.Status)
 		})
+	}
+}
+
+func TestAdminServerRemovalCascadesWithoutProviderDeletion(t *testing.T) {
+	for _, uninstall := range []bool{false, true} {
+		svc, db, server := serverDeleteFixture(t, types.ProviderHetzner)
+		require.NoError(t, db.Exec("INSERT INTO sites (id, server_id) VALUES ('site', ?)", server.ID).Error)
+		require.NoError(t, db.Exec("INSERT INTO docker_projects (id, server_id) VALUES ('project', ?)", server.ID).Error)
+		ctx := context.Background()
+		if uninstall {
+			offline, err := svc.UninstallServer(ctx, server.ID, server.TeamID, "admin")
+			require.NoError(t, err)
+			require.True(t, offline)
+		} else {
+			require.NoError(t, svc.RemoveServerRecord(ctx, server.ID, server.TeamID, "admin"))
+		}
+		for _, table := range []string{"servers", "sites", "docker_projects"} {
+			var count int64
+			require.NoError(t, db.Table(table).Count(&count).Error)
+			require.Zero(t, count)
+		}
 	}
 }

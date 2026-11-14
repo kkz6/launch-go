@@ -15,6 +15,7 @@ import (
 	"gorm.io/gorm/logger"
 
 	"github.com/kkz6/launch-go/internal/middleware"
+	billingmodels "github.com/kkz6/launch-go/internal/modules/billing/models"
 	"github.com/kkz6/launch-go/internal/modules/staff/handlers"
 	"github.com/kkz6/launch-go/internal/modules/staff/repositories"
 	"github.com/kkz6/launch-go/internal/modules/staff/services"
@@ -23,7 +24,7 @@ import (
 	"github.com/kkz6/launch-go/internal/pkg/launch/activity"
 )
 
-func staffRoleHTTPFixture(t *testing.T) (*fiber.App, *services.Service) {
+func staffRoleHTTPFixture(t *testing.T) (*fiber.App, *services.Service, *gorm.DB) {
 	t.Helper()
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
 	require.NoError(t, err)
@@ -50,7 +51,7 @@ func staffRoleHTTPFixture(t *testing.T) (*fiber.App, *services.Service) {
 	module := &Module{db: db, service: svc, handler: handlers.NewAdminHandler(svc)}
 	module.RegisterRoutes(app, auth)
 	app.Get("/staff-probe", auth, middleware.RequireStaff(stafftypes.StaffRoleSupport), func(c *fiber.Ctx) error { return c.SendStatus(http.StatusOK) })
-	return app, svc
+	return app, svc, db
 }
 
 func TestAdminStaffRoleEndpointEnforcesRoleAndExplicitNullableField(t *testing.T) {
@@ -73,7 +74,7 @@ func TestAdminStaffRoleEndpointEnforcesRoleAndExplicitNullableField(t *testing.T
 		{"super admin", "admin", "target", `{"staff_role":"super_admin"}`, 200},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			app, _ := staffRoleHTTPFixture(t)
+			app, _, _ := staffRoleHTTPFixture(t)
 			request := httptest.NewRequest(http.MethodPatch, "/admin/users/"+tc.target+"/staff-role", strings.NewReader(tc.body))
 			request.Header.Set("Content-Type", "application/json")
 			request.Header.Set("X-Test-User", tc.actor)
@@ -97,7 +98,7 @@ func TestAdminStaffRoleEndpointEnforcesRoleAndExplicitNullableField(t *testing.T
 }
 
 func TestAdminStaffRoleDemotionRevokesAccessOnNextRequest(t *testing.T) {
-	app, svc := staffRoleHTTPFixture(t)
+	app, svc, _ := staffRoleHTTPFixture(t)
 	probe := func(wantStatus int) {
 		request := httptest.NewRequest(http.MethodGet, "/staff-probe", nil)
 		request.Header.Set("X-Test-User", "target")
@@ -118,4 +119,35 @@ func TestAdminStaffRoleDemotionRevokesAccessOnNextRequest(t *testing.T) {
 	allowed, _, err := svc.CanDeleteUser(context.Background(), "target")
 	require.NoError(t, err)
 	require.True(t, allowed)
+}
+
+func TestAdminUserDeletionPreviewAndConfirmation(t *testing.T) {
+	app, _, db := staffRoleHTTPFixture(t)
+	require.NoError(t, db.Exec("CREATE TABLE orders (billable_type text, billable_id text, status text)").Error)
+	require.NoError(t, db.Exec("INSERT INTO teams (id, user_id) VALUES ('paid-team', 'regular')").Error)
+	require.NoError(t, db.Exec("INSERT INTO orders VALUES (?, 'paid-team', 'paid')", billingmodels.BillableTypeTeamLegacy).Error)
+
+	request := func(method, path, actor, body string, status int) map[string]any {
+		t.Helper()
+		req := httptest.NewRequest(method, "/admin/users/"+path, strings.NewReader(body))
+		req.Header.Set("X-Test-User", actor)
+		req.Header.Set("Content-Type", "application/json")
+		response, err := app.Test(req)
+		require.NoError(t, err)
+		defer response.Body.Close()
+		require.Equal(t, status, response.StatusCode)
+		var result map[string]any
+		require.NoError(t, json.NewDecoder(response.Body).Decode(&result))
+		return result
+	}
+
+	request(http.MethodGet, "regular/deletion-preview", "target", "", 403)
+	request(http.MethodGet, "admin/deletion-preview", "admin", "", 409)
+	request(http.MethodGet, "target/deletion-preview", "admin", "", 409)
+	preview := request(http.MethodGet, "regular/deletion-preview", "admin", "", 200)
+	require.Equal(t, map[string]any{"billing_warning": "user_has_paid_order"}, preview["data"])
+	refusal := request(http.MethodDelete, "regular", "admin", "", 409)
+	require.Equal(t, "user_has_paid_order", refusal["code"])
+	request(http.MethodDelete, "regular", "admin", `{"billing_confirmation":"user_has_paid_order"}`, 200)
+	request(http.MethodGet, "regular/deletion-preview", "admin", "", 404)
 }

@@ -39,23 +39,15 @@ func UpdateCaddyfile(config UpdateCaddyfileConfig) *taskrunner.BaseTask {
 	)
 }
 
-// SiteImport represents a site for Caddy imports
-type SiteImport struct {
-	Path string
-}
-
 // UpdateCaddySiteImportsConfig holds configuration for updating Caddy site imports
 type UpdateCaddySiteImportsConfig struct {
-	Sites []SiteImport
+	AddPath    string
+	RemovePath string
 }
 
 // UpdateCaddySiteImports creates a task to update the global Caddy site imports
 func UpdateCaddySiteImports(config UpdateCaddySiteImportsConfig) *taskrunner.BaseTask {
-	script := templates.MustRender("site", "update_caddy_site_imports.sh", struct {
-		Sites []SiteImport
-	}{
-		Sites: config.Sites,
-	})
+	script := templates.MustRender("site", "update_caddy_site_imports.sh", config)
 
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName("Update Caddy Site Imports"),

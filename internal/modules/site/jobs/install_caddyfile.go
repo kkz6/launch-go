@@ -476,43 +476,12 @@ func generateTLSSnippet(site *models.Site, activeCert *models.Certificate) strin
 
 // updateSiteImports updates the global Caddy site imports file
 func (j *InstallCaddyfileJob) updateSiteImports(ctx context.Context, server *servermodels.Server, site *models.Site) error {
-	// Get all sites for this server
-	sites, err := j.Deps.Repos.Site().FindByServer(ctx, site.ServerID)
-	if err != nil {
-		return err
-	}
-
-	// Build site imports list
-	imports := make([]tasks.SiteImport, 0, len(sites))
-	for _, s := range sites {
-		if s.InstalledAt != nil {
-			imports = append(imports, tasks.SiteImport{
-				Path: s.Path,
-			})
-		}
-	}
-
-	// Add current site if not yet installed
-	siteIncluded := false
-	for _, imp := range imports {
-		if imp.Path == site.Path {
-			siteIncluded = true
-			break
-		}
-	}
-	if !siteIncluded {
-		imports = append(imports, tasks.SiteImport{
-			Path: site.Path,
-		})
-	}
-
-	// Create update imports task
 	task := tasks.UpdateCaddySiteImports(tasks.UpdateCaddySiteImportsConfig{
-		Sites: imports,
+		AddPath: site.Path,
 	})
 
 	// Execute on server
-	_, err = j.Deps.RunTask(server, task).AsRoot().Dispatch(ctx)
+	_, err := j.Deps.RunTask(server, task).AsRoot().Dispatch(ctx)
 	return err
 }
 
@@ -825,25 +794,8 @@ func (j *UninstallCaddyfileJob) updateSiteImportsAfterRemoval(ctx context.Contex
 		return err
 	}
 
-	// Get all sites for this server (excluding the removed one)
-	sites, err := j.Deps.Repos.Site().FindByServer(ctx, removedSite.ServerID)
-	if err != nil {
-		return err
-	}
-
-	// Build site imports list (excluding removed site)
-	imports := make([]tasks.SiteImport, 0, len(sites))
-	for _, s := range sites {
-		if s.ID != removedSite.ID && s.InstalledAt != nil {
-			imports = append(imports, tasks.SiteImport{
-				Path: s.Path,
-			})
-		}
-	}
-
-	// Create update imports task
 	task := tasks.UpdateCaddySiteImports(tasks.UpdateCaddySiteImportsConfig{
-		Sites: imports,
+		RemovePath: removedSite.Path,
 	})
 
 	// Execute on server
