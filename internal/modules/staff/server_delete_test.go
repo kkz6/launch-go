@@ -200,7 +200,6 @@ func TestAdminServerUninstallReportsOfflineRemoval(t *testing.T) {
 		req.Header.Set("X-Test-User", user)
 		response, err := app.Test(req)
 		require.NoError(t, err)
-		defer response.Body.Close()
 		require.Equal(t, status, response.StatusCode)
 		if status == 200 {
 			var body struct {
@@ -210,6 +209,7 @@ func TestAdminServerUninstallReportsOfflineRemoval(t *testing.T) {
 			require.Equal(t, "removed_offline", body.Data.Status)
 			require.Equal(t, []string{"customer-server", "customer-team", "admin"}, deleter.ids)
 		}
+		require.NoError(t, response.Body.Close())
 	}
 }
 
