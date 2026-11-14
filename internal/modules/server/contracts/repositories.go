@@ -14,6 +14,8 @@ import (
 // ServerRepository defines the interface for server database operations
 type ServerRepository interface {
 	Create(ctx context.Context, server *models.Server) error
+	CreateContaboImport(ctx context.Context, server *models.Server) (bool, error)
+	FindContaboImports(ctx context.Context, teamID string, keys []string) ([]models.Server, error)
 	FindByID(ctx context.Context, id string) (*models.Server, error)
 	FindByIDAndTeam(ctx context.Context, id, teamID string, preloads ...string) (*models.Server, error)
 	FindWithRelations(ctx context.Context, id, teamID string) (*models.Server, error)

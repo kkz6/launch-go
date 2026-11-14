@@ -40,6 +40,8 @@ type Server struct {
 	PrivateIPv4       *string                `gorm:"column:private_ipv4;type:varchar(255)" json:"-"`
 	PublicKey         dbtype.EncryptedString `gorm:"type:longtext" json:"-"`
 	PrivateKey        dbtype.EncryptedString `gorm:"type:longtext" json:"-"`
+	// ContaboInstanceKey identifies an imported VPS independently of its connection record.
+	ContaboInstanceKey *string `gorm:"type:varchar(64)" json:"-"`
 	// HostKey is the SSH host key (base64-encoded wire format) pinned
 	// on the first connection. Empty until the first connect — then
 	// every subsequent connection compares the live key against this

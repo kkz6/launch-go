@@ -48,12 +48,16 @@ type CreateServiceRequest struct {
 // per-provider field-presence checks in the service because validator v10's
 // `required_if` does not support OR conditions across multiple values.
 type CreateServerProviderRequest struct {
-	Provider  string `json:"provider" validate:"required,oneof=digitalocean hetzner linode vultr aws"`
-	Profile   string `json:"profile" validate:"required,min=1,max=255"`
-	APIToken  string `json:"api_token" validate:"omitempty"`
-	AccessKey string `json:"access_key" validate:"omitempty"`
-	SecretKey string `json:"secret_key" validate:"omitempty"`
-	Region    string `json:"region" validate:"omitempty"`
+	Provider     string `json:"provider" validate:"required,oneof=digitalocean hetzner linode vultr aws contabo"`
+	Profile      string `json:"profile" validate:"required,min=1,max=255"`
+	APIToken     string `json:"api_token" validate:"omitempty"`
+	AccessKey    string `json:"access_key" validate:"omitempty"`
+	SecretKey    string `json:"secret_key" validate:"omitempty"`
+	Region       string `json:"region" validate:"omitempty"`
+	ClientID     string `json:"client_id" validate:"omitempty,max=1024"`
+	ClientSecret string `json:"client_secret" validate:"omitempty,max=4096"`
+	APIUser      string `json:"api_user" validate:"omitempty,max=255"`
+	APIPassword  string `json:"api_password" validate:"omitempty,max=4096"`
 }
 
 // ServiceOperationRequest represents the request body for service operations

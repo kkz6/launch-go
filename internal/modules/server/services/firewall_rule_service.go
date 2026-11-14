@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"strconv"
 
 	"github.com/hibiken/asynq"
 
@@ -126,9 +127,9 @@ func (s *Service) dispatchFirewallRuleUninstallJob(server *models.Server, rule *
 // CreateDefaultFirewallRules creates the default firewall rules for a
 // new server (SSH, HTTP, HTTPS). These rules are created in the database
 // but not installed until the server is provisioned.
-func (s *Service) CreateDefaultFirewallRules(ctx context.Context, serverID string) error {
+func (s *Service) CreateDefaultFirewallRules(ctx context.Context, serverID string, sshPort int) error {
 	defaultRules := []models.FirewallRule{
-		{Name: "ssh", Port: "22", FromIPv4: strPtr("0.0.0.0"), Mask: strPtr("0"), Action: types.RuleActionAllow},
+		{Name: "ssh", Port: strconv.Itoa(sshPort), FromIPv4: strPtr("0.0.0.0"), Mask: strPtr("0"), Action: types.RuleActionAllow},
 		{Name: "http", Port: "80", FromIPv4: strPtr("0.0.0.0"), Mask: strPtr("0"), Action: types.RuleActionAllow},
 		{Name: "https", Port: "443", FromIPv4: strPtr("0.0.0.0"), Mask: strPtr("0"), Action: types.RuleActionAllow},
 	}
