@@ -113,17 +113,7 @@ func (j *UninstallSiteJob) Handle(ctx context.Context) error {
 	}
 
 	// Step 2: Update Caddyfile to remove site imports
-	allSites, err := j.Deps.Repos.Site().FindByServer(ctx, server.ID)
-	if err != nil {
-		return fmt.Errorf("failed to get server sites: %w", err)
-	}
-	imports := make([]tasks.SiteImport, 0, len(allSites))
-	for _, s := range allSites {
-		if s.ID != site.ID && s.InstalledAt != nil {
-			imports = append(imports, tasks.SiteImport{Path: s.Path})
-		}
-	}
-	updateTask := tasks.UpdateCaddySiteImports(tasks.UpdateCaddySiteImportsConfig{Sites: imports})
+	updateTask := tasks.UpdateCaddySiteImports(tasks.UpdateCaddySiteImportsConfig{RemovePath: site.Path})
 	if err := j.runCleanup(ctx, updateTask); err != nil {
 		return fmt.Errorf("failed to update Caddyfile site imports: %w", err)
 	}

@@ -72,6 +72,25 @@ func TestDeleteSiteQueuesStaffActorAndRejectsDuplicate(t *testing.T) {
 	require.True(t, site.UninstallationRequestedAt.Equal(*payload.RequestedAt))
 }
 
+func TestRemoveSiteRecordDoesNotQueueCleanup(t *testing.T) {
+	svc, db := siteDeleteFixture(t)
+	require.NoError(t, db.Exec("PRAGMA foreign_keys = ON").Error)
+	require.NoError(t, db.Exec("CREATE TABLE site_children (site_id text REFERENCES sites(id) ON DELETE CASCADE)").Error)
+	require.NoError(t, db.Exec("INSERT INTO site_children VALUES ('site')").Error)
+	ctx := context.Background()
+	require.Error(t, svc.RemoveSiteRecord(ctx, "site", "server", "other-team", "admin"))
+	require.NoError(t, db.Exec("UPDATE sites SET uninstallation_requested_at = CURRENT_TIMESTAMP").Error)
+	require.Error(t, svc.RemoveSiteRecord(ctx, "site", "server", "team", "admin"))
+	require.NoError(t, db.Exec("UPDATE sites SET uninstallation_requested_at = NULL").Error)
+	require.NoError(t, svc.RemoveSiteRecord(ctx, "site", "server", "team", "admin"))
+	var count int64
+	require.NoError(t, db.Table("sites").Count(&count).Error)
+	require.Zero(t, count)
+	require.NoError(t, db.Table("site_children").Count(&count).Error)
+	require.Zero(t, count)
+	require.NoError(t, db.First(&servermodels.Server{}, "id = ?", "server").Error)
+}
+
 func TestDeleteSiteQueueFailureRestoresStateAndAllowsRetry(t *testing.T) {
 	for _, configured := range []bool{false, true} {
 		t.Run(map[bool]string{false: "missing queue", true: "queue rejected"}[configured], func(t *testing.T) {

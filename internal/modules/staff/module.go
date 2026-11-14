@@ -96,11 +96,13 @@ func (m *Module) RegisterRoutes(router fiber.Router, authMiddleware fiber.Handle
 	admin.Get("/users/:id/subscriptions", m.handler.ShowUserSubscriptions)
 	admin.Patch("/users/:id/staff-role", middleware.RequireStaff(stafftypes.StaffRoleSuperAdmin), m.handler.UpdateStaffRole)
 	admin.Delete("/sites/:id", middleware.RequireStaff(stafftypes.StaffRoleSuperAdmin), m.handler.DeleteSite)
+	admin.Delete("/sites/:id/record", middleware.RequireStaff(stafftypes.StaffRoleSuperAdmin), m.handler.RemoveSiteRecord)
 	admin.Get("/teams", m.handler.ListTeams)
 	admin.Get("/servers", m.handler.ListServers)
 	admin.Get("/servers/:id", m.handler.ShowServer)
 	admin.Get("/servers/:id/logs", m.handler.ServerLogs)
 	admin.Delete("/servers/:id/record", middleware.RequireStaff(stafftypes.StaffRoleSuperAdmin), m.handler.RemoveServerRecord)
+	admin.Delete("/servers/:id/uninstall", middleware.RequireStaff(stafftypes.StaffRoleSuperAdmin), m.handler.UninstallServer)
 	admin.Delete("/servers/:id", middleware.RequireStaff(stafftypes.StaffRoleSuperAdmin), m.handler.DeleteServer)
 	admin.Get("/failures", m.handler.Failures)
 	admin.Get("/failures/:id/log", m.handler.ShowFailureLog)
@@ -123,11 +125,9 @@ func (m *Module) RegisterRoutes(router fiber.Router, authMiddleware fiber.Handle
 	admin.Post("/users/:id/suspend", middleware.RequireStaff(stafftypes.StaffRoleSuperAdmin), m.handler.SuspendUser)
 	admin.Post("/users/:id/unsuspend", middleware.RequireStaff(stafftypes.StaffRoleSuperAdmin), m.handler.UnsuspendUser)
 
-	// Delete is the single DESTRUCTIVE account action: it removes the users row,
-	// which cascades at the DB level to every resource the user owns. It is
-	// gated identically to suspend (super_admin on top of the support-tier
-	// group gate) and additionally refuses any user who ever paid (paid order
-	// or non-trial subscription), holds a staff role, or is the actor.
+	// Account deletion cascades to owned resources. Paid billing history
+	// requires explicit acknowledgment and staff accounts remain protected.
+	admin.Get("/users/:id/deletion-preview", middleware.RequireStaff(stafftypes.StaffRoleSuperAdmin), m.handler.PreviewUserDeletion)
 	admin.Delete("/users/:id", middleware.RequireStaff(stafftypes.StaffRoleSuperAdmin), m.handler.DeleteUser)
 
 	// Platform invitations: super_admin creates and revokes (destructive /

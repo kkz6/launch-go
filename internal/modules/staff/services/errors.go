@@ -72,11 +72,7 @@ var ErrInvalidPlan = errors.New("a valid plan is required")
 // transport has not been wired into the staff service.
 var ErrEmailSenderNotConfigured = errors.New("email sender not configured")
 
-// NotDeletableError carries the human-readable reason a user cannot be deleted
-// (holds a staff role, has a paid order, has/had a paid subscription). The
-// handler surfaces Reason in a 409 response. It is the typed error returned by
-// DeleteUser when the in-transaction re-check refuses the delete, and is also
-// constructed from the reason CanDeleteUser reports.
+// NotDeletableError carries the reason an account deletion was refused.
 type NotDeletableError struct {
 	Reason string
 }
@@ -85,7 +81,13 @@ func (e *NotDeletableError) Error() string {
 	return fmt.Sprintf("user not deletable: %s", e.Reason)
 }
 
-// newNotDeletableError builds a NotDeletableError for the given reason.
-func newNotDeletableError(reason string) *NotDeletableError {
-	return &NotDeletableError{Reason: reason}
+func (e *NotDeletableError) BillingHistoryCode() string {
+	switch e.Reason {
+	case reasonPaidOrder:
+		return "user_has_paid_order"
+	case reasonPaidSubscription:
+		return "user_has_paid_subscription"
+	default:
+		return ""
+	}
 }

@@ -120,6 +120,35 @@ func TestDeleteUser_RemovesCleanUser(t *testing.T) {
 	assert.False(t, userExists(t, db, user), "clean user row must be gone after delete")
 }
 
+func TestDeleteUserWithBillingConfirmation(t *testing.T) {
+	for _, tc := range []struct {
+		code string
+		seed func(*testing.T, *gorm.DB, string)
+	}{
+		{"user_has_paid_order", func(t *testing.T, db *gorm.DB, teamID string) {
+			seedOrder(t, db, teamID, billingtypes.OrderStatusPaid)
+		}},
+		{"user_has_paid_subscription", func(t *testing.T, db *gorm.DB, teamID string) {
+			seedSubscription(t, db, teamID, billingtypes.SubscriptionStatusActive)
+		}},
+	} {
+		t.Run(tc.code, func(t *testing.T) {
+			svc, db := setupUserDeleteService(t)
+			ctx := context.Background()
+			userID := seedUser(t, db, authmodels.User{Name: "Customer", Email: "customer@example.com"})
+			tc.seed(t, db, seedTeam(t, db, userID))
+			var refusal *NotDeletableError
+			require.ErrorAs(t, svc.DeleteUser(ctx, "admin", userID), &refusal)
+			require.Equal(t, tc.code, refusal.BillingHistoryCode())
+			require.ErrorIs(t, svc.DeleteUserWithBillingConfirmation(ctx, userID, userID, tc.code), ErrCannotDeleteSelf)
+			require.ErrorAs(t, svc.DeleteUserWithBillingConfirmation(ctx, "admin", userID, "stale-warning"), &refusal)
+			require.True(t, userExists(t, db, userID))
+			require.NoError(t, svc.DeleteUserWithBillingConfirmation(ctx, "admin", userID, tc.code))
+			require.False(t, userExists(t, db, userID))
+		})
+	}
+}
+
 func TestCanDeleteUser_PaidOrderBlocks(t *testing.T) {
 	svc, db := setupUserDeleteService(t)
 	ctx := context.Background()

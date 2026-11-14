@@ -112,8 +112,8 @@ func TestUninstallSiteCompletionRemovesOnlyRequestedSiteAfterRemoteSuccess(t *te
 	require.NoError(t, job.Handle(context.Background()))
 	require.Equal(t, 3, dispatcher.ExecutionCount())
 	imports := dispatcher.GetExecution(1).Script
-	require.Contains(t, imports, "/home/launcher/other.example/Caddyfile")
-	require.NotContains(t, imports, "/home/launcher/example.test/Caddyfile")
+	require.Contains(t, imports, "grep -Fxv -- 'import /home/launcher/example.test/Caddyfile'")
+	require.NotContains(t, imports, "/home/launcher/other.example/Caddyfile")
 	require.NoError(t, db.First(&models.Site{}, "id = ?", other.ID).Error)
 	require.ErrorIs(t, db.First(&models.Site{}, "id = ?", "site-1").Error, gorm.ErrRecordNotFound)
 	require.ErrorIs(t, db.First(&models.Queue{}, "id = ?", "queue-1").Error, gorm.ErrRecordNotFound)

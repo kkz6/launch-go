@@ -295,6 +295,28 @@ func (c *SSHClient) Connect() error {
 	return nil
 }
 
+// ConnectContext bounds both the TCP dial and SSH authentication.
+func (c *SSHClient) ConnectContext(ctx context.Context) error {
+	ctx, cancel := context.WithTimeout(ctx, c.timeout)
+	defer cancel()
+	addr := net.JoinHostPort(c.host, fmt.Sprint(c.port))
+	raw, err := (&net.Dialer{}).DialContext(ctx, "tcp", addr)
+	if err != nil {
+		return err
+	}
+	stop := context.AfterFunc(ctx, func() { _ = raw.Close() })
+	conn, channels, requests, err := ssh.NewClientConn(raw, addr, c.config)
+	if !stop() || err != nil {
+		_ = raw.Close()
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		return err
+	}
+	c.conn = &cryptoSSHConnection{client: ssh.NewClient(conn, channels, requests)}
+	return nil
+}
+
 // Close closes the SSH connection
 func (c *SSHClient) Close() error {
 	if c.conn != nil {

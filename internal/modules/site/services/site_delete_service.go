@@ -18,8 +18,30 @@ import (
 
 // DeleteSite queues the existing uninstall workflow with explicit ownership and actor.
 func (s *SiteService) DeleteSite(ctx context.Context, id, serverID, teamID, actorID string) error {
+	return s.deleteSite(ctx, id, serverID, teamID, actorID, false)
+}
+
+// RemoveSiteRecord removes the site and its dependent records without remote cleanup.
+func (s *SiteService) RemoveSiteRecord(ctx context.Context, id, serverID, teamID, actorID string) error {
+	return s.deleteSite(ctx, id, serverID, teamID, actorID, true)
+}
+
+func (s *SiteService) deleteSite(ctx context.Context, id, serverID, teamID, actorID string, removeRecord bool) error {
 	var site models.Site
 	err := s.DB().WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// Lock the server before the site so record removal can safely check for
+		// pending site uninstalls before deleting the parent and its children.
+		var server servermodels.Server
+		if err := tx.Select("id", "status").Clauses(clause.Locking{Strength: "UPDATE"}).
+			Where("id = ? AND team_id = ?", serverID, teamID).First(&server).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return fiberutil.NotFound("Server not found")
+			}
+			return err
+		}
+		if server.Status == servertypes.ServerStatusDeleting {
+			return fiberutil.Conflict("Server deletion is already in progress")
+		}
 		// The worker takes the same lock before reading the request. A rejected
 		// enqueue rolls back the pending flag, and concurrent requests cannot
 		// submit a second uninstall while this request is active.
@@ -30,18 +52,11 @@ func (s *SiteService) DeleteSite(ctx context.Context, id, serverID, teamID, acto
 			}
 			return err
 		}
-		var server servermodels.Server
-		if err := tx.Where("id = ? AND team_id = ?", serverID, teamID).First(&server).Error; err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				return fiberutil.NotFound("Server not found")
-			}
-			return err
-		}
-		if server.Status == servertypes.ServerStatusDeleting {
-			return fiberutil.Conflict("Server deletion is already in progress")
-		}
 		if site.UninstallationRequestedAt != nil {
 			return fiberutil.Conflict("Site deletion is already in progress")
+		}
+		if removeRecord {
+			return tx.Delete(&site).Error
 		}
 		if s.Queue == nil {
 			return fiberutil.Internal("Site deletion queue is not configured")
@@ -69,6 +84,13 @@ func (s *SiteService) DeleteSite(ctx context.Context, id, serverID, teamID, acto
 	})
 	if err != nil {
 		return err
+	}
+	if removeRecord {
+		activity.RecordEvent(ctx, "removed", actorID, &site, "Site removed from launchctl")
+		s.BroadcastToTeam(teamID, "site.deleted", map[string]any{
+			"site_id": site.ID, "server_id": serverID, "address": site.Address,
+		})
+		return nil
 	}
 	activity.RecordEvent(ctx, "deletion_requested", actorID, &site, "Site deletion requested")
 	s.broadcastSiteUpdate(ctx, serverID, &site)

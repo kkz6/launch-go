@@ -18,17 +18,9 @@ const (
 	reasonPaidSubscription = "user has or had a paid subscription"
 )
 
-// CanDeleteUser reports whether the target user may be hard-deleted, and if not,
-// a human-readable reason. A user is deletable ONLY if, across every team they
-// own:
-//   - they hold no staff role, AND
-//   - none of their teams has a paid order, AND
-//   - none of their teams has a non-trial subscription (active, past_due,
-//     unpaid, cancelled or expired). A pure trial / no subscription is fine.
-//
-// Deleting a user cascades at the DB level to all their owned resources, so the
-// guard is deliberately conservative: any signal that the user ever paid blocks
-// the delete. A missing target returns ErrUserNotFound (mapped to 404).
+// CanDeleteUser reports whether deletion can proceed without a billing
+// acknowledgment, along with the reason when one is required or staff access
+// prevents deletion.
 func (s *Service) CanDeleteUser(ctx context.Context, userID string) (bool, string, error) {
 	exists, err := s.repos.UserExists(ctx, userID)
 	if err != nil {
@@ -69,21 +61,13 @@ func (s *Service) CanDeleteUser(ctx context.Context, userID string) (bool, strin
 	return true, "", nil
 }
 
-// DeleteUser hard-deletes the target user. The delete is destructive and
-// cascades at the DB level to every resource the user owns, so it is guarded
-// tightly:
-//   - the actor may not delete their own account (ErrCannotDeleteSelf);
-//   - the whole operation runs in a transaction, and the deletable guards are
-//     re-evaluated INSIDE that transaction against the same rows that will be
-//     deleted, so a paid order/subscription created between the handler's
-//     CanDeleteUser check and here still blocks the delete (returns a
-//     NotDeletableError carrying the reason);
-//   - a missing target returns ErrUserNotFound.
-//
-// The handler is expected to call CanDeleteUser first to surface the reason for
-// a 409; this method re-checks regardless so a lost race can never delete a
-// paying user.
+// DeleteUser hard-deletes the account and its owned resources. Billing history
+// requires an acknowledgment from the actor.
 func (s *Service) DeleteUser(ctx context.Context, actorStaffID, targetUserID string) error {
+	return s.DeleteUserWithBillingConfirmation(ctx, actorStaffID, targetUserID, "")
+}
+
+func (s *Service) DeleteUserWithBillingConfirmation(ctx context.Context, actorStaffID, targetUserID, billingConfirmation string) error {
 	if actorStaffID != "" && actorStaffID == targetUserID {
 		return ErrCannotDeleteSelf
 	}
@@ -106,7 +90,10 @@ func (s *Service) DeleteUser(ctx context.Context, actorStaffID, targetUserID str
 		}
 
 		if reason != "" {
-			return newNotDeletableError(reason)
+			refusal := &NotDeletableError{Reason: reason}
+			if code := refusal.BillingHistoryCode(); code == "" || code != billingConfirmation {
+				return refusal
+			}
 		}
 
 		return s.repos.DeleteUser(tx, targetUserID)
@@ -118,10 +105,8 @@ func (s *Service) DeleteUser(ctx context.Context, actorStaffID, targetUserID str
 	return nil
 }
 
-// deletableReasonInTx re-evaluates the delete guards against the supplied
-// transaction handle and returns a non-empty reason when the user must NOT be
-// deleted. It mirrors CanDeleteUser's rules but reads through tx so the checks
-// and the delete observe a single consistent snapshot.
+// deletableReasonInTx checks the same conditions as CanDeleteUser while the
+// account is locked for deletion.
 func (s *Service) deletableReasonInTx(tx *gorm.DB, userID string) (string, error) {
 	isStaff, err := s.repos.HasStaffRoleTx(tx, userID)
 	if err != nil {
