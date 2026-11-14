@@ -82,6 +82,7 @@ type DeploymentResponse struct {
 	SiteID       string         `json:"site_id"`
 	UserID       *string        `json:"user_id,omitempty"`
 	TaskID       *string        `json:"task_id,omitempty"`
+	ReleaseName  *string        `json:"release_name,omitempty"`
 	Status       string         `json:"status"`
 	GitHash      *string        `json:"git_hash,omitempty"`
 	ShortGitHash string         `json:"short_git_hash,omitempty"`
@@ -312,6 +313,7 @@ func ToDeploymentResponse(deployment *models.Deployment) DeploymentResponse {
 		SiteID:       deployment.SiteID,
 		UserID:       deployment.UserID,
 		TaskID:       deployment.TaskID,
+		ReleaseName:  deployment.ReleaseName,
 		Status:       string(deployment.Status),
 		GitHash:      deployment.GitHash,
 		ShortGitHash: deployment.GetShortGitHash(),

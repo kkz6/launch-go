@@ -6,12 +6,15 @@ import (
 	"testing"
 	"time"
 
+	"github.com/alicebob/miniredis/v2"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 
+	"github.com/kkz6/launch-go/internal/config"
 	"github.com/kkz6/launch-go/internal/modules/site/models"
 	sitetypes "github.com/kkz6/launch-go/internal/modules/site/types"
 	basemodels "github.com/kkz6/launch-go/internal/pkg/models"
+	"github.com/kkz6/launch-go/internal/pkg/queue"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 )
 
@@ -52,6 +55,7 @@ func TestDeploymentJobsAbortWhenReleaseCannotBeSaved(t *testing.T) {
 			release := "20261104050000"
 			target := createReleaseDeployment(t, db, "target", &release)
 			deployment := createReleaseDeployment(t, db, "operation", nil)
+			require.NoError(t, db.Model(deployment).Update("status", sitetypes.DeploymentStatusPending).Error)
 			require.NoError(t, db.Callback().Update().Before("gorm:update").Register("reject_release_save", func(tx *gorm.DB) {
 				if tx.Statement.Table == "deployments" {
 					tx.AddError(errors.New("release write failed"))
@@ -81,6 +85,7 @@ func TestRollbackJobUsesRecordedReleaseIncludingRepeatedRollback(t *testing.T) {
 	target := createReleaseDeployment(t, db, "original", &release)
 	for _, id := range []string{"rollback-1", "rollback-2"} {
 		deployment := createReleaseDeployment(t, db, id, nil)
+		require.NoError(t, db.Model(deployment).Update("status", sitetypes.DeploymentStatusPending).Error)
 		job := &RollbackJob{Deps: deps, Payload: RollbackPayload{
 			SiteID: "site-1", DeploymentID: deployment.ID, TargetDeploymentID: target.ID,
 		}}
@@ -100,6 +105,7 @@ func TestRollbackJobDoesNotDispatchWithoutReleaseInformation(t *testing.T) {
 	deps, dispatcher, db := deploymentReleaseJobFixture(t)
 	target := createReleaseDeployment(t, db, "legacy-without-task", nil)
 	deployment := createReleaseDeployment(t, db, "rollback", nil)
+	require.NoError(t, db.Model(deployment).Update("status", sitetypes.DeploymentStatusPending).Error)
 	job := &RollbackJob{Deps: deps, Payload: RollbackPayload{
 		SiteID: "site-1", DeploymentID: deployment.ID, TargetDeploymentID: target.ID,
 	}}
@@ -111,9 +117,15 @@ func deploymentReleaseJobFixture(t *testing.T) (*JobDeps, *taskrunner.FakeDispat
 	t.Helper()
 	ensureSiteTaskTemplates(t)
 	deps, dispatcher, db := restartQueueJobFixture(t)
+	redis := miniredis.RunT(t)
+	client := queue.NewClient(config.RedisConfig{Address: redis.Addr()})
+	deps.Queue = client
+	t.Cleanup(func() { require.NoError(t, client.Close()) })
 	require.NoError(t, db.AutoMigrate(&models.Deployment{}))
 	require.NoError(t, db.Model(&models.Site{}).Where("id = ?", "site-1").Updates(map[string]any{
 		"zero_downtime_deployment": true,
+		"type":                     sitetypes.SiteTypeGeneric,
+		"php_version":              sitetypes.PhpVersion83,
 		"installed_at":             time.Now(),
 	}).Error)
 	return deps, dispatcher, db

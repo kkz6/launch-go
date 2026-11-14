@@ -48,8 +48,9 @@ func TestDeployQueueFailurePreservesFailedAttemptAndAllowsRetry(t *testing.T) {
 
 func TestRollbackQueueFailurePreservesTargetAndAllowsRetry(t *testing.T) {
 	svc, db, site, redis := deploymentDispatchFixture(t)
-	require.NoError(t, db.Model(site).Update("zero_downtime_deployment", true).Error)
+	configureInventoryProbe(t, svc, db, site)
 	target := createDispatchDeployment(t, db, site, sitetypes.DeploymentStatusFinished, time.Now().Add(-time.Hour))
+	require.NoError(t, db.Model(target).Update("release_name", "old").Error)
 	redis.SetError("ERR deployment queue unavailable")
 	result, err := svc.Rollback(context.Background(), site.ID, site.ServerID, site.TeamID, target.ID, site.UserID)
 	require.Error(t, err)

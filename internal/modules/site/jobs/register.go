@@ -36,6 +36,7 @@ func registerHandlers(mux *asynq.ServeMux) {
 	pkgjobs.RegisterTyped(mux, TypeDeploy, NewDeployJob)
 	pkgjobs.RegisterTyped(mux, TypeDeployZeroDowntime, NewDeployZeroDowntimeJob)
 	pkgjobs.RegisterTyped(mux, TypeRollback, NewRollbackJob)
+	pkgjobs.RegisterTyped(mux, TypeRefreshRuntime, NewRefreshRuntimeJob)
 
 	// SSL jobs
 	pkgjobs.RegisterTyped(mux, TypeInstallSSL, NewInstallSSLJob)
