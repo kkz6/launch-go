@@ -316,12 +316,14 @@ func PruneBackupObjects(cfg PruneBackupObjectsConfig) taskrunner.Task {
 // identifies which past snapshot to fetch; the rest is the same
 // authentication info as BackupRunConfig.
 type RestoreBackupConfig struct {
-	RunID         string
-	ContainerName string
-	Engine        dockertypes.DatabaseEngine
-	Username      string
-	Password      string
-	Database      string
+	// SourceDatabase is the immutable namespace captured with the snapshot.
+	SourceDatabase string
+	RunID          string
+	ContainerName  string
+	Engine         dockertypes.DatabaseEngine
+	Username       string
+	Password       string
+	Database       string
 
 	Endpoint  string
 	Region    string
@@ -333,40 +335,40 @@ type RestoreBackupConfig struct {
 	ForcePathStyle bool
 }
 
-// RestoreBackupScript downloads the snapshot from S3 and restores it
-// into the running container.
-//
-// Two ingest flavours:
-//
-//   - **Pipe ingest** (Postgres / MySQL / MariaDB / Mongo): the
-//     decompressed dump is piped into `docker exec -i …` so the
-//     engine's CLI consumes it on stdin. The pipe runs from a
-//     gunzip of the downloaded file.
-//
-//   - **File ingest** (Redis): the engine reads `dump.rdb` at startup,
-//     not from stdin, so we stop the container, copy the decompressed
-//     file in via `docker cp` (which works on stopped containers),
-//     then start it back up. Redis loads the new RDB on boot.
-//
-// Either way, the AWS auth + download stanza is shared.
+// RestoreBackupScript validates and fully decompresses a downloaded snapshot
+// before any database ingestion or Redis shutdown. Client failures can still
+// leave partial changes: archive validation does not make restoration atomic.
 func RestoreBackupScript(cfg RestoreBackupConfig) string {
 	var b strings.Builder
-	b.WriteString("#!/usr/bin/env bash\n")
-	b.WriteString("set -euo pipefail\n\n")
-	fmt.Fprintf(&b, "RUN_ID=%q\n", cfg.RunID)
-	fmt.Fprintf(&b, "CONTAINER=%q\n", cfg.ContainerName)
-	fmt.Fprintf(&b, "OBJECT_KEY=%q\n", cfg.ObjectKey)
-	fmt.Fprintf(&b, "TMP_DIR=/var/lib/launch/restore/${RUN_ID}\n")
-	b.WriteString(`TMP_FILE="${TMP_DIR}/dump.gz"
-TMP_UNZIP="${TMP_DIR}/dump"
-
+	b.WriteString("#!/usr/bin/env bash\nset -euo pipefail\numask 077\n\n")
+	fmt.Fprintf(&b, "CONTAINER=%s\n", shellEscapeArg(cfg.ContainerName))
+	fmt.Fprintf(&b, "OBJECT_KEY=%s\n", shellEscapeArg(cfg.ObjectKey))
+	b.WriteString(`
 if ! command -v launch-agent >/dev/null 2>&1; then
   echo "launch-agent not installed on this server — restores require the Launch agent" >&2
   exit 1
 fi
 
-mkdir -p "${TMP_DIR}"
-trap 'rm -rf "${TMP_DIR}"' EXIT
+mkdir -p /var/lib/launch/restore
+TMP_DIR=$(mktemp -d /var/lib/launch/restore/restore.XXXXXX)
+TMP_FILE="${TMP_DIR}/dump.gz"
+TMP_UNZIP="${TMP_DIR}/dump"
+RESTORE_STARTED=0
+cleanup_restore() {
+  local status=$?
+  trap - EXIT
+  if [ "$status" -ne 0 ]; then
+    echo "::LAUNCH::restore_step::failed" >&2
+    if [ "$RESTORE_STARTED" -eq 1 ]; then
+      echo "Restore failed after ingestion started. The target may contain partial changes; inspect it before retrying." >&2
+    else
+      echo "Restore failed before database ingestion; the target was not changed by this operation." >&2
+    fi
+  fi
+  rm -rf -- "${TMP_DIR}"
+  exit "$status"
+}
+trap cleanup_restore EXIT
 
 echo "::LAUNCH::restore_step::downloading"
 `)
@@ -374,29 +376,32 @@ echo "::LAUNCH::restore_step::downloading"
 	fmt.Fprintf(&b, "export AWS_SECRET_ACCESS_KEY=%s\n", shellEscapeArg(cfg.SecretKey))
 	fmt.Fprintf(&b, "launch-agent download --key \"${OBJECT_KEY}\" --dest \"${TMP_FILE}\"%s\n",
 		launchAgentS3Flags(cfg.Bucket, cfg.Region, cfg.Endpoint, cfg.ForcePathStyle))
-
+	b.WriteString(`
+echo "::LAUNCH::restore_step::validating"
+if [ ! -f "${TMP_FILE}" ] || [ ! -r "${TMP_FILE}" ] || [ ! -s "${TMP_FILE}" ]; then
+  echo "Backup archive is missing, unreadable, or empty." >&2
+  exit 1
+fi
+# Decompress completely before opening the ingest client. This verifies the
+# gzip checksum and catches truncation or insufficient disk space before writes.
+if ! gunzip -c -- "${TMP_FILE}" > "${TMP_UNZIP}"; then
+  echo "Backup archive could not be fully decompressed. Check archive integrity and available disk space." >&2
+  exit 1
+fi
+if [ ! -s "${TMP_UNZIP}" ]; then
+  echo "Backup contains no data; refusing to restore an empty snapshot." >&2
+  exit 1
+fi
+`)
+	if cfg.Engine == dockertypes.DatabaseEngineMongo {
+		b.WriteString(mongoRestorePreflight(cfg))
+	}
 	b.WriteString(`
 echo "::LAUNCH::restore_step::restoring"
+RESTORE_STARTED=1
 `)
-
-	// Redis lives in its own world (file-based, no stdin restore).
-	// Everything else uses the gunzip-into-exec pipeline.
 	if cfg.Engine == dockertypes.DatabaseEngineRedis {
-		// 1. Decompress the dump to a known path on the host.
-		// 2. Stop the container so Redis isn't holding /data/dump.rdb open
-		//    (and won't overwrite it on shutdown via the SAVE-on-exit).
-		// 3. docker cp overwrites the in-volume dump.rdb. Works on a
-		//    stopped container; the file lands in the same /data volume
-		//    Redis was using.
-		// 4. Start the container — Redis reads /data/dump.rdb on boot
-		//    and replays the snapshot into memory.
-		//
-		// The container-name vs. compose-managed concern: we use the
-		// concrete container the row provisioned (`launch-db-<…>`), not
-		// a compose service name. `docker start` on a stopped
-		// non-compose container is a no-frills lifecycle bump.
-		b.WriteString(`gunzip -c "${TMP_FILE}" > "${TMP_UNZIP}"
-echo "stopping ${CONTAINER}…"
+		b.WriteString(`echo "stopping ${CONTAINER}…"
 docker stop "${CONTAINER}" >/dev/null
 echo "copying dump.rdb into ${CONTAINER}…"
 docker cp "${TMP_UNZIP}" "${CONTAINER}:/data/dump.rdb"
@@ -404,26 +409,22 @@ echo "starting ${CONTAINER}…"
 docker start "${CONTAINER}" >/dev/null
 `)
 	} else {
-		ingest := restoreIngestCommand(cfg)
-		b.WriteString("gunzip -c \"${TMP_FILE}\" | ")
-		b.WriteString(ingest)
-		b.WriteString("\n")
+		b.WriteString(restoreIngestCommand(cfg))
+		b.WriteString(" < \"${TMP_UNZIP}\"\n")
 	}
-
 	b.WriteString("echo \"::LAUNCH::restore_step::done\"\n")
 	return b.String()
 }
 
 // restoreIngestCommand returns the per-engine ingest command for the
-// pipe-restore path. Each one reads from stdin (so we can pipe gunzip
-// output straight in) and runs inside the running container via
-// `docker exec -i`. Redis isn't here — it has its own file-based
+// stdin-restore path. Each one reads the completely decompressed file and
+// runs inside the container via `docker exec -i`. Redis has its own file-based
 // restore path inline in RestoreBackupScript.
 func restoreIngestCommand(cfg RestoreBackupConfig) string {
 	switch cfg.Engine {
 	case dockertypes.DatabaseEnginePostgres:
 		return fmt.Sprintf(
-			`docker exec -i -e PGPASSWORD=%s %s psql -U %s -d %s`,
+			`docker exec -i -e PGPASSWORD=%s %s psql -X --set=ON_ERROR_STOP=on -U %s -d %s`,
 			shellEscapeArg(cfg.Password),
 			shellEscapeArg(cfg.ContainerName),
 			shellEscapeArg(cfg.Username),
@@ -438,23 +439,7 @@ func restoreIngestCommand(cfg RestoreBackupConfig) string {
 			shellEscapeArg(cfg.Database),
 		)
 	case dockertypes.DatabaseEngineMongo:
-		// `--nsInclude=<db>.*` (when set) restricts the restore to a
-		// single database — matches the `--db` filter on the backup
-		// side. Without it the archive is replayed in full, which is
-		// the right behaviour when the backup was a full-instance
-		// dump (DatabaseName empty). `--drop` clears existing
-		// collections inside the target scope before reload.
-		nsFilter := ""
-		if cfg.Database != "" {
-			nsFilter = " --nsInclude=" + shellEscapeArg(cfg.Database+".*")
-		}
-		return fmt.Sprintf(
-			`docker exec -i %s mongorestore --username=%s --password=%s --authenticationDatabase=admin%s --archive --drop`,
-			shellEscapeArg(cfg.ContainerName),
-			shellEscapeArg(cfg.Username),
-			shellEscapeArg(cfg.Password),
-			nsFilter,
-		)
+		return mongoRestoreIngestCommand(cfg)
 	default:
 		return fmt.Sprintf(`echo "unsupported engine %s" >&2; exit 1`, cfg.Engine)
 	}

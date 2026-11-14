@@ -478,14 +478,15 @@ type BackupResponse struct {
 
 // BackupRunResponse is one row in the run-history table.
 type BackupRunResponse struct {
-	ID         string     `json:"id"`
-	BackupID   string     `json:"backup_id"`
-	Status     string     `json:"status"`
-	StartedAt  *time.Time `json:"started_at,omitempty"`
-	FinishedAt *time.Time `json:"finished_at,omitempty"`
-	ObjectKey  *string    `json:"object_key,omitempty"`
-	SizeBytes  *int64     `json:"size_bytes,omitempty"`
-	Error      *string    `json:"error,omitempty"`
+	ID             string     `json:"id"`
+	SourceDatabase *string    `json:"source_database,omitempty"`
+	BackupID       string     `json:"backup_id"`
+	Status         string     `json:"status"`
+	StartedAt      *time.Time `json:"started_at,omitempty"`
+	FinishedAt     *time.Time `json:"finished_at,omitempty"`
+	ObjectKey      *string    `json:"object_key,omitempty"`
+	SizeBytes      *int64     `json:"size_bytes,omitempty"`
+	Error          *string    `json:"error,omitempty"`
 	// TaskID drives the live log console: the UI streams the run's
 	// dump/upload output via ServerLogViewer entity="task".
 	TaskID    *string    `json:"task_id,omitempty"`
@@ -514,16 +515,17 @@ func ToBackupResponse(b *models.DatabaseBackup) *BackupResponse {
 // ToBackupRunResponse renders a single backup run.
 func ToBackupRunResponse(r *models.DatabaseBackupRun) *BackupRunResponse {
 	return &BackupRunResponse{
-		ID:         r.ID,
-		BackupID:   r.BackupID,
-		Status:     r.Status,
-		StartedAt:  r.StartedAt,
-		FinishedAt: r.FinishedAt,
-		ObjectKey:  r.ObjectKey,
-		SizeBytes:  r.SizeBytes,
-		Error:      r.Error,
-		TaskID:     r.TaskID,
-		CreatedAt:  r.CreatedAt,
+		ID:             r.ID,
+		SourceDatabase: r.SourceDatabase,
+		BackupID:       r.BackupID,
+		Status:         r.Status,
+		StartedAt:      r.StartedAt,
+		FinishedAt:     r.FinishedAt,
+		ObjectKey:      r.ObjectKey,
+		SizeBytes:      r.SizeBytes,
+		Error:          r.Error,
+		TaskID:         r.TaskID,
+		CreatedAt:      r.CreatedAt,
 	}
 }
 

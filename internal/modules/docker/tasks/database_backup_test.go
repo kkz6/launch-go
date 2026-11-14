@@ -170,16 +170,17 @@ func TestRestoreBackupScript_PerEngineIngest(t *testing.T) {
 	}
 	for _, c := range cases {
 		script := RestoreBackupScript(RestoreBackupConfig{
-			RunID:         "01HZ",
-			ContainerName: "launch-db-x",
-			Engine:        c.engine,
-			Username:      "u",
-			Password:      "p",
-			Database:      "d",
-			Bucket:        "b",
-			ObjectKey:     "acme/2026-01-01/01HZ.sql.gz",
-			AccessKey:     "AK",
-			SecretKey:     "SK",
+			RunID:          "01HZ",
+			ContainerName:  "launch-db-x",
+			Engine:         c.engine,
+			Username:       "u",
+			Password:       "p",
+			Database:       "d",
+			SourceDatabase: "d",
+			Bucket:         "b",
+			ObjectKey:      "acme/2026-01-01/01HZ.sql.gz",
+			AccessKey:      "AK",
+			SecretKey:      "SK",
 		})
 		if !strings.Contains(script, c.expect) {
 			t.Errorf("%s restore script missing %q\n----\n%s", c.engine, c.expect, script)
@@ -236,20 +237,19 @@ func TestRunBackupScript_MongoDump_WithDatabase_AddsDbFlag(t *testing.T) {
 	}
 }
 
-func TestRestoreBackupScript_Mongo_WithDatabase_AddsNsInclude(t *testing.T) {
-	// Restore side mirrors backup side: when the config has a database
-	// override the mongorestore command filters via --nsInclude.
+func TestRestoreBackupScript_Mongo_WithRecordedSource_AddsNsInclude(t *testing.T) {
 	script := RestoreBackupScript(RestoreBackupConfig{
-		RunID:         "01HZ",
-		ContainerName: "launch-db-x",
-		Engine:        dockertypes.DatabaseEngineMongo,
-		Username:      "u",
-		Password:      "p",
-		Database:      "analytics",
-		Bucket:        "b",
-		ObjectKey:     "analytics/2026-01-01/01HZ.bson.gz",
-		AccessKey:     "AK",
-		SecretKey:     "SK",
+		RunID:          "01HZ",
+		ContainerName:  "launch-db-x",
+		Engine:         dockertypes.DatabaseEngineMongo,
+		Username:       "u",
+		Password:       "p",
+		Database:       "analytics",
+		SourceDatabase: "analytics",
+		Bucket:         "b",
+		ObjectKey:      "analytics/2026-01-01/01HZ.bson.gz",
+		AccessKey:      "AK",
+		SecretKey:      "SK",
 	})
 	// shellEscapeArg single-quotes the value because of the dot.
 	// We check substring match either way (with or without quoting)
@@ -281,7 +281,7 @@ func TestRestoreBackupScript_Redis_StopCopyStart(t *testing.T) {
 		`docker stop "${CONTAINER}"`,
 		`docker cp "${TMP_UNZIP}" "${CONTAINER}:/data/dump.rdb"`,
 		`docker start "${CONTAINER}"`,
-		`gunzip -c "${TMP_FILE}" > "${TMP_UNZIP}"`,
+		`gunzip -c -- "${TMP_FILE}" > "${TMP_UNZIP}"`,
 	}
 	for _, want := range mustContain {
 		if !strings.Contains(script, want) {

@@ -3,6 +3,7 @@ package jobs
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -158,6 +159,13 @@ func (j *RunBackupJob) Handle(ctx context.Context) error {
 		j.runID = run.ID
 		j.Payload.RunID = run.ID
 	}
+	sourceDatabase, err := j.captureSourceDatabase(ctx, run, backup.EffectiveDatabaseName(dbCreds.Database))
+	if errors.Is(err, errBackupRunNotRunning) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("record backup source database: %w", err)
+	}
 
 	j.Deps.BroadcastToTeam(j.Payload.TeamID, "docker.database.backup.run.started", map[string]any{
 		"database_id": db.ID,
@@ -178,7 +186,7 @@ func (j *RunBackupJob) Handle(ctx context.Context) error {
 		Engine:         db.Engine,
 		Username:       dbCreds.Username,
 		Password:       dbCreds.Password,
-		Database:       backup.EffectiveDatabaseName(dbCreds.Database),
+		Database:       sourceDatabase,
 		Endpoint:       s3Creds.Endpoint,
 		Region:         s3Creds.Region,
 		Bucket:         s3Creds.Bucket,

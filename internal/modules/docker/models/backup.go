@@ -81,6 +81,9 @@ type DatabaseBackupRun struct {
 	// run; the UI uses it to stream the live dump/upload output
 	// (ServerLogViewer entity="task"). NULL for pre-task-tracking runs.
 	TaskID *string `gorm:"column:task_id;type:char(26);index" json:"task_id,omitempty"`
+	// SourceDatabase records the actual dump namespace before execution.
+	// NULL is legacy/unknown; empty means a full-instance Mongo archive.
+	SourceDatabase *string `gorm:"column:source_database;type:varchar(64)" json:"source_database,omitempty"`
 }
 
 func (DatabaseBackupRun) TableName() string { return "docker_database_backup_runs" }
