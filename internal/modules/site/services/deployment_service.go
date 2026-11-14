@@ -25,12 +25,14 @@ type DeploymentService struct {
 	*BaseService
 	gitReader       contracts.GitReader
 	providerFactory *gitproviders.ProviderFactory
+	releaseProbe    releaseInventoryProbe
 }
 
 // NewDeploymentService creates a new deployment service
 func NewDeploymentService(deps *ServiceDeps) *DeploymentService {
 	return &DeploymentService{
-		BaseService: NewBaseService(deps),
+		BaseService:  NewBaseService(deps),
+		releaseProbe: probeSiteReleases,
 	}
 }
 
@@ -143,13 +145,19 @@ func (s *DeploymentService) Rollback(ctx context.Context, siteID, serverID, team
 	if !site.ZeroDowntimeDeployment {
 		return nil, ErrRollbackNotSupported
 	}
+	if site.Type != sitetypes.SiteTypeStatic && (site.PhpVersion == nil || !site.PhpVersion.IsValid()) {
+		return nil, fiberutil.BadRequest("Select a valid PHP version before rolling back")
+	}
+	if err := ensureSiteConfigurationIdle(site); err != nil {
+		return nil, err
+	}
 
 	targetDeployment, err := s.Repos().Deployment().FindByID(ctx, targetDeploymentID)
 	if err != nil {
 		return nil, err
 	}
 
-	if targetDeployment.SiteID != site.ID {
+	if targetDeployment.SiteID != site.ID || targetDeployment.TeamID != teamID {
 		return nil, ErrDeploymentNotBelongToSite
 	}
 
@@ -166,18 +174,20 @@ func (s *DeploymentService) Rollback(ctx context.Context, siteID, serverID, team
 		return nil, ErrPendingDeployment
 	}
 
-	// Get latest deployment for rollback metadata
-	latestDeployment, err := s.Repos().Deployment().FindLatestBySite(ctx, site.ID)
+	inventory, err := s.ValidateRollbackRelease(ctx, siteID, serverID, teamID, targetDeploymentID)
 	if err != nil {
-		s.LogWarn("Failed to fetch latest deployment for rollback", "siteID", site.ID, "error", err)
+		return nil, err
 	}
 
 	// Create rollback deployment
 	commitData := map[string]any{
 		"rollback_to": targetDeployment.ID,
 	}
-	if latestDeployment != nil {
-		commitData["rollback_from"] = latestDeployment.ID
+	for _, release := range inventory.Releases {
+		if release.Active && len(release.DeploymentIDs) > 0 {
+			commitData["rollback_from"] = release.DeploymentIDs[0]
+			break
+		}
 	}
 
 	for k, v := range targetDeployment.CommitData {

@@ -124,6 +124,8 @@ func deploymentReleaseJobFixture(t *testing.T) (*JobDeps, *taskrunner.FakeDispat
 	require.NoError(t, db.AutoMigrate(&models.Deployment{}))
 	require.NoError(t, db.Model(&models.Site{}).Where("id = ?", "site-1").Updates(map[string]any{
 		"zero_downtime_deployment": true,
+		"type":                     sitetypes.SiteTypeGeneric,
+		"php_version":              sitetypes.PhpVersion83,
 		"installed_at":             time.Now(),
 	}).Error)
 	return deps, dispatcher, db

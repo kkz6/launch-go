@@ -510,6 +510,10 @@ func (s callbackData) NewTask() taskrunner.CallbackHandler {
 // buildStandardScript generates the deployment script for standard deployment
 func buildStandardScript(opts DeployOptions) string {
 	site := opts.Site
+	runtimeScript, err := renderDeploymentRuntime(RuntimeActivationConfig{SitePath: site.Path, SiteType: site.Type, PhpVersion: site.PhpVersion})
+	if err != nil {
+		return runtimeConfigurationFailure(err)
+	}
 	repoDir := fmt.Sprintf("%s/repository", site.Path)
 	logsDir := site.GetLogsDirectory()
 	phpBinary := site.GetPhpBinary()
@@ -556,7 +560,8 @@ func buildStandardScript(opts DeployOptions) string {
 		scriptBuilder.WriteString("echo \"Application already installed!\"\n\n")
 	}
 
-	scriptBuilder.WriteString("echo \"Done!\"\n")
+	scriptBuilder.WriteString(runtimeScript)
+	scriptBuilder.WriteString("\necho \"Done!\"\n")
 
 	return scriptBuilder.String()
 }
@@ -564,6 +569,10 @@ func buildStandardScript(opts DeployOptions) string {
 // buildZeroDowntimeScript generates the deployment script for zero-downtime deployment
 func buildZeroDowntimeScript(opts DeployOptions) string {
 	site := opts.Site
+	runtimeScript, err := renderDeploymentRuntime(RuntimeActivationConfig{SitePath: site.Path, SiteType: site.Type, PhpVersion: site.PhpVersion})
+	if err != nil {
+		return runtimeConfigurationFailure(err)
+	}
 	phpBinary := site.GetPhpBinary()
 
 	// Derive directories from site
@@ -677,6 +686,8 @@ fi
 		ReleaseDirectory: releaseDir,
 		CurrentDirectory: currentDir,
 	}))
+	scriptBuilder.WriteString("\necho 'LAUNCHCTL_RELEASE_SWITCH_COMPLETED'\n")
+	scriptBuilder.WriteString(runtimeScript)
 	scriptBuilder.WriteString("\n")
 
 	if site.HookAfterMakingCurrent != nil && *site.HookAfterMakingCurrent != "" {
@@ -823,23 +834,33 @@ type RollbackDeploymentConfig struct {
 	SitePath         string
 	ReleaseDirectory string
 	CurrentDirectory string
+	Runtime          RuntimeActivationConfig
 }
 
 // RollbackDeployment creates a task to rollback to a previous deployment
 func RollbackDeployment(config RollbackDeploymentConfig) *taskrunner.BaseTask {
+	runtimeScript, err := renderRuntimeActivation(config.Runtime)
+	if err != nil {
+		return taskrunner.NewBaseTask(
+			taskrunner.WithName("Rollback Deployment"),
+			taskrunner.WithScript(runtimeConfigurationFailure(err)),
+		)
+	}
 	script := templates.MustRender("site", "rollback_deployment.sh", struct {
 		SitePath         string
 		ReleaseDirectory string
 		CurrentDirectory string
+		RuntimeScript    string
 	}{
 		SitePath:         config.SitePath,
 		ReleaseDirectory: config.ReleaseDirectory,
 		CurrentDirectory: config.CurrentDirectory,
+		RuntimeScript:    runtimeScript,
 	})
 
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName("Rollback Deployment"),
 		taskrunner.WithScript(withDeploymentLock(config.SitePath, script)),
-		taskrunner.WithTimeoutSeconds(60),
+		taskrunner.WithTimeoutSeconds(90),
 	)
 }

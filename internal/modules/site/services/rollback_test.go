@@ -18,13 +18,9 @@ import (
 func TestRollbackQueueFailureTerminatesDeploymentAndAllowsRetry(t *testing.T) {
 	for _, configured := range []bool{false, true} {
 		t.Run(map[bool]string{false: "missing queue", true: "queue rejected"}[configured], func(t *testing.T) {
-			db := setupWebhookTestDB(t)
-			svc := newTestDeploymentService(db)
-			site := createTestSite(t, db, nil, nil)
-			require.NoError(t, db.Model(site).Update("zero_downtime_deployment", true).Error)
-			target := &models.Deployment{Status: sitetypes.DeploymentStatusFinished}
-			target.SiteID, target.TeamID = site.ID, site.TeamID
-			require.NoError(t, db.Create(target).Error)
+			svc, db, site := inventoryFixture(t)
+			svc.Queue = nil
+			target := inventoryDeployment(t, db, site, "target", "old", sitetypes.DeploymentStatusFinished)
 			redis := miniredis.RunT(t)
 			if configured {
 				svc.Queue = queue.NewClient(config.RedisConfig{Address: redis.Addr()})

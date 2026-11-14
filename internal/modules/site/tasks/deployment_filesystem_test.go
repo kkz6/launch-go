@@ -145,7 +145,7 @@ func TestRollbackPreservesCurrentOnInvalidTarget(t *testing.T) {
 			} else if targetKind == "symlink" {
 				require.NoError(t, os.Symlink(old, target))
 			}
-			script := RollbackDeployment(RollbackDeploymentConfig{SitePath: site.Path, ReleaseDirectory: target, CurrentDirectory: current}).Script()
+			script := RollbackDeployment(RollbackDeploymentConfig{SitePath: site.Path, ReleaseDirectory: target, CurrentDirectory: current, Runtime: RuntimeActivationConfig{SiteType: sitetypes.SiteTypeStatic}}).Script()
 			err := runReleaseScript(t, root, script)
 			want := old
 			if targetKind == "valid" {
@@ -170,7 +170,7 @@ func TestAtomicPromotionRefusesExistingDirectory(t *testing.T) {
 	current := filepath.Join(site.Path, "current")
 	require.NoError(t, os.MkdirAll(current, 0o755))
 	require.NoError(t, os.WriteFile(filepath.Join(current, "sentinel"), []byte("serving"), 0o600))
-	script := RollbackDeployment(RollbackDeploymentConfig{SitePath: site.Path, ReleaseDirectory: target, CurrentDirectory: current}).Script()
+	script := RollbackDeployment(RollbackDeploymentConfig{SitePath: site.Path, ReleaseDirectory: target, CurrentDirectory: current, Runtime: RuntimeActivationConfig{SiteType: sitetypes.SiteTypeStatic}}).Script()
 	require.Error(t, runReleaseScript(t, root, script))
 	contents, err := os.ReadFile(filepath.Join(current, "sentinel"))
 	require.NoError(t, err)
@@ -219,7 +219,7 @@ func TestDeploymentLockRejectsConcurrentDeployAndRollback(t *testing.T) {
 			script := buildZeroDowntimeScript(DeployOptions{Site: site, Deployment: &models.Deployment{}, ReleaseTimestamp: candidateRelease})
 			if operation == "rollback" {
 				createRelease(t, site.Path, candidateRelease)
-				script = RollbackDeployment(RollbackDeploymentConfig{SitePath: site.Path, ReleaseDirectory: target, CurrentDirectory: current}).Script()
+				script = RollbackDeployment(RollbackDeploymentConfig{SitePath: site.Path, ReleaseDirectory: target, CurrentDirectory: current, Runtime: RuntimeActivationConfig{SiteType: sitetypes.SiteTypeStatic}}).Script()
 			}
 			scriptPath := filepath.Join(root, "operation.sh")
 			require.NoError(t, os.WriteFile(scriptPath, []byte(script), 0o600))
@@ -290,7 +290,7 @@ func releaseFixture(t *testing.T) (string, *models.Site) {
 	root := t.TempDir()
 	installed := time.Now()
 	site := &models.Site{
-		Path: filepath.Join(root, "site ' $HOME"), Type: sitetypes.SiteTypeGeneric,
+		Path: filepath.Join(root, "site ' $HOME"), Type: sitetypes.SiteTypeStatic,
 		ZeroDowntimeDeployment: true, DeploymentReleasesRetention: 1,
 	}
 	site.InstalledAt = &installed

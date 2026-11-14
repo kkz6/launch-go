@@ -23,6 +23,23 @@ func NewDeploymentHandler(deploymentService *services.DeploymentService) *Deploy
 	return &DeploymentHandler{deploymentService: deploymentService}
 }
 
+// Releases reports live release state without starting a deployment task.
+func (h *DeploymentHandler) Releases(c *fiber.Ctx) error {
+	serverID, siteID, err := fiberctx.GetServerAndSiteID(c)
+	if err != nil {
+		return err
+	}
+	teamID, err := fiberctx.MustGetTeamID(c)
+	if err != nil {
+		return err
+	}
+	inventory, err := h.deploymentService.ReleaseInventory(c.Context(), siteID, serverID, teamID)
+	if err != nil {
+		return err
+	}
+	return fiberctx.OK(c, "Releases retrieved", inventory)
+}
+
 // Deploy triggers a new deployment and returns the new deployment DTO.
 // Action with returned payload — does not fit ActionDoubleNested.
 func (h *DeploymentHandler) Deploy(c *fiber.Ctx) error {

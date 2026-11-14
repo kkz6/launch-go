@@ -137,6 +137,7 @@ func (j *RollbackJob) Handle(ctx context.Context) (handleErr error) {
 		SitePath:         j.site.Path,
 		ReleaseDirectory: releaseDirectory,
 		CurrentDirectory: currentDirectory,
+		Runtime:          tasks.RuntimeActivationConfig{SitePath: j.site.Path, SiteType: j.site.Type, PhpVersion: j.site.PhpVersion},
 	})
 
 	j.Deps.Logger.Info().
