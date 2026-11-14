@@ -15,6 +15,8 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/docker/jobs"
 	"github.com/kkz6/launch-go/internal/modules/docker/models"
 	"github.com/kkz6/launch-go/internal/modules/docker/tasks"
+	dockertypes "github.com/kkz6/launch-go/internal/modules/docker/types"
+	servermodels "github.com/kkz6/launch-go/internal/modules/server/models"
 	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 	pkgservice "github.com/kkz6/launch-go/internal/pkg/service"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
@@ -24,11 +26,15 @@ import (
 type BackupService struct {
 	*BaseService
 	dispatchBackup func(pkgservice.TaskFactory) error
+	restoreTask    func(context.Context, *servermodels.Server, taskrunner.Task) (*taskrunner.SSHCommandResult, error)
 }
 
 func NewBackupService(deps *ServiceDeps) *BackupService {
 	service := &BackupService{BaseService: NewBaseService(deps)}
 	service.dispatchBackup = service.MustDispatch
+	service.restoreTask = func(ctx context.Context, server *servermodels.Server, task taskrunner.Task) (*taskrunner.SSHCommandResult, error) {
+		return dispatchTaskAsRoot(ctx, service.BaseService, server, task)
+	}
 	return service
 }
 
@@ -270,6 +276,16 @@ func (s *BackupService) Restore(
 	if err != nil {
 		return fiberutil.BadRequest("Target database credentials are missing or corrupt")
 	}
+	sourceDatabase := ""
+	if targetDB.Engine == dockertypes.DatabaseEngineMongo {
+		if run.SourceDatabase == nil || *run.SourceDatabase == "" {
+			return fiberutil.BadRequest("This MongoDB snapshot has no recorded source database or covers the full instance. Create a new backup with an explicit database name before restoring.")
+		}
+		sourceDatabase = *run.SourceDatabase
+		if err := tasks.ValidateMongoRestoreDatabases(sourceDatabase, dbCreds.Database); err != nil {
+			return fiberutil.BadRequest(err.Error())
+		}
+	}
 
 	cfg := tasks.RestoreBackupConfig{
 		RunID: run.ID,
@@ -288,24 +304,22 @@ func (s *BackupService) Restore(
 		// EffectiveDatabaseName here, because that would make
 		// `restore prod → staging` try to write into `prod_db`
 		// inside staging, which usually doesn't exist.)
-		Database:  dbCreds.Database,
-		Endpoint:  s3Creds.Endpoint,
-		Region:    s3Creds.Region,
-		Bucket:    s3Creds.Bucket,
-		ObjectKey: *run.ObjectKey,
-		AccessKey: s3Creds.Key,
-		SecretKey: s3Creds.Secret,
+		Database:       dbCreds.Database,
+		SourceDatabase: sourceDatabase,
+		Endpoint:       s3Creds.Endpoint,
+		Region:         s3Creds.Region,
+		Bucket:         s3Creds.Bucket,
+		ObjectKey:      *run.ObjectKey,
+		AccessKey:      s3Creds.Key,
+		SecretKey:      s3Creds.Secret,
 		// Non-AWS S3 (Contabo/MinIO/Wasabi) needs path-style addressing.
 		ForcePathStyle: s3Creds.ForcePathStyle,
 	}
 
 	taskWrapper := tasks.Restore(cfg)
-	result, runErr := dispatchTaskAsRoot(ctx, s.BaseService, server, taskWrapper)
-	if runErr != nil {
-		return fmt.Errorf("restore failed: %w", runErr)
-	}
-	if result != nil && result.ExitCode != 0 {
-		return fmt.Errorf("restore failed: %s", truncate(result.Stdout+result.Stderr, 4000))
+	result, runErr := s.restoreTask(ctx, server, taskWrapper)
+	if err := restoreResultError(result, runErr, cfg); err != nil {
+		return err
 	}
 
 	s.BroadcastToTeam(teamID, "docker.database.backup.restored", map[string]any{
