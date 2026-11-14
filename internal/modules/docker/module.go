@@ -74,13 +74,13 @@ func (m *Module) Repos() *repositories.Registry { return m.repos }
 
 // SetCertificateRepository injects the certificate module's repository
 // so SyncTraefikConfig can resolve PEMs for stored-cert domains.
-// Called once at boot from cmd/api/main.go.
+// Called by the shared API/worker module bootstrap.
 func (m *Module) SetCertificateRepository(r *certrepos.Registry) {
 	m.certRepos = r
 }
 
 // SetProviderFactory injects the git provider factory. Called once
-// at boot from cmd/api/main.go after gitModule is built. Required for
+// by the shared API/worker module bootstrap after gitModule is built. Required for
 // the gha:bootstrap_workflow job — without it, the docker module
 // can't reach the GitHub App to commit workflow files.
 func (m *Module) SetProviderFactory(f *gitproviders.ProviderFactory) {

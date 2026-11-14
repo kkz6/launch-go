@@ -58,9 +58,16 @@ func (j *CreateOnProviderJob) Handle(ctx context.Context) error {
 
 	var credentials map[string]any
 	if j.Payload.ServerProviderID != "" {
+		if j.server.TeamID != j.Payload.TeamID || j.server.ServerProviderID == nil ||
+			*j.server.ServerProviderID != j.Payload.ServerProviderID {
+			return fmt.Errorf("cloud provider connection does not match server")
+		}
 		serverProvider, err := j.Deps.Repos.ServerProvider().FindByID(ctx, j.Payload.ServerProviderID)
 		if err != nil {
 			return fmt.Errorf("failed to find server provider: %w", err)
+		}
+		if !serverProvider.CanProvision(j.server.TeamID, j.server.Provider) {
+			return fmt.Errorf("cloud provider connection is unavailable")
 		}
 		credStr := serverProvider.Credentials.String()
 		if credStr != "" {

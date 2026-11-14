@@ -11,6 +11,7 @@ import (
 	"github.com/hibiken/asynq"
 
 	"github.com/kkz6/launch-go/internal/modules/notification/notifications"
+	"github.com/kkz6/launch-go/internal/modules/site/deployments"
 	siteevents "github.com/kkz6/launch-go/internal/modules/site/events"
 	"github.com/kkz6/launch-go/internal/modules/site/models"
 	sitetypes "github.com/kkz6/launch-go/internal/modules/site/types"
@@ -421,35 +422,13 @@ func (t *deploySiteTask) dispatchAnalyzeLaravelFeatures(cbCtx *taskrunner.Callba
 
 // processNextQueuedDeployment finds and dispatches the next queued deployment
 func (t *deploySiteTask) processNextQueuedDeployment(ctx context.Context, cbCtx *taskrunner.CallbackContext) {
-	var nextDeployment models.Deployment
-	err := cbCtx.DB.Where("site_id = ? AND status = ?", t.callback.SiteID, sitetypes.DeploymentStatusQueued).
-		Order("created_at ASC").
-		First(&nextDeployment).Error
-
-	if err != nil {
-		return
+	dispatcher := deployments.Dispatcher{DB: cbCtx.DB, Broadcaster: cbCtx.GetBroadcaster()}
+	if cbCtx.Queue != nil {
+		dispatcher.Enqueue = cbCtx.Queue.Enqueue
 	}
-
-	// Update status to pending
-	cbCtx.DB.Model(&nextDeployment).Update("status", sitetypes.DeploymentStatusPending)
-
-	// Get site to check zero downtime setting
-	var site models.Site
-	if err := cbCtx.DB.First(&site, "id = ?", t.callback.SiteID).Error; err != nil {
-		return
+	if _, err := dispatcher.AdvanceNext(ctx, t.callback.SiteID); err != nil && cbCtx.Logger != nil {
+		cbCtx.Logger.Error().Err(err).Str("site_id", t.callback.SiteID).Msg("Failed to enqueue next deployment")
 	}
-
-	jobType := "site:deploy"
-	taskID := fmt.Sprintf("deploy:%s", nextDeployment.ID)
-	if site.ZeroDowntimeDeployment {
-		jobType = "site:deploy_zero_downtime"
-		taskID = fmt.Sprintf("deploy_zd:%s", nextDeployment.ID)
-	}
-
-	t.dispatchJob(cbCtx, jobType, map[string]string{
-		"site_id":       t.callback.SiteID,
-		"deployment_id": nextDeployment.ID,
-	}, taskID)
 }
 
 // installPendingQueues installs any queues that were created before the first deployment

@@ -61,15 +61,8 @@ func (j *InstallDatabaseJob) Handle(ctx context.Context) error {
 		Collation:     "utf8mb4_unicode_ci",
 	})
 
-	result, err := j.Deps.RunTask(j.server, task).
-		AsRoot().
-		Dispatch(ctx)
-	if err != nil {
+	if err := j.Deps.runTask(ctx, j.server, task); err != nil {
 		return fmt.Errorf("failed to create database: %w", err)
-	}
-
-	if !result.IsSuccessful() {
-		return fmt.Errorf("failed to create database: %s", result.GetOutput())
 	}
 
 	if err := j.Deps.Repos.Database().MarkAsInstalled(ctx, j.database.ID); err != nil {

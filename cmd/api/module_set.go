@@ -1,21 +1,13 @@
 package main
 
 import (
+	"github.com/kkz6/launch-go/internal/bootstrap/modules"
 	"github.com/kkz6/launch-go/internal/modules/auth"
-	"github.com/kkz6/launch-go/internal/modules/backup"
 	"github.com/kkz6/launch-go/internal/modules/billing"
-	"github.com/kkz6/launch-go/internal/modules/certificate"
 	"github.com/kkz6/launch-go/internal/modules/dashboard"
-	databasemodule "github.com/kkz6/launch-go/internal/modules/database"
 	"github.com/kkz6/launch-go/internal/modules/dns"
-	"github.com/kkz6/launch-go/internal/modules/docker"
-	"github.com/kkz6/launch-go/internal/modules/git"
 	"github.com/kkz6/launch-go/internal/modules/notification"
 	"github.com/kkz6/launch-go/internal/modules/notification/channels"
-	"github.com/kkz6/launch-go/internal/modules/platform"
-	"github.com/kkz6/launch-go/internal/modules/script"
-	"github.com/kkz6/launch-go/internal/modules/server"
-	"github.com/kkz6/launch-go/internal/modules/site"
 	"github.com/kkz6/launch-go/internal/modules/staff"
 	wsmodule "github.com/kkz6/launch-go/internal/modules/websocket"
 	"github.com/kkz6/launch-go/internal/pkg/app"
@@ -23,19 +15,11 @@ import (
 )
 
 type moduleSet struct {
+	modules.Workloads
 	auth         *auth.Module
-	server       *server.Module
-	database     *databasemodule.Module
-	docker       *docker.Module
-	site         *site.Module
 	dns          *dns.Module
-	backup       *backup.Module
-	certificate  *certificate.Module
 	billing      *billing.Module
-	git          *git.Module
 	notification *notification.Module
-	script       *script.Module
-	platform     *platform.Module
 	dashboard    *dashboard.Module
 	staff        *staff.Module
 	websocket    *wsmodule.Module
@@ -57,22 +41,14 @@ func (a *Application) newModules() moduleSet {
 	}
 
 	return moduleSet{
+		Workloads:    modules.NewWorkloads(builder),
 		auth:         authModule,
-		server:       server.NewModule(builder),
-		database:     databasemodule.NewModule(builder),
-		docker:       docker.NewModule(builder),
-		site:         site.NewModule(builder),
 		dns:          dns.NewModule(builder),
-		backup:       backup.NewModule(builder),
-		certificate:  certificate.NewModule(builder),
 		billing:      billing.NewModule(builder),
-		git:          git.NewModule(builder),
 		notification: notificationModule,
-		script:       script.NewModule(builder),
-		platform:     platform.NewModule(builder),
 		dashboard:    dashboard.NewModule(builder),
 		staff:        staff.NewModule(builder),
-		websocket:    wsmodule.NewModule(builder, a.wsHub),
+		websocket:    wsmodule.NewModule(builder, a.wsHub, authModule.Gate()),
 		emailSender:  emailSender,
 	}
 }
@@ -92,18 +68,18 @@ func (a *Application) newModuleBuilder() *app.Builder {
 func (m moduleSet) register(kernel *app.Kernel) {
 	for _, module := range []app.Module{
 		m.auth,
-		m.server,
-		m.database,
-		m.docker,
-		m.site,
+		m.Server,
+		m.Database,
+		m.Docker,
+		m.Site,
 		m.dns,
-		m.backup,
-		m.certificate,
+		m.Backup,
+		m.Certificate,
 		m.billing,
-		m.git,
+		m.Git,
 		m.notification,
-		m.script,
-		m.platform,
+		m.Script,
+		m.Platform,
 		m.dashboard,
 		m.staff,
 		m.websocket,

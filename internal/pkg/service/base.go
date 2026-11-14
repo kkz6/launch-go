@@ -72,12 +72,6 @@ func NewBase(deps Dependencies) Base {
 	return b
 }
 
-// NewBaseFromDeps is an alias for NewBase for backwards compatibility.
-// Deprecated: Use NewBase directly.
-func NewBaseFromDeps(deps Dependencies) Base {
-	return NewBase(deps)
-}
-
 // EnqueueTask enqueues a task to the default queue
 func (s *Base) EnqueueTask(task *asynq.Task) error {
 	if s.Queue == nil {

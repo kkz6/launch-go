@@ -19,7 +19,7 @@ func TestModuleRegistersWebSocketRoutesAndShutsDown(t *testing.T) {
 		Config: &config.Config{},
 		Logger: &logger,
 	})
-	module := NewModule(builder, hub)
+	module := NewModule(builder, hub, nil)
 
 	require.Equal(t, ModuleName, module.Name())
 	require.Same(t, hub, module.Hub())

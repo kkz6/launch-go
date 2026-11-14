@@ -9,6 +9,7 @@ import (
 	servermodels "github.com/kkz6/launch-go/internal/modules/server/models"
 	serverrepos "github.com/kkz6/launch-go/internal/modules/server/repositories"
 	servertasks "github.com/kkz6/launch-go/internal/modules/server/tasks"
+	"github.com/kkz6/launch-go/internal/modules/site/deployments"
 	"github.com/kkz6/launch-go/internal/modules/site/repositories"
 	"github.com/kkz6/launch-go/internal/pkg/app"
 	"github.com/kkz6/launch-go/internal/pkg/broadcast"
@@ -26,6 +27,14 @@ type JobDeps struct {
 	ProviderFactory   *gitproviders.ProviderFactory
 	FrontendURL       string
 	TaskRunnerDeps    *servertasks.TaskRunnerDeps
+}
+
+func (d *JobDeps) DeploymentDispatcher() deployments.Dispatcher {
+	dispatcher := deployments.Dispatcher{DB: d.DB, Broadcaster: d.Broadcaster}
+	if d.Queue != nil {
+		dispatcher.Enqueue = d.Queue.Enqueue
+	}
+	return dispatcher
 }
 
 // NewJobDeps creates a new JobDeps from app dependencies.

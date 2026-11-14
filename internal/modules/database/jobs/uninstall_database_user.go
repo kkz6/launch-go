@@ -3,6 +3,7 @@ package jobs
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/hibiken/asynq"
 
@@ -59,24 +60,15 @@ func (j *UninstallDatabaseUserJob) Handle(ctx context.Context) error {
 		Hosts:         []string{"%"},
 	})
 
-	result, err := j.Deps.RunTask(j.server, task).
-		AsRoot().
-		Dispatch(ctx)
-	if err != nil {
+	if err := j.Deps.runTask(ctx, j.server, task); err != nil {
 		return fmt.Errorf("failed to drop database user: %w", err)
 	}
-
-	if !result.IsSuccessful() {
-		j.Deps.Logger.Info().
-			Str("output", result.GetOutput()).
-			Msg("Database user drop completed with errors")
-	}
-
-	activity.RecordWithLogPtr(ctx, "database", "uninstalled", j.Payload.CallerID, j.dbUser, "Database user was uninstalled")
 
 	if err := j.Deps.Repos.User().Delete(ctx, j.dbUser.ID); err != nil {
 		return fmt.Errorf("failed to delete database user record: %w", err)
 	}
+
+	activity.RecordWithLogPtr(ctx, "database", "uninstalled", j.Payload.CallerID, j.dbUser, "Database user was uninstalled")
 
 	j.Deps.BroadcastUserProgress(j.server, "database_user.progress", j.Payload.DatabaseUserID, "deleted", fmt.Sprintf("Database user %s deleted successfully", j.dbUser.Name))
 
@@ -88,12 +80,22 @@ func (j *UninstallDatabaseUserJob) Failed(ctx context.Context, err error) {
 		Str("database_user_id", j.Payload.DatabaseUserID).
 		Msg("Failed to uninstall database user")
 
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
+
 	if j.dbUser == nil {
 		dbUser, findErr := j.Deps.Repos.User().FindByID(ctx, j.Payload.DatabaseUserID)
 		if findErr != nil {
 			return
 		}
 		j.dbUser = dbUser
+	}
+
+	if markErr := j.Deps.Repos.User().MarkUninstallationFailed(ctx, j.Payload.DatabaseUserID); markErr != nil {
+		j.Deps.Logger.Error().Err(markErr).
+			Str("database_user_id", j.Payload.DatabaseUserID).
+			Msg("Failed to mark database user uninstallation as failed")
+		return
 	}
 
 	if j.server == nil {

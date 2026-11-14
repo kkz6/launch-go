@@ -53,11 +53,17 @@ func (s *TeamService) CreateTeam(ctx context.Context, userID string, req *dto.Cr
 
 		// Add owner as team member
 		ownerRole := authtypes.TeamRoleOwner.String()
-		return tx.Create(&models.TeamMember{
+		if err := tx.Create(&models.TeamMember{
 			TeamID: team.ID,
 			UserID: userID,
 			Role:   &ownerRole,
-		}).Error
+		}).Error; err != nil {
+			return err
+		}
+
+		return tx.Model(&models.User{}).
+			Where("id = ? AND current_team_id IS NULL", userID).
+			Update("current_team_id", team.ID).Error
 	})
 	if err != nil {
 		return nil, err

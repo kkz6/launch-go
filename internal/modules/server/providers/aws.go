@@ -23,9 +23,7 @@ import (
 // SSM Parameter Store names that resolve to "the current Ubuntu AMI" in any
 // region. These are the recommended way to reference Ubuntu AMIs on AWS:
 // Canonical updates them every time they publish a patched image, so callers
-// always get the current AMI rather than a frozen ID that drifts within
-// days. We keep the static fallback map in config/options.go for now but
-// any new AWS image resolution should go through these parameters.
+// always get the current AMI rather than a fixed ID that can be retired.
 //
 // API docs:
 //
@@ -33,7 +31,7 @@ import (
 //	https://ubuntu.com/blog/finding-ubuntu-images-on-aws
 var AWSSSMParameterByOS = map[string]string{
 	"ubuntu_24": "/aws/service/canonical/ubuntu/server/24.04/stable/current/amd64/hvm/ebs-gp3/ami-id",
-	"ubuntu_22": "/aws/service/canonical/ubuntu/server/22.04/stable/current/amd64/hvm/ebs-gp3/ami-id",
+	"ubuntu_22": "/aws/service/canonical/ubuntu/server/22.04/stable/current/amd64/hvm/ebs-gp2/ami-id",
 }
 
 // defaultAWSValidationRegion is used for STS GetCallerIdentity when the
@@ -119,23 +117,7 @@ var validateAWSCredentials = func(ctx context.Context, accessKey, secretKey, reg
 
 // Create creates a new server on AWS
 func (p *AWSProvider) Create(ctx context.Context, server *models.Server, credentials map[string]interface{}) (*CreateResult, error) {
-	keyPair, err := p.GenerateKeyPair()
-	if err != nil {
-		return nil, fmt.Errorf("failed to generate key pair: %w", err)
-	}
-
-	providerData := GetProviderData(server.ProviderData)
-	region := GetStringField(providerData, "region", "")
-
-	// AWS EC2 creation would use AWS SDK
-	// This is a placeholder implementation
-	return &CreateResult{
-		PublicKey:  keyPair.PublicKey,
-		PrivateKey: keyPair.PrivateKey,
-		ProviderData: map[string]interface{}{
-			"region": region,
-		},
-	}, nil
+	return nil, fmt.Errorf("AWS EC2 provisioning is not supported")
 }
 
 // Delete deletes a server from AWS
@@ -150,38 +132,10 @@ func (p *AWSProvider) GetPublicIPv4(ctx context.Context, server *models.Server, 
 	return "", nil
 }
 
-// GetImage returns the AMI ID for an operating system and region
-func (p *AWSProvider) GetImage(os types.OperatingSystem) string {
-	// For AWS, we need region-specific AMIs
-	// This returns a default; actual usage should call GetImageForRegion
-	return ""
-}
+// GetImage is empty because AWS provisioning is unavailable.
+func (p *AWSProvider) GetImage(os types.OperatingSystem) string { return "" }
 
-// GetImageForRegion returns the AMI ID for an operating system in a specific region
-func (p *AWSProvider) GetImageForRegion(os types.OperatingSystem, region string) string {
-	return config.GetAWSImageForRegion(region, os.String())
-}
-
-// LookupImage verifies that an image identifier resolves to a live AMI in
-// the given region. Three cases:
-//
-//  1. The identifier starts with "/aws/service/" — it's an SSM Parameter
-//     Store name (the recommended form). Resolve it via SSM GetParameter,
-//     then DescribeImages on the resolved AMI to confirm it still exists.
-//  2. The identifier starts with "ami-" — it's a static AMI ID from the
-//     legacy options.go map. DescribeImages directly.
-//  3. Anything else — invalid.
-//
-// The legacy static AMI map is the exact failure mode we're trying to
-// detect: Canonical deregisters older patched images regularly, so an
-// AMI ID that worked last week may be gone today. The SSM parameter form
-// avoids the problem entirely (always resolves to the current published
-// image) but callers still using the static IDs need this verification.
-//
-// `region` defaults to defaultAWSValidationRegion when empty since the
-// SSM parameter we use is region-replicated and any region will resolve
-// it; the resolved AMI is regional though, so the same region must be
-// used for DescribeImages.
+// LookupImage verifies a Canonical SSM parameter or AMI ID in the credential region.
 func (p *AWSProvider) LookupImage(ctx context.Context, creds map[string]interface{}, identifier string) error {
 	accessKey := GetStringField(creds, "access_key", "")
 	secretKey := GetStringField(creds, "secret_key", "")
@@ -210,64 +164,27 @@ func (p *AWSProvider) LookupImage(ctx context.Context, creds map[string]interfac
 		if err != nil {
 			return fmt.Errorf("resolve SSM parameter %q: %w", identifier, err)
 		}
-		if out.Parameter == nil || out.Parameter.Value == nil || *out.Parameter.Value == "" {
-			return fmt.Errorf("SSM parameter %q returned empty value", identifier)
+		if out.Parameter == nil || out.Parameter.Value == nil || !strings.HasPrefix(*out.Parameter.Value, "ami-") {
+			return fmt.Errorf("SSM parameter %q did not return an AMI ID", identifier)
 		}
 		amiID = *out.Parameter.Value
 	} else if !strings.HasPrefix(identifier, "ami-") {
 		return fmt.Errorf("identifier %q is neither an SSM parameter (/aws/service/…) nor an AMI ID (ami-…)", identifier)
 	}
 
-	// Confirm the AMI itself is still served. DescribeImages with a single
-	// owner-restricted ImageId returns the record on success, "InvalidAMIID.NotFound"
-	// when the AMI has been deregistered.
+	// Check that the AMI is available from Canonical in this region.
 	ec2Client := ec2.NewFromConfig(cfg)
 	out, err := ec2Client.DescribeImages(ctx, &ec2.DescribeImagesInput{
 		ImageIds: []string{amiID},
+		Owners:   []string{"099720109477"},
 	})
 	if err != nil {
 		return fmt.Errorf("DescribeImages %q in %s: %w", amiID, region, err)
 	}
-	if len(out.Images) == 0 {
-		return fmt.Errorf("AMI %q not found in region %s", amiID, region)
+	if len(out.Images) != 1 || out.Images[0].State != "available" || out.Images[0].Architecture != "x86_64" {
+		return fmt.Errorf("AMI %q is not an available x86_64 Canonical image in %s", amiID, region)
 	}
 	return nil
-}
-
-// ResolveSSMImage returns the current AMI ID for one of our OS keys by
-// asking SSM Parameter Store. Returns "" + error if the OS isn't mapped
-// to an SSM parameter (yet) or the parameter fetch fails. Callers that
-// want a never-fail path can chain to GetImageForRegion for the legacy
-// static map as a fallback.
-func (p *AWSProvider) ResolveSSMImage(ctx context.Context, creds map[string]interface{}, osKey string) (string, error) {
-	param, ok := AWSSSMParameterByOS[osKey]
-	if !ok {
-		return "", fmt.Errorf("no SSM parameter mapped for OS %q", osKey)
-	}
-	accessKey := GetStringField(creds, "access_key", "")
-	secretKey := GetStringField(creds, "secret_key", "")
-	region := GetStringField(creds, "region", defaultAWSValidationRegion)
-	if accessKey == "" || secretKey == "" {
-		return "", ErrInvalidCredentials
-	}
-	cfg, err := awsconfig.LoadDefaultConfig(ctx,
-		awsconfig.WithRegion(region),
-		awsconfig.WithCredentialsProvider(
-			credentials.NewStaticCredentialsProvider(accessKey, secretKey, ""),
-		),
-	)
-	if err != nil {
-		return "", fmt.Errorf("load AWS config: %w", err)
-	}
-	client := ssm.NewFromConfig(cfg)
-	out, err := client.GetParameter(ctx, &ssm.GetParameterInput{Name: &param})
-	if err != nil {
-		return "", fmt.Errorf("resolve SSM parameter %q: %w", param, err)
-	}
-	if out.Parameter == nil || out.Parameter.Value == nil {
-		return "", fmt.Errorf("SSM parameter %q has no value", param)
-	}
-	return *out.Parameter.Value, nil
 }
 
 // CredentialRules returns validation rules

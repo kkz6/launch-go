@@ -537,8 +537,8 @@ func (j *RunManualBackupJob) loadS3Creds(ctx context.Context) (models.S3Credenti
 }
 
 func joinPath(backupPath, providerPath string) string {
-	a := trimSlash(providerPath)
-	b := trimSlash(backupPath)
+	a := strings.Trim(providerPath, "/")
+	b := strings.Trim(backupPath, "/")
 	switch {
 	case a != "" && b != "":
 		return a + "/" + b
@@ -547,17 +547,6 @@ func joinPath(backupPath, providerPath string) string {
 	default:
 		return b
 	}
-}
-
-func trimSlash(s string) string {
-	for len(s) > 0 && (s[0] == '/' || s[len(s)-1] == '/') {
-		if s[0] == '/' {
-			s = s[1:]
-		} else {
-			s = s[:len(s)-1]
-		}
-	}
-	return s
 }
 
 func truncate(s string, n int) string {

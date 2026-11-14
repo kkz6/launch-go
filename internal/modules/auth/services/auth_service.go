@@ -114,9 +114,10 @@ func (s *AuthService) Register(ctx context.Context, req *dto.RegisterRequest) (*
 			}
 		}
 
-		// Create personal team if requested and not joining via invitation
-		if req.CreatePersonalTeam && (req.InvitationID == nil || *req.InvitationID == "") {
-			if err := s.createPersonalTeam(ctx, tx, user); err != nil {
+		// A signup needs a current team for workspace and billing requests.
+		// A successful team invitation already supplies one.
+		if user.CurrentTeamID == nil {
+			if err := s.createPersonalTeam(tx, user); err != nil {
 				return err
 			}
 		}
@@ -153,7 +154,8 @@ func (s *AuthService) consumePlatformInvite(ctx context.Context, req *dto.Regist
 	// A platform invite grants a trial on the user's personal team. If no
 	// personal team was created (e.g. joined via a team invitation), there is
 	// nothing to attach the trial to.
-	if user.CurrentTeamID == nil {
+	if user.CurrentTeamID == nil || user.CurrentTeam == nil ||
+		!user.CurrentTeam.PersonalTeam || user.CurrentTeam.UserID != user.ID {
 		return
 	}
 
@@ -426,14 +428,11 @@ func (s *AuthService) handleInvitation(ctx context.Context, tx *gorm.DB, user *m
 	}
 
 	if invitation == nil {
-		// Invitation not found — not a hard error, just skip
-		s.logger.Warn().Str("invitation_id", invitationID).Msg("Invitation not found during registration")
-		return nil
+		return fiberutil.NotFound()
 	}
 
 	if invitation.Email != user.Email {
-		// Invitation is for a different email — skip silently
-		return nil
+		return fiberutil.Forbidden()
 	}
 
 	// Add user to team
@@ -456,6 +455,7 @@ func (s *AuthService) handleInvitation(ctx context.Context, tx *gorm.DB, user *m
 	}
 
 	user.CurrentTeamID = &invitation.TeamID
+	user.CurrentTeam = invitation.Team
 
 	// Delete invitation
 	if err := tx.Delete(invitation).Error; err != nil {
@@ -494,7 +494,6 @@ func (s *AuthService) AcceptTeamInvitation(
 			Password:             password,
 			PasswordConfirmation: password,
 			InvitationID:         &invitationToken,
-			CreatePersonalTeam:   false,
 			IPAddress:            ip,
 			UserAgent:            userAgent,
 		})
@@ -504,10 +503,12 @@ func (s *AuthService) AcceptTeamInvitation(
 	}
 
 	s.invalidateInvitationMembership(ctx, result.User.ID, invitation.TeamID)
+	if s.membershipCache != nil {
+		if role, err := s.membershipCache.GetRole(ctx, result.User.ID, invitation.TeamID); err == nil && role != "" {
+			result.User.Role = &role
+		}
+	}
 	if invitation.Team != nil {
-		team := dto.ToTeamResponse(*invitation.Team)
-		result.User.CurrentTeam = &team
-		result.User.CurrentTeamID = &invitation.TeamID
 		activity.RecordWithLog(ctx, "auth", "joined", result.User.ID, invitation.Team, "Team invitation was accepted")
 	}
 	return result, nil
@@ -571,9 +572,14 @@ func (s *AuthService) invalidateInvitationMembership(ctx context.Context, userID
 }
 
 // createPersonalTeam creates a personal team for a new user
-func (s *AuthService) createPersonalTeam(_ context.Context, tx *gorm.DB, user *models.User) error {
+func (s *AuthService) createPersonalTeam(tx *gorm.DB, user *models.User) error {
+	const suffix = "'s Team"
+	name := []rune(user.Name)
+	if len(name) > 255-len(suffix) {
+		name = name[:255-len(suffix)]
+	}
 	team := &models.Team{
-		Name:         user.Name + "'s Team",
+		Name:         string(name) + suffix,
 		UserID:       user.ID,
 		PersonalTeam: true,
 	}

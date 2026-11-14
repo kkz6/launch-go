@@ -52,12 +52,7 @@ func (j *ValidateProviderImagesJob) Handle(ctx context.Context) error {
 	factory := providers.NewFactory(sshkey.NewGenerator())
 	configs := config.GetProviderConfigs()
 
-	// Track results per provider-type so we only report each unique
-	// (provider, image) failure once per run even if multiple accounts
-	// surface the same broken slug. Carry team_id alongside so we can
-	// route notifications to the team owners whose server_providers
-	// row was actually affected (different teams may have credentials
-	// for the same provider; only the teams hitting failures get paged).
+	// Keep findings scoped to the team whose connection was checked.
 	type failure struct {
 		TeamID   string
 		Provider string
@@ -66,6 +61,7 @@ func (j *ValidateProviderImagesJob) Handle(ctx context.Context) error {
 		Reason   string
 	}
 	var failures []failure
+	checked := 0
 
 	for i := range rows {
 		row := &rows[i]
@@ -98,7 +94,7 @@ func (j *ValidateProviderImagesJob) Handle(ctx context.Context) error {
 				Err(err).
 				Str("provider", row.Provider.String()).
 				Str("server_provider_id", row.ID).
-				Msg("validate_provider_images: provider credentials no longer valid")
+				Msg("validate_provider_images: provider connection could not be verified")
 			continue
 		}
 
@@ -106,7 +102,8 @@ func (j *ValidateProviderImagesJob) Handle(ctx context.Context) error {
 		if row.TeamID != nil {
 			teamID = *row.TeamID
 		}
-		for _, f := range checkProviderImages(ctx, provider, cfg, creds) {
+		checked++
+		for _, f := range providers.ValidateImages(ctx, provider, cfg, creds) {
 			failures = append(failures, failure{
 				TeamID:   teamID,
 				Provider: row.Provider.String(),
@@ -117,10 +114,18 @@ func (j *ValidateProviderImagesJob) Handle(ctx context.Context) error {
 		}
 	}
 
+	if checked != len(rows) {
+		j.Deps.Logger.Warn().
+			Int("providers_checked", checked).
+			Int("providers_skipped", len(rows)-checked).
+			Msg("validate_provider_images: provider coverage incomplete")
+	}
 	if len(failures) == 0 {
-		j.Deps.Logger.Info().
-			Int("providers_checked", len(rows)).
-			Msg("validate_provider_images: all configured images verified")
+		if checked == len(rows) {
+			j.Deps.Logger.Info().
+				Int("providers_checked", checked).
+				Msg("validate_provider_images: all configured images verified")
+		}
 		return nil
 	}
 
@@ -132,7 +137,7 @@ func (j *ValidateProviderImagesJob) Handle(ctx context.Context) error {
 			Str("os", f.OS).
 			Str("image", f.Image).
 			Str("reason", f.Reason).
-			Msg("validate_provider_images: configured image no longer usable")
+			Msg("validate_provider_images: configured image could not be verified")
 	}
 
 	body, _ := json.Marshal(failures)
@@ -140,7 +145,7 @@ func (j *ValidateProviderImagesJob) Handle(ctx context.Context) error {
 		scope.SetLevel(sentry.LevelWarning)
 		scope.SetTag("alert", "stale_provider_images")
 		scope.SetExtra("failures", string(body))
-		sentry.CaptureMessage(fmt.Sprintf("Provider image validation failed: %d configured images no longer available", len(failures)))
+		sentry.CaptureMessage(fmt.Sprintf("Provider image validation failed: %d configured image checks did not pass", len(failures)))
 	})
 
 	// Group findings by team so each owner gets one notification
@@ -186,132 +191,6 @@ func (j *ValidateProviderImagesJob) Failed(ctx context.Context, err error) {
 	j.Deps.Logger.Error().Err(err).Msg("validate_provider_images job failed")
 }
 
-// imageFailure describes one configured image that the upstream rejected.
-type imageFailure struct {
-	OS     string
-	Image  string
-	Reason string
-}
-
-// imageLookup is the live-verification subset of the Provider interface.
-// Each provider implementation that can validate an image against its
-// upstream API satisfies this. checkProviderImages branches on it so we
-// don't have to switch on provider.Type() for every new provider that
-// gains a LookupImage method.
-type imageLookup interface {
-	LookupImage(ctx context.Context, credentials map[string]any, image string) error
-}
-
-// checkProviderImages verifies each provider's configured images against
-// the upstream API. Providers that implement imageLookup get a real
-// per-image check; the rest fall through to the "looks like an unstable
-// numeric ID" static signal so we still know to manually review.
-//
-// AWS is a special case: its config.Images map is region->{os->ami_id}
-// (and the static AMI IDs drift weekly as Canonical publishes patches),
-// so we resolve through SSM Parameter Store instead. The legacy static
-// map is still checked as a defence-in-depth so a region we haven't yet
-// migrated to SSM gets the same alerting.
-func checkProviderImages(
-	ctx context.Context,
-	provider providers.Provider,
-	cfg config.ProviderConfig,
-	creds map[string]any,
-) []imageFailure {
-	var failures []imageFailure
-
-	// AWS has the region->os->ami nested-map shape and SSM-parameter
-	// resolution that doesn't fit the simple imageLookup contract.
-	if aws, ok := provider.(*providers.AWSProvider); ok {
-		return checkAWSImages(ctx, aws, cfg, creds)
-	}
-
-	if lookuper, ok := provider.(imageLookup); ok {
-		for osKey, raw := range cfg.Images {
-			img, _ := raw.(string)
-			if err := lookuper.LookupImage(ctx, creds, img); err != nil {
-				failures = append(failures, imageFailure{OS: osKey, Image: img, Reason: err.Error()})
-			}
-		}
-		return failures
-	}
-
-	// No LookupImage available — flag numeric-shape IDs for review.
-	for osKey, raw := range cfg.Images {
-		img, _ := raw.(string)
-		if isAllDigits(img) {
-			failures = append(failures, imageFailure{
-				OS:     osKey,
-				Image:  img,
-				Reason: "image is a numeric ID; recommend periodic manual review (provider has no API to verify without a lookup helper)",
-			})
-		}
-	}
-	return failures
-}
-
-// checkAWSImages handles AWS's region->{os->ami} shape. For each
-// configured OS, it first tries the SSM parameter (the canonical Ubuntu
-// "always-current AMI" pointer) — if Canonical removes a release, that
-// fails loudly. As defence-in-depth, it also verifies the static AMI
-// IDs in each region; those drift week-over-week, so any deregistered
-// AMI in any region surfaces here before a customer hits it during a
-// provision in that region.
-func checkAWSImages(
-	ctx context.Context,
-	aws *providers.AWSProvider,
-	cfg config.ProviderConfig,
-	creds map[string]any,
-) []imageFailure {
-	var failures []imageFailure
-
-	// Pass 1: resolve each OS through its SSM parameter.
-	for osKey := range providers.AWSSSMParameterByOS {
-		if _, err := aws.ResolveSSMImage(ctx, creds, osKey); err != nil {
-			failures = append(failures, imageFailure{
-				OS:     osKey,
-				Image:  providers.AWSSSMParameterByOS[osKey],
-				Reason: err.Error(),
-			})
-		}
-	}
-
-	// Pass 2: validate the static AMI map's IDs region-by-region.
-	// cfg.Images for AWS is map[region]map[osKey]amiID. We're tolerant
-	// of mixed shapes (raw could be a string OR a map) since the same
-	// validation framework runs against other providers' flat maps.
-	for region, raw := range cfg.Images {
-		osMap, ok := raw.(map[string]string)
-		if !ok {
-			continue
-		}
-		credsForRegion := cloneCreds(creds)
-		credsForRegion["region"] = region
-		for osKey, amiID := range osMap {
-			if err := aws.LookupImage(ctx, credsForRegion, amiID); err != nil {
-				failures = append(failures, imageFailure{
-					OS:     osKey + " (" + region + ")",
-					Image:  amiID,
-					Reason: err.Error(),
-				})
-			}
-		}
-	}
-
-	return failures
-}
-
-// cloneCreds returns a shallow copy of the credentials map with a
-// patched region field so the AWS provider hits the right regional
-// endpoint without us mutating the caller's map.
-func cloneCreds(in map[string]any) map[string]any {
-	out := make(map[string]any, len(in)+1)
-	for k, v := range in {
-		out[k] = v
-	}
-	return out
-}
-
 func decryptCredentials(row *models.ServerProvider) (map[string]any, error) {
 	raw := row.Credentials.String()
 	if raw == "" {
@@ -322,18 +201,6 @@ func decryptCredentials(row *models.ServerProvider) (map[string]any, error) {
 		return nil, fmt.Errorf("credentials not valid JSON (encryption key mismatch?): %w", err)
 	}
 	return creds, nil
-}
-
-func isAllDigits(s string) bool {
-	if s == "" {
-		return false
-	}
-	for _, r := range s {
-		if r < '0' || r > '9' {
-			return false
-		}
-	}
-	return true
 }
 
 // NewValidateProviderImagesTask creates an asynq task — used by the scheduler

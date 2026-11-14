@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -11,14 +12,11 @@ import (
 
 	"github.com/gofiber/contrib/websocket"
 	"github.com/gofiber/fiber/v2"
-	"github.com/rs/zerolog"
 	"golang.org/x/crypto/ssh"
-	"gorm.io/gorm"
 
 	"github.com/kkz6/launch-go/internal/config"
 	serverModels "github.com/kkz6/launch-go/internal/modules/server/models"
 	siteModels "github.com/kkz6/launch-go/internal/modules/site/models"
-	launchcache "github.com/kkz6/launch-go/internal/pkg/launch/cache"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 )
 
@@ -48,12 +46,6 @@ func NewTerminalHandler(base Base) *TerminalHandler {
 	return &TerminalHandler{
 		Base: base.WithComponent("terminal"),
 	}
-}
-
-// NewTerminalHandlerWithDeps creates a new terminal handler with individual dependencies (legacy).
-// Deprecated: Use NewTerminalHandler with Base instead.
-func NewTerminalHandlerWithDeps(db *gorm.DB, jwtSecret string, logger zerolog.Logger, membershipCache *launchcache.TeamMembershipCache) *TerminalHandler {
-	return NewTerminalHandler(NewBase(db, jwtSecret, logger, membershipCache))
 }
 
 // Handler returns a Fiber handler for terminal WebSocket connections
@@ -90,6 +82,12 @@ func (h *TerminalHandler) Handler() fiber.Handler {
 		if err != nil {
 			h.LogError(err, "Authentication failed")
 			c.WriteMessage(websocket.TextMessage, []byte("\r\n\x1b[31mAuthentication failed\x1b[0m\r\n"))
+			c.Close()
+			return
+		}
+		if err := h.Authorize(context.Background(), claims, "server.manage"); err != nil {
+			h.LogError(err, "Terminal permission denied")
+			c.WriteMessage(websocket.TextMessage, []byte("\r\n\x1b[31mPermission denied\x1b[0m\r\n"))
 			c.Close()
 			return
 		}

@@ -41,7 +41,7 @@ func NewBuildSecretService(deps *ServiceDeps) *BuildSecretService {
 func (s *BuildSecretService) ListBuildSecrets(
 	ctx context.Context, applicationID, projectID, serverID, teamID string,
 ) ([]dto.BuildSecretResponse, error) {
-	if _, err := s.scopedAppForBuildSecret(ctx, applicationID, projectID, serverID, teamID); err != nil {
+	if _, err := s.scopedApp(ctx, applicationID, projectID, serverID, teamID); err != nil {
 		return nil, err
 	}
 	rows, err := s.Repos().BuildSecret().ListForApplication(ctx, applicationID)
@@ -59,7 +59,7 @@ func (s *BuildSecretService) CreateBuildSecret(
 	req *dto.CreateBuildSecretRequest,
 ) (dto.BuildSecretResponse, error) {
 	_ = userID
-	app, err := s.scopedAppForBuildSecret(ctx, applicationID, projectID, serverID, teamID)
+	app, err := s.scopedApp(ctx, applicationID, projectID, serverID, teamID)
 	if err != nil {
 		return dto.BuildSecretResponse{}, err
 	}
@@ -108,7 +108,7 @@ func (s *BuildSecretService) UpdateBuildSecret(
 	req *dto.UpdateBuildSecretRequest,
 ) (dto.BuildSecretResponse, error) {
 	_ = userID
-	app, err := s.scopedAppForBuildSecret(ctx, applicationID, projectID, serverID, teamID)
+	app, err := s.scopedApp(ctx, applicationID, projectID, serverID, teamID)
 	if err != nil {
 		return dto.BuildSecretResponse{}, err
 	}
@@ -151,7 +151,7 @@ func (s *BuildSecretService) DeleteBuildSecret(
 	ctx context.Context, id, applicationID, projectID, serverID, teamID, userID string,
 ) error {
 	_ = userID
-	app, err := s.scopedAppForBuildSecret(ctx, applicationID, projectID, serverID, teamID)
+	app, err := s.scopedApp(ctx, applicationID, projectID, serverID, teamID)
 	if err != nil {
 		return err
 	}
@@ -175,25 +175,6 @@ func (s *BuildSecretService) DeleteBuildSecret(
 	})
 	s.markGHADirty(ctx, app, teamID)
 	return nil
-}
-
-// scopedAppForBuildSecret validates the project + application chain
-// and returns the application so the caller can broadcast routing
-// fields and check build_location.
-func (s *BuildSecretService) scopedAppForBuildSecret(
-	ctx context.Context, applicationID, projectID, serverID, teamID string,
-) (*models.Application, error) {
-	if _, err := s.Repos().Project().FindByIDAndTeamServer(ctx, projectID, teamID, serverID); err != nil {
-		return nil, err
-	}
-	app, err := s.Repos().Application().FindByIDAndTeamServer(ctx, applicationID, teamID, serverID)
-	if err != nil {
-		return nil, err
-	}
-	if app.ProjectID != projectID {
-		return nil, fiberutil.NotFound()
-	}
-	return app, nil
 }
 
 // markGHADirty records that build secrets changed so the committed

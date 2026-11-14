@@ -336,14 +336,14 @@ func ToTeamDetailResponse(team *models.Team, members []models.TeamMember, invita
 	}
 
 	resp := TeamDetailResponse{
-		TeamResponse:   ToTeamResponse(*team),
+		TeamResponse:   ToTeamResponseForUser(*team, userID),
 		AvailableRoles: GetAvailableRoles(),
 		Permissions: TeamPermissions{
 			CanUpdateTeam:        isOwner,
 			CanDeleteTeam:        isOwner && !team.PersonalTeam,
 			CanAddTeamMembers:    isOwner || isAdmin,
 			CanUpdateTeamMembers: isOwner,
-			CanRemoveTeamMembers: isOwner || isAdmin,
+			CanRemoveTeamMembers: isOwner,
 		},
 	}
 
@@ -353,7 +353,9 @@ func ToTeamDetailResponse(team *models.Team, members []models.TeamMember, invita
 	}
 
 	resp.Members = ToTeamMembersResponse(members)
-	resp.Invitations = ToTeamInvitationsResponse(invitations)
+	if isAdmin {
+		resp.Invitations = ToTeamInvitationsResponse(invitations)
+	}
 
 	return resp
 }
