@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -27,6 +28,29 @@ func (s *Service) RemoveServerRecord(ctx context.Context, id, teamID, userID str
 	return s.deleteServer(ctx, id, teamID, userID, true)
 }
 
+// UninstallServer uses the existing deletion path when SSH is available and
+// removes local records when the remote host cannot be reached.
+func (s *Service) UninstallServer(ctx context.Context, id, teamID, userID string) (removedOffline bool, err error) {
+	server, err := s.repos.Server().FindByIDAndTeam(ctx, id, teamID)
+	if err != nil {
+		return false, err
+	}
+	connection := server.ConnectionAsRoot()
+	offline := connection.Host == "" || connection.PrivateKey == ""
+	if !offline {
+		client, err := connection.NewSSHClient(5 * time.Second)
+		offline = err != nil
+		if !offline {
+			offline = client.ConnectContext(ctx) != nil
+			_ = client.Close()
+		}
+	}
+	if err := ctx.Err(); err != nil {
+		return false, err
+	}
+	return offline, s.deleteServer(ctx, id, teamID, userID, offline)
+}
+
 func (s *Service) deleteServer(ctx context.Context, id, teamID, userID string, removeRecord bool) error {
 	if !s.HasDB() {
 		return fiberutil.Internal("Database not configured")
@@ -48,6 +72,18 @@ func (s *Service) deleteServer(ctx context.Context, id, teamID, userID string, r
 		case types.ServerStatusStarting, types.ServerStatusProvisioning:
 			return fiberutil.Conflict("Wait for server provisioning to finish before deleting it")
 		}
+		if removeRecord {
+			var pendingSites int64
+			if err := tx.Table("sites").Where("server_id = ? AND uninstallation_requested_at IS NOT NULL", id).
+				Count(&pendingSites).Error; err != nil {
+				return fmt.Errorf("count pending site uninstalls: %w", err)
+			}
+			if pendingSites > 0 {
+				return fiberutil.Conflict("Wait for pending site uninstalls to finish before removing this server")
+			}
+			// Server foreign keys cascade through sites and Docker projects.
+			return tx.Delete(server).Error
+		}
 		var siteCount int64
 		if err := tx.Table("sites").Where("server_id = ?", id).Count(&siteCount).Error; err != nil {
 			return fmt.Errorf("count server sites: %w", err)
@@ -58,7 +94,7 @@ func (s *Service) deleteServer(ctx context.Context, id, teamID, userID string, r
 		if err := guardDockerProjectsExist(ctx, tx, id); err != nil {
 			return err
 		}
-		if removeRecord || server.Provider == types.ProviderCustom {
+		if server.Provider == types.ProviderCustom {
 			return tx.Delete(server).Error
 		}
 		if !s.HasQueue() {

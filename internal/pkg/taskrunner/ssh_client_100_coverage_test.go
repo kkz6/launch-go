@@ -421,6 +421,26 @@ func TestSSHClient100HostKeyAndConstructorPaths(t *testing.T) {
 	}
 }
 
+func TestSSHClientConnectContext(t *testing.T) {
+	server := startCoverageSSHServer(t)
+	client := newCoveragePasswordClient(t, server)
+	if err := client.ConnectContext(context.Background()); err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	_ = client.Close()
+
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	client.port = listener.Addr().(*net.TCPAddr).Port
+	client.timeout = 100 * time.Millisecond
+	if err := client.ConnectContext(context.Background()); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("stalled SSH handshake: got %v, want deadline exceeded", err)
+	}
+}
+
 func TestSSHClient100RealTransportLifecycle(t *testing.T) {
 	server := startCoverageSSHServer(t)
 	client := newCoveragePasswordClient(t, server)

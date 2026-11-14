@@ -30,6 +30,12 @@ type adminServerDeleter struct {
 	ids     []string
 	err     error
 	removed bool
+	offline bool
+}
+
+func (d *adminServerDeleter) UninstallServer(_ context.Context, id, teamID, actorID string) (bool, error) {
+	d.ids = []string{id, teamID, actorID}
+	return d.offline, d.err
 }
 
 func (d *adminServerDeleter) DeleteServer(_ context.Context, id, teamID, actorID string) error {
@@ -182,6 +188,28 @@ func TestAdminServerDeleteReportsQueueFailureAndCloudReceipt(t *testing.T) {
 			require.NoError(t, json.NewDecoder(response.Body).Decode(&body))
 			require.Equal(t, "deletion_requested", body.Data.Status)
 		})
+	}
+}
+
+func TestAdminServerUninstallReportsOfflineRemoval(t *testing.T) {
+	app, _, deleter := adminServerDeleteFixture(t)
+	deleter.offline = true
+	for user, status := range map[string]int{"support": 403, "admin": 200} {
+		req := httptest.NewRequest(http.MethodDelete, "/admin/servers/customer-server/uninstall", strings.NewReader(`{"confirmation_name":"Production"}`))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("X-Test-User", user)
+		response, err := app.Test(req)
+		require.NoError(t, err)
+		defer response.Body.Close()
+		require.Equal(t, status, response.StatusCode)
+		if status == 200 {
+			var body struct {
+				Data services.ServerDeletionResult `json:"data"`
+			}
+			require.NoError(t, json.NewDecoder(response.Body).Decode(&body))
+			require.Equal(t, "removed_offline", body.Data.Status)
+			require.Equal(t, []string{"customer-server", "customer-team", "admin"}, deleter.ids)
+		}
 	}
 }
 

@@ -9,14 +9,18 @@ import (
 )
 
 func (h *AdminHandler) DeleteServer(c *fiber.Ctx) error {
-	return h.deleteServer(c, false)
+	return h.deleteServer(c, "")
 }
 
 func (h *AdminHandler) RemoveServerRecord(c *fiber.Ctx) error {
-	return h.deleteServer(c, true)
+	return h.deleteServer(c, "remove_record")
 }
 
-func (h *AdminHandler) deleteServer(c *fiber.Ctx, removeRecord bool) error {
+func (h *AdminHandler) UninstallServer(c *fiber.Ctx) error {
+	return h.deleteServer(c, "uninstall")
+}
+
+func (h *AdminHandler) deleteServer(c *fiber.Ctx, mode string) error {
 	var request struct {
 		ConfirmationName string `json:"confirmation_name"`
 		Mode             string `json:"mode"`
@@ -33,10 +37,6 @@ func (h *AdminHandler) deleteServer(c *fiber.Ctx, removeRecord bool) error {
 	if err != nil {
 		return err
 	}
-	mode := ""
-	if removeRecord {
-		mode = "remove_record"
-	}
 	result, err := h.service.DeleteServer(c.UserContext(), c.Params("id"), actorID, request.ConfirmationName, mode)
 	if errors.Is(err, services.ErrServerNotFound) {
 		return fiberutil.RespondNotFound(c, "Server not found")
@@ -44,8 +44,11 @@ func (h *AdminHandler) deleteServer(c *fiber.Ctx, removeRecord bool) error {
 	if err != nil {
 		return fiberutil.HandleError(c, err)
 	}
-	if result.Status == "removed" {
+	switch result.Status {
+	case "removed":
 		return fiberutil.OK(c, "Server removed from launchctl", result)
+	case "removed_offline":
+		return fiberutil.OK(c, "Server unreachable. Server and associated records removed from launchctl", result)
 	}
 	return fiberutil.OK(c, "Server deletion requested", result)
 }

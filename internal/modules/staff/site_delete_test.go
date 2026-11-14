@@ -28,8 +28,15 @@ import (
 )
 
 type adminSiteDeleter struct {
-	ids []string
-	err error
+	ids     []string
+	err     error
+	removed bool
+}
+
+func (d *adminSiteDeleter) RemoveSiteRecord(_ context.Context, id, serverID, teamID, actorID string) error {
+	d.ids = []string{id, serverID, teamID, actorID}
+	d.removed = true
+	return d.err
 }
 
 func (d *adminSiteDeleter) DeleteSite(_ context.Context, id, serverID, teamID, actorID string) error {
@@ -92,6 +99,9 @@ func TestAdminSiteDeleteEnforcesPermissionConfirmationAndOwnership(t *testing.T)
 		{"missing domain", "admin", "customer-site", `{}`, 422},
 		{"malformed body", "admin", "customer-site", `{`, 400},
 		{"unknown site", "admin", "missing", `{"confirmation_domain":"customer.example"}`, 404},
+		{"support cannot remove", "support", "customer-site/record", `{"confirmation_domain":"customer.example"}`, 403},
+		{"wrong domain cannot remove", "admin", "customer-site/record", `{"confirmation_domain":"wrong.example"}`, 422},
+		{"remove record", "admin", "customer-site/record", `{"confirmation_domain":"customer.example"}`, 200},
 		{"confirmed", "admin", "customer-site", `{"confirmation_domain":"customer.example","server_id":"other-server","team_id":"other-team","user_id":"other-user"}`, 200},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -112,7 +122,14 @@ func TestAdminSiteDeleteEnforcesPermissionConfirmationAndOwnership(t *testing.T)
 				Data services.SiteDeletionResult `json:"data"`
 			}
 			require.NoError(t, json.NewDecoder(resp.Body).Decode(&body))
-			require.Equal(t, services.SiteDeletionResult{SiteID: "customer-site", Status: "deletion_requested"}, body.Data)
+			status := "deletion_requested"
+			if strings.HasSuffix(tc.path, "/record") {
+				require.True(t, deleter.removed)
+				status = "removed"
+			} else {
+				require.False(t, deleter.removed)
+			}
+			require.Equal(t, services.SiteDeletionResult{SiteID: "customer-site", Status: status}, body.Data)
 		})
 	}
 }
