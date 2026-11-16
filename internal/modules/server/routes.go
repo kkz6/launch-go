@@ -109,6 +109,8 @@ func (m *Module) registerServerRoutes(router fiber.Router, authMiddleware fiber.
 		servers.Patch("/:id", provisioned, middleware.Can("server.update"), updateServer)
 
 		// Actions
+		servers.Get("/:id/reboot", middleware.Can("server.view"), fiberutil.Show("Server restart retrieved", m.service.GetServerRestart))
+		servers.Post("/:id/reboot/verify", middleware.Can("server.reboot"), fiberutil.Show("Server restart check queued", m.service.VerifyServerRestart))
 		servers.Post("/:id/reboot", provisioned, middleware.Can("server.reboot"), fiberutil.Action("Server reboot initiated", m.service.RebootServer))
 		servers.Post("/:id/connect", provisioned, middleware.Can("server.manage"), fiberutil.Action("Server connection successful", m.service.ConnectServer))
 		servers.Post("/:id/vulnerability-audit", provisioned, middleware.Can("server.audit"), fiberutil.Bind(handler.RunVulnerabilityAudit))
@@ -135,6 +137,25 @@ func (m *Module) registerServerRoutes(router fiber.Router, authMiddleware fiber.
 		servers.Delete("/:id/php/:phpId/extensions/:extension", provisioned, middleware.Can("server.manage"), handler.UninstallPhpExtension)
 		servers.Get("/:id/php/:phpId/configuration/:kind", provisioned, handler.GetPHPConfiguration)
 		servers.Put("/:id/php/:phpId/configuration/:kind", provisioned, middleware.Can("server.manage"), fiberutil.Validate(handler.UpdatePHPConfiguration))
+
+		// Host OS updates
+		servers.Get("/:id/system-updates", provisioned, middleware.Can("server.view"), fiberutil.Show("System updates retrieved", m.service.GetSystemUpdates))
+		servers.Put("/:id/system-updates", provisioned, middleware.Can("server.manage"), fiberutil.Update[tasks.SystemUpdateSettings]("System update settings saved", m.service.UpdateSystemUpdates))
+		servers.Get("/:id/system-updates/logs", provisioned, middleware.Can("server.view"), fiberutil.Show("System update logs retrieved", m.service.GetSystemUpdateLogs))
+		servers.Post("/:id/system-updates/retry", provisioned, middleware.Can("server.manage"), fiberutil.Handler(func(r *fiberutil.Request) error {
+			status, err := m.service.RetrySystemUpdates(r.Context(), r.Params("id"), r.TeamID, r.UserID)
+			if err != nil {
+				return err
+			}
+			return fiberutil.OK(r.Ctx, "Security update run requested", status)
+		}))
+		servers.Post("/:id/system-updates/repair", provisioned, middleware.Can("server.manage"), fiberutil.Handler(func(r *fiberutil.Request) error {
+			status, err := m.service.RepairSystemUpdates(r.Context(), r.Params("id"), r.TeamID, r.UserID)
+			if err != nil {
+				return err
+			}
+			return fiberutil.OK(r.Ctx, "System update schedule repaired", status)
+		}))
 
 		// Composer Packages
 		servers.Get("/:id/packages", provisioned, fiberutil.IndexNested("id", "Composer auth retrieved", m.service.GetComposerAuth))

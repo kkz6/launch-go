@@ -22,14 +22,14 @@ func TestContaboClientListsInstancesWithAccountToken(t *testing.T) {
 			assert.Equal(t, "a+b&c", r.Form.Get("client_secret"))
 			assert.Equal(t, "test@example.com", r.Form.Get("username"))
 			assert.Equal(t, " p+a&ss ", r.Form.Get("password"))
-			fmt.Fprint(w, `{"access_token":"test-token"}`)
+			_, _ = fmt.Fprint(w, `{"access_token":"test-token"}`)
 		case "/instances":
 			assert.Equal(t, http.MethodGet, r.Method)
 			assert.Equal(t, "Bearer test-token", r.Header.Get("Authorization"))
 			assert.Len(t, r.Header.Get("X-Request-ID"), 36)
 			assert.Equal(t, "2", r.URL.Query().Get("page"))
 			assert.Equal(t, "25", r.URL.Query().Get("size"))
-			fmt.Fprint(w, `{"_pagination":{"totalPages":3},"data":[{"instanceId":9007199254740993,"tenantId":"INT","osType":"Linux","status":"running","ipConfig":{"v4":{"ip":"8.8.4.4"}}}]}`)
+			_, _ = fmt.Fprint(w, `{"_pagination":{"totalPages":3},"data":[{"instanceId":9007199254740993,"tenantId":"INT","osType":"Linux","status":"running","ipConfig":{"v4":{"ip":"8.8.4.4"}}}]}`)
 		default:
 			http.NotFound(w, r)
 		}

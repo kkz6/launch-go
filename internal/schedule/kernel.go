@@ -34,6 +34,13 @@ func GetScheduledTasks() []queue.ScheduledTask {
 		// │                     Server Maintenance                          │
 		// └─────────────────────────────────────────────────────────────────┘
 
+		EveryMinute(serverjobs.NewPollServerRestartsTask, WithName("poll-server-restarts")),
+
+		EveryMinute(serverjobs.NewPollSystemUpdatesTask,
+			WithName("poll-system-updates"),
+			LowPriority(),
+		),
+
 		// Clean up old metrics data (older than 7 days) - runs daily at 2 AM
 		At("0 2 * * *", serverjobs.NewCleanupOldMetricsTask,
 			WithName("cleanup-old-metrics"),

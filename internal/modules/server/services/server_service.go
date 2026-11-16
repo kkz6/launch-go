@@ -304,20 +304,6 @@ func (s *Service) UnarchiveServer(ctx context.Context, id, teamID, userID string
 	return s.repos.Server().Unarchive(ctx, id)
 }
 
-// RebootServer initiates a server reboot. Signature matches ActionFunc.
-func (s *Service) RebootServer(ctx context.Context, id, teamID, userID string) error {
-	_ = userID
-	server, err := s.repos.Server().FindByIDAndTeam(ctx, id, teamID)
-	if err != nil {
-		return err
-	}
-	task, err := jobs.NewRebootServerTask(server.ID, nil)
-	if err != nil {
-		return err
-	}
-	return s.EnqueueTask(task)
-}
-
 // ConnectServer tests the connection to a server. Signature matches ActionFunc.
 func (s *Service) ConnectServer(ctx context.Context, id, teamID, userID string) error {
 	_ = userID

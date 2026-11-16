@@ -26,7 +26,7 @@ func TestVultrProvisioningSendsNumericImageID(t *testing.T) {
 			return
 		}
 		assert.Equal(t, 2284, payload.OSID)
-		fmt.Fprint(w, `{"instance":{"id":"test-instance"}}`)
+		_, _ = fmt.Fprint(w, `{"instance":{"id":"test-instance"}}`)
 	}))
 	defer api.Close()
 	provider := NewVultrProvider(nil)
@@ -44,9 +44,9 @@ func TestVultrImageValidationUsesOSCatalog(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		switch r.URL.Query().Get("cursor") {
 		case "":
-			fmt.Fprint(w, `{"os":[{"id":1743}],"meta":{"links":{"next":"next+/="}}}`)
+			_, _ = fmt.Fprint(w, `{"os":[{"id":1743}],"meta":{"links":{"next":"next+/="}}}`)
 		case "next+/=":
-			fmt.Fprint(w, `{"os":[{"id":2284}],"meta":{"links":{"next":""}}}`)
+			_, _ = fmt.Fprint(w, `{"os":[{"id":2284}],"meta":{"links":{"next":""}}}`)
 		default:
 			t.Errorf("unexpected cursor: %q", r.URL.Query().Get("cursor"))
 			http.NotFound(w, r)
@@ -64,7 +64,7 @@ func TestVultrImageValidationUsesOSCatalog(t *testing.T) {
 func TestLinodeImageValidationRejectsDeprecatedImage(t *testing.T) {
 	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "/images/linode/ubuntu22.04", r.URL.Path)
-		fmt.Fprint(w, `{"id":"linode/ubuntu22.04","status":"available","deprecated":true}`)
+		_, _ = fmt.Fprint(w, `{"id":"linode/ubuntu22.04","status":"available","deprecated":true}`)
 	}))
 	defer api.Close()
 	provider := NewLinodeProvider(nil)

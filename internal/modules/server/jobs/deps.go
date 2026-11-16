@@ -21,11 +21,16 @@ type JobDeps struct {
 	*pkgjobs.Deps
 	Repos           contracts.RepositoryRegistry
 	ProviderFactory *providers.Factory
+	FrontendURL     string
 	TaskRunnerDeps  *tasks.TaskRunnerDeps
 }
 
 // NewJobDeps creates a new JobDeps from app dependencies.
 func NewJobDeps(appDeps app.Deps, repos contracts.RepositoryRegistry) *JobDeps {
+	frontendURL := ""
+	if appDeps.Config != nil {
+		frontendURL = appDeps.Config.App.Frontend()
+	}
 	return &JobDeps{
 		Deps: &pkgjobs.Deps{
 			DB:          appDeps.DB,
@@ -34,6 +39,7 @@ func NewJobDeps(appDeps app.Deps, repos contracts.RepositoryRegistry) *JobDeps {
 			Broadcaster: appDeps.WebSocket,
 			Dispatcher:  appDeps.Dispatcher,
 		},
+		FrontendURL:     frontendURL,
 		Repos:           repos,
 		ProviderFactory: providers.NewFactory(sshkey.NewGenerator()),
 		TaskRunnerDeps: &tasks.TaskRunnerDeps{
