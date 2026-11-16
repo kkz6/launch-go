@@ -10,6 +10,22 @@ env:
   GO_VERSION: "1.27.4"
 
 jobs:
+  system-updates-os:
+    name: System updates / Ubuntu ${{ matrix.ubuntu }} / ${{ matrix.arch }}
+    runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-24.04' }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        ubuntu: ['22.04', '24.04']
+        arch: [amd64, arm64]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Test updates against real systemd and APT
+        run: bash tests/fixtures/system-updates/run.sh '${{ matrix.ubuntu }}' 'linux/${{ matrix.arch }}'
+
   lint:
     name: Lint
     runs-on: ubuntu-latest

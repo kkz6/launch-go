@@ -24,6 +24,10 @@ func registerHandlers(mux *asynq.ServeMux) {
 	pkgjobs.RegisterTyped(mux, TypeDeleteServer, NewDeleteServerJob)
 	pkgjobs.RegisterTyped(mux, TypeCleanupFailedProvisioning, NewCleanupFailedProvisioningJob)
 	pkgjobs.RegisterTyped(mux, TypeRebootServer, NewRebootServerJob)
+	pkgjobs.RegisterTyped(mux, TypeVerifyServerRestart, NewVerifyServerRestartJob)
+	pkgjobs.RegisterTyped(mux, TypePollServerRestarts, func(_ struct{}) pkgjobs.Handler {
+		return &PollServerRestartsJob{Deps: deps}
+	})
 	pkgjobs.RegisterTyped(mux, TypeArchiveServer, NewArchiveServerJob)
 	pkgjobs.RegisterTyped(mux, TypeUnarchiveServer, NewUnarchiveServerJob)
 	pkgjobs.RegisterTyped(mux, TypeUpdateConnectivity, NewUpdateConnectivityJob)
@@ -75,6 +79,12 @@ func registerHandlers(mux *asynq.ServeMux) {
 	pkgjobs.RegisterTyped(mux, TypeRunAfterUpdate, NewRunAfterUpdateJob)
 
 	// Scheduled maintenance jobs
+	pkgjobs.RegisterTyped(mux, TypePollSystemUpdates, func(_ struct{}) pkgjobs.Handler {
+		return &PollSystemUpdatesJob{Deps: deps}
+	})
+	pkgjobs.RegisterTyped(mux, TypeReadSystemUpdates, func(payload ReadSystemUpdatesPayload) pkgjobs.Handler {
+		return &ReadSystemUpdatesJob{Deps: deps, Payload: payload}
+	})
 	pkgjobs.RegisterTyped(mux, TypeCleanupOldMetrics, NewCleanupOldMetricsJob)
 	pkgjobs.RegisterTyped(mux, TypeSyncAllDaemons, NewSyncAllDaemonsJob)
 	pkgjobs.RegisterTyped(mux, TypeCheckAllConnectivity, NewCheckAllConnectivityJob)
