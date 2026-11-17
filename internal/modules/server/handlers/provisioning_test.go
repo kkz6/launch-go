@@ -1,14 +1,13 @@
 package handlers
 
 import (
-	"io"
-	"net"
 	"net/http"
 	"testing"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/stretchr/testify/require"
+	"github.com/valyala/fasthttp"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 
@@ -46,51 +45,42 @@ func TestProvisioningHTTPHandlers(t *testing.T) {
 	signedurl.SetDefaultSigner(signer)
 	t.Cleanup(func() { signedurl.SetDefaultSigner(previous) })
 
+	h := NewHandler(service, nil, nil, nil)
+	script := NewProvisionScriptHandler(repos, service)
 	app := fiber.New(fiber.Config{ErrorHandler: fiberutil.NewErrorHandler()})
 	app.Use("/servers", func(c *fiber.Ctx) error {
 		fiberutil.SetTeamContext(c, "team-a", "editor")
 		return c.Next()
 	})
-	h := NewHandler(service, nil, nil, nil)
-	script := NewProvisionScriptHandler(repos, service)
 	app.Post("/servers/:id/provision-command", h.GetProvisionCommand)
 	app.Get("/servers/:id/provision-script-content", h.GetProvisionScriptContent)
 	app.Get("/provision/:id", signedurl.RequireSignedURL(signer), script.GetProvisionScript)
 	app.Post(callbackPrefix+":id/provision", signedurl.RequireSignedURL(signer), script.StartProvisioning)
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
-	require.NoError(t, err)
-	done := make(chan error, 1)
-	go func() { done <- app.Listener(listener) }()
-	t.Cleanup(func() {
-		require.NoError(t, app.ShutdownWithTimeout(3*time.Second))
-		require.NoError(t, <-done)
-	})
-	client := &http.Client{Timeout: 3 * time.Second}
 
-	request := func(method, path string, status int) (string, http.Header) {
+	request := func(method, path string, status int) (body, cacheControl string) {
 		t.Helper()
-		req, err := http.NewRequest(method, "http://"+listener.Addr().String()+path, nil)
-		require.NoError(t, err)
-		response, err := client.Do(req)
-		require.NoError(t, err)
-		body, err := io.ReadAll(response.Body)
-		require.NoError(t, response.Body.Close())
-		require.NoError(t, err)
-		require.Equal(t, status, response.StatusCode, "%s %s: %s", method, path, body)
-		return string(body), response.Header
+		var req fasthttp.Request
+		req.Header.SetMethod(method)
+		req.SetRequestURI(path)
+		// Keep a live request context for handlers that query the database.
+		var ctx fasthttp.RequestCtx
+		ctx.Init(&req, nil, nil)
+		app.Handler()(&ctx)
+		require.Equal(t, status, ctx.Response.StatusCode(), "%s %s: %s", method, path, ctx.Response.Body())
+		return string(ctx.Response.Body()), string(ctx.Response.Header.Peek("Cache-Control"))
 	}
 	request("POST", "/servers/invalid/provision-command", http.StatusBadRequest)
 	request("POST", "/servers/"+missingID+"/provision-command", http.StatusNotFound)
-	body, header := request("POST", serverPath+"/provision-command", http.StatusOK)
+	body, cacheControl := request("POST", serverPath+"/provision-command", http.StatusOK)
 	require.Contains(t, body, "start=1")
-	require.Equal(t, "no-store", header.Get("Cache-Control"))
+	require.Equal(t, "no-store", cacheControl)
 	body, _ = request("GET", serverPath+"/provision-script-content", http.StatusOK)
 	require.NotContains(t, body, "--post-data")
 	legacyURL := signer.PermanentSignedURL(downloadPath, nil)
 	request("GET", legacyURL+"&start=1", http.StatusForbidden)
-	body, header = request("GET", signer.TemporarySignedURL(downloadPath, map[string]string{"start": "1"}, time.Hour), http.StatusOK)
+	body, cacheControl = request("GET", signer.TemporarySignedURL(downloadPath, map[string]string{"start": "1"}, time.Hour), http.StatusOK)
 	require.Contains(t, body, "--post-data")
-	require.Equal(t, "no-store", header.Get("Cache-Control"))
+	require.Equal(t, "no-store", cacheControl)
 
 	callback := signer.TemporarySignedURL(callbackPrefix+id+"/provision", nil, time.Hour)
 	request("POST", callbackPrefix+id+"/provision", http.StatusForbidden)
