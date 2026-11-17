@@ -434,10 +434,6 @@ func (s *Service) queueCustomProvisioning(ctx context.Context, server *models.Se
 		sshKeyIDs = append(sshKeyIDs, k.ID)
 	}
 
-	task, err := jobs.NewProvisionServerTask(server.ID, server.TeamID, nil, sshKeyIDs)
-	if err != nil {
-		return fmt.Errorf("failed to create provision task: %w", err)
-	}
 	// Claim the pending server once. A queue failure rolls back the claim
 	// so rerunning the script or using Try Connection can recover.
 	var claimed bool
@@ -455,7 +451,9 @@ func (s *Service) queueCustomProvisioning(ctx context.Context, server *models.Se
 		}
 		claimed = update.RowsAffected == 1
 		if claimed {
-			if err := s.EnqueueTask(task); err != nil {
+			if err := s.MustDispatch(func() (*asynq.Task, error) {
+				return jobs.NewProvisionServerTask(server.ID, server.TeamID, nil, sshKeyIDs)
+			}); err != nil {
 				return fmt.Errorf("failed to enqueue provision task: %w", err)
 			}
 		}
