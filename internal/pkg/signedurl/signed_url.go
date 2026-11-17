@@ -262,6 +262,15 @@ func SetPublicSigner(signer *Signer) {
 // (frontend) host. Falls back to the default signer when the public signer
 // isn't configured.
 func PublicPermanentSign(path string, params map[string]string) string {
+	return publicURLSigner().PermanentSignedURL(path, params)
+}
+
+// PublicTemporarySign generates an expiring signed URL on the frontend host.
+func PublicTemporarySign(path string, params map[string]string, expiresIn time.Duration) string {
+	return publicURLSigner().TemporarySignedURL(path, params, expiresIn)
+}
+
+func publicURLSigner() *Signer {
 	s := publicSigner.Load()
 	if s == nil {
 		s = GetDefaultSigner()
@@ -269,5 +278,5 @@ func PublicPermanentSign(path string, params map[string]string) string {
 	if s == nil {
 		panic("signedurl: no signer configured")
 	}
-	return s.PermanentSignedURL(path, params)
+	return s
 }

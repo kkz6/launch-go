@@ -154,7 +154,18 @@ func (s *Server) RootUsername() string {
 // already root, sudo is a no-op. See generateAuthorizeKeyScript for
 // the matching root-check at the top of the script itself.
 func (s *Server) GetProvisionCommand() string {
-	return fmt.Sprintf("wget --no-verbose -O - '%s' | sudo bash", s.GetProvisionScriptURL())
+	return provisionCommand(s.GetProvisionScriptURL())
+}
+
+// GetAutomaticProvisionCommand must only be issued to users who can manage the server.
+func (s *Server) GetAutomaticProvisionCommand() string {
+	return provisionCommand(signedurl.PublicTemporarySign(
+		fmt.Sprintf("/provision/%s", s.ID), map[string]string{"start": "1"}, time.Hour,
+	))
+}
+
+func provisionCommand(scriptURL string) string {
+	return fmt.Sprintf(`(script=$(wget -q -O - '%s') && [ -n "$script" ] || { echo "Could not download the provisioning script. Copy a fresh command from Launch." >&2; exit 1; }; printf '%%s\n' "$script" | sudo bash)`, scriptURL)
 }
 
 // GetProvisionScriptURL returns a signed URL for the provision script.

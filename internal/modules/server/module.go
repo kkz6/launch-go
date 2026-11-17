@@ -34,10 +34,15 @@ type Module struct {
 func NewModule(b *app.Builder) *Module {
 	deps := b.Deps()
 	repos := repositories.NewRegistry(deps.DB)
+	frontendURL := ""
+	if deps.Config != nil {
+		frontendURL = deps.Config.App.Frontend()
+	}
 	service := services.NewService(services.ServiceDeps{
 		Dependencies:    deps.ServiceDeps(),
 		Repos:           repos,
 		ProviderFactory: providers.NewFactory(sshkey.NewGenerator()),
+		FrontendURL:     frontendURL,
 		TaskRunnerDeps: &tasks.TaskRunnerDeps{
 			DB:          deps.DB,
 			Queue:       deps.Queue,

@@ -28,6 +28,7 @@ type ServiceDeps struct {
 	Repos           contracts.RepositoryRegistry
 	ProviderFactory *providers.Factory
 	TaskRunnerDeps  *servertasks.TaskRunnerDeps
+	FrontendURL     string
 }
 
 // Service provides business logic for server operations
@@ -39,6 +40,7 @@ type Service struct {
 	providerFactory *providers.Factory
 	contabo         contaboAPI
 	taskRunnerDeps  *servertasks.TaskRunnerDeps
+	frontendURL     string
 }
 
 // NewService creates a new Service instance from ServiceDeps
@@ -51,6 +53,7 @@ func NewService(deps ServiceDeps) *Service {
 		providerFactory: deps.ProviderFactory,
 		contabo:         providers.NewContaboClient(),
 		taskRunnerDeps:  deps.TaskRunnerDeps,
+		frontendURL:     deps.FrontendURL,
 	}
 }
 

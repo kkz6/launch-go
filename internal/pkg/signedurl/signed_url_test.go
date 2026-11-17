@@ -6,6 +6,34 @@ import (
 	"time"
 )
 
+func TestPublicSignedURLsUseFrontendWithAPIFallback(t *testing.T) {
+	previous, previousPublic := GetDefaultSigner(), publicSigner.Load()
+	t.Cleanup(func() {
+		SetDefaultSigner(previous)
+		SetPublicSigner(previousPublic)
+	})
+	api := NewSigner("test-key").WithBaseURL("https://api.example.test")
+	SetDefaultSigner(api)
+	SetPublicSigner(NewSigner("test-key").WithBaseURL("https://app.example.test"))
+	for _, tt := range []struct {
+		link, host string
+		expiring   bool
+	}{
+		{PublicPermanentSign("/provision/server", nil), "app.example.test", false},
+		{PublicTemporarySign("/provision/server", nil, time.Hour), "app.example.test", true},
+	} {
+		link, err := url.Parse(tt.link)
+		if err != nil || link.Host != tt.host || !api.Verify(link.Path, link.Query()) || link.Query().Has("expires") != tt.expiring {
+			t.Fatalf("unexpected signed link %q: %v", tt.link, err)
+		}
+	}
+	SetPublicSigner(nil)
+	link, err := url.Parse(PublicTemporarySign("/webhooks/servers/server/provision", nil, time.Hour))
+	if err != nil || link.Host != "api.example.test" || !api.Verify(link.Path, link.Query()) {
+		t.Fatalf("unexpected fallback signed link: %v (%v)", link, err)
+	}
+}
+
 func TestSigner_SignedURL(t *testing.T) {
 	signer := NewSigner("test-secret-key")
 
