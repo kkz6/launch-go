@@ -27,9 +27,7 @@ const (
 	ServerStatusUnknown      ServerStatus = "unknown"
 	ServerStatusFailed       ServerStatus = "failed"
 	// ServerStatusAwaitingConnection is set on custom (BYO) servers right
-	// after creation. The user must SSH in and run the provision script
-	// themselves; the platform doesn't poll. They click "Try Connection"
-	// in the UI to advance to provisioning.
+	// after creation until the provision script authorizes Launch and SSH is verified.
 	ServerStatusAwaitingConnection ServerStatus = "awaiting_connection"
 )
 

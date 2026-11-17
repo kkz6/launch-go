@@ -156,9 +156,23 @@ func (h *Handler) GetProvisionScriptContent(c *fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
-	script, err := h.service.GetProvisionScript(c.Context(), serverID, teamID)
+	script, err := h.service.GetProvisionScript(c.Context(), serverID, teamID, false)
 	if err != nil {
 		return err
 	}
 	return fiberctx.OK(c, "Provision script retrieved", fiber.Map{"script": script})
+}
+
+// GetProvisionCommand issues a short-lived command that can also start provisioning.
+func (h *Handler) GetProvisionCommand(c *fiber.Ctx) error {
+	teamID, serverID, err := fiberctx.GetTeamAndServerID(c)
+	if err != nil {
+		return err
+	}
+	command, err := h.service.GetProvisionCommand(c.Context(), serverID, teamID)
+	if err != nil {
+		return err
+	}
+	c.Set("Cache-Control", "no-store")
+	return fiberctx.OK(c, "Provision command retrieved", fiber.Map{"command": command})
 }

@@ -27,6 +27,7 @@ import (
 	"github.com/kkz6/launch-go/internal/pkg/launch/activity"
 	"github.com/kkz6/launch-go/internal/pkg/repository"
 	"github.com/kkz6/launch-go/internal/pkg/security"
+	"github.com/kkz6/launch-go/internal/pkg/signedurl"
 )
 
 // ListServers returns all servers for a team. Signature matches IndexFunc.
@@ -147,7 +148,7 @@ func (s *Service) buildAndDispatchServer(ctx context.Context, teamID, userID str
 	databasePassword := security.GeneratePassword(32)
 
 	// Custom (BYO) servers sit in awaiting_connection until the user runs
-	// the provision script and clicks "Try Connection". Cloud servers go
+	// the provision script and Launch verifies SSH access. Cloud servers go
 	// through the auto-polling path (status=new, advanced by the
 	// WaitForServerToConnect job once the VM boots).
 	initialStatus := types.ServerStatusNew
@@ -236,8 +237,8 @@ func (s *Service) buildAndDispatchServer(ctx context.Context, teamID, userID str
 	activity.RecordCreated(ctx, userID, server, "Server was created")
 
 	// Custom servers don't dispatch any job here — the user must paste the
-	// provision script into their box and then trigger TryConnection from
-	// the UI. Cloud servers need the VM created on the provider first;
+	// provision script into their box to start provisioning.
+	// Cloud servers need the VM created on the provider first;
 	// WaitForServerToConnect then auto-polls and dispatches provisioning.
 	if provider != types.ProviderCustom {
 		if err := s.dispatchCreateOnProviderJob(server, req.CredentialID, req.SSHKeyIDs); err != nil {
@@ -342,34 +343,47 @@ func (s *Service) ConnectServer(ctx context.Context, id, teamID, userID string) 
 	})
 }
 
-// TryConnection performs a one-shot SSH check on a custom server sitting in
-// awaiting_connection. Triggered by the user clicking "Try Connection" in
-// the UI after they've pasted the provision script. On success the server
-// advances to provisioning (ProvisionServer job dispatched). On failure no
-// state changes — the caller surfaces the error and the user clicks again.
-//
-// Signature matches ActionFunc so it can be wired up via fiberutil.Action.
+// TryConnection is the authenticated fallback for starting custom provisioning.
 func (s *Service) TryConnection(ctx context.Context, id, teamID, userID string) error {
-	_ = userID
 	server, err := s.repos.Server().FindByIDAndTeam(ctx, id, teamID)
 	if err != nil {
 		return err
 	}
+	return s.startCustomProvisioning(ctx, server, userID)
+}
 
-	// Validation/state errors below return proper 4xx status codes via the
-	// fiberutil helpers instead of plain errors.New. Without the helpers
-	// Fiber's default handler maps every Go error to 500, which surfaces
-	// as a generic "Internal Server Error" on the client — useless to the
-	// customer trying to figure out why their box wasn't reachable.
-	if server.Provider != types.ProviderCustom {
+// StartCustomProvisioning handles the signed callback after the key is installed.
+func (s *Service) StartCustomProvisioning(ctx context.Context, id string) error {
+	server, err := s.repos.Server().FindByID(ctx, id)
+	if err != nil {
+		return err
+	}
+	return s.startCustomProvisioning(ctx, server, "")
+}
+
+func customProvisioningStarted(server *models.Server) bool {
+	switch server.Status {
+	case types.ServerStatusStarting, types.ServerStatusProvisioning, types.ServerStatusRunning:
+		return server.Connected && server.ArchivedAt == nil
+	default:
+		return false
+	}
+}
+
+func customProvisioningPending(server *models.Server) bool {
+	return server.Provider == types.ProviderCustom && server.ArchivedAt == nil &&
+		(server.Status == types.ServerStatusAwaitingConnection || server.Status == types.ServerStatusNew)
+}
+
+func (s *Service) startCustomProvisioning(ctx context.Context, server *models.Server, userID string) error {
+	if server.Provider != types.ProviderCustom || server.ArchivedAt != nil {
 		return fiberutil.Validation("Try Connection only applies to custom servers.")
 	}
 
-	if server.Status != types.ServerStatusAwaitingConnection {
-		// Most common cause: a previous Try Connection already succeeded
-		// and the server has moved on to starting/provisioning. 409 is
-		// the right shape for "the resource state doesn't allow this
-		// action right now."
+	if customProvisioningStarted(server) {
+		return nil
+	}
+	if !customProvisioningPending(server) {
 		return fiberutil.Conflict(fmt.Sprintf("Server is not awaiting connection (current status: %s).", server.Status))
 	}
 
@@ -381,20 +395,19 @@ func (s *Service) TryConnection(ctx context.Context, id, teamID, userID string) 
 		return fiberutil.Validation("Server has no private key recorded yet.")
 	}
 
-	// Single SSH attempt with a tight timeout. The HTTP request is already
-	// bounded — we just want to fail fast so the user gets a real answer
-	// rather than waiting on a hung TCP.
 	dialCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
-	client, err := server.ConnectionAsRoot().Dial()
+	client, err := server.ConnectionAsRoot().NewSSHClient()
+	if err == nil {
+		defer client.Close()
+		err = client.ConnectContext(dialCtx)
+	}
 	if err != nil {
-		// Customer-fixable (provision script didn't run, firewall blocking
-		// SSH, wrong IP). Surface the underlying network error so the
-		// toast tells them what to fix instead of "Internal Server Error".
 		return fiberutil.Validation(fmt.Sprintf("Could not reach server: %s. Make sure the provision command ran successfully and SSH is reachable.", err.Error()))
 	}
-	defer client.Close()
+	stop := context.AfterFunc(dialCtx, func() { _ = client.Close() })
+	defer stop()
 
 	result, err := client.Run(dialCtx, "whoami")
 	if err != nil {
@@ -404,42 +417,69 @@ func (s *Service) TryConnection(ctx context.Context, id, teamID, userID string) 
 	if result.ExitCode != 0 {
 		return fiberutil.Validation(fmt.Sprintf("SSH whoami returned exit code %d.", result.ExitCode))
 	}
+	return s.queueCustomProvisioning(ctx, server, userID)
+}
 
-	now := time.Now()
-	if err := s.repos.Server().UpdateFields(ctx, id, map[string]any{
-		"connected":               true,
-		"last_connectivity_check": now,
-		"status":                  types.ServerStatusStarting,
-	}); err != nil {
-		return fmt.Errorf("failed to persist connection state: %w", err)
+func (s *Service) queueCustomProvisioning(ctx context.Context, server *models.Server, userID string) error {
+	if s.Queue == nil {
+		return ErrQueueNotConfigured
 	}
 
-	// Reload so the broadcast carries the new status.
-	if updated, ferr := s.repos.Server().FindByID(ctx, id); ferr == nil {
+	sshKeys, err := s.repos.SSHKey().FindByServer(ctx, server.ID)
+	if err != nil {
+		return fmt.Errorf("failed to load server SSH keys: %w", err)
+	}
+	var sshKeyIDs []string
+	for _, k := range sshKeys {
+		sshKeyIDs = append(sshKeyIDs, k.ID)
+	}
+
+	task, err := jobs.NewProvisionServerTask(server.ID, server.TeamID, nil, sshKeyIDs)
+	if err != nil {
+		return fmt.Errorf("failed to create provision task: %w", err)
+	}
+	// Claim the pending server once. A queue failure rolls back the claim
+	// so rerunning the script or using Try Connection can recover.
+	var claimed bool
+	err = s.WithTransaction(ctx, func(tx *gorm.DB) error {
+		update := tx.Model(&models.Server{}).
+			Where("id = ? AND team_id = ? AND status = ? AND archived_at IS NULL",
+				server.ID, server.TeamID, server.Status).
+			Updates(map[string]any{
+				"connected":               true,
+				"last_connectivity_check": time.Now(),
+				"status":                  types.ServerStatusStarting,
+			})
+		if update.Error != nil {
+			return fmt.Errorf("failed to persist connection state: %w", update.Error)
+		}
+		claimed = update.RowsAffected == 1
+		if claimed {
+			if err := s.EnqueueTask(task); err != nil {
+				return fmt.Errorf("failed to enqueue provision task: %w", err)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+
+	updated, err := s.repos.Server().FindByID(ctx, server.ID)
+	if !claimed {
+		if err == nil && customProvisioningStarted(updated) {
+			return nil
+		}
+		return fiberutil.Conflict("Server is no longer awaiting connection.")
+	}
+	if err == nil {
 		s.BroadcastToTeam(server.TeamID, "server.connected", map[string]any{
 			"server_id": updated.ID,
 			"status":    string(updated.Status),
 		})
 		s.broadcastServerUpdate(updated)
 	}
-
-	// Hand off to provisioning. Collect the SSH key ids the same way
-	// RetryProvision does so deploy keys land on the box.
-	sshKeys, _ := s.repos.SSHKey().FindByServer(ctx, id)
-	var sshKeyIDs []string
-	for _, k := range sshKeys {
-		sshKeyIDs = append(sshKeyIDs, k.ID)
-	}
-
-	task, err := jobs.NewProvisionServerTask(id, teamID, nil, sshKeyIDs)
-	if err != nil {
-		return fmt.Errorf("failed to create provision task: %w", err)
-	}
-	if err := s.EnqueueTask(task); err != nil {
-		return fmt.Errorf("failed to enqueue provision task: %w", err)
-	}
-
-	activity.RecordEvent(ctx, "connection_established", "", server, "User confirmed SSH connection; provisioning queued")
+	activity.RecordEvent(ctx, "connection_established", userID, server, "SSH connection verified; provisioning queued")
 	return nil
 }
 
@@ -755,16 +795,27 @@ func GenerateSSHKeyPair() (privateKeyStr string, publicKeyStr string, err error)
 	return string(privateKeyPEM), publicKeyStr, nil
 }
 
-// GetProvisionScript returns the provision script for a server
-// This is used for custom servers that need to run the provision script manually
-// If teamID is provided, it validates team ownership
-func (s *Service) GetProvisionScript(ctx context.Context, serverID string, teamID ...string) (string, error) {
+// GetProvisionCommand issues a command for a custom server awaiting connection.
+func (s *Service) GetProvisionCommand(ctx context.Context, serverID, teamID string) (string, error) {
+	server, err := s.repos.Server().FindByIDAndTeam(ctx, serverID, teamID)
+	if err != nil {
+		return "", err
+	}
+	if !customProvisioningPending(server) {
+		return "", fiberutil.Conflict("Server is no longer awaiting connection.")
+	}
+	return server.GetAutomaticProvisionCommand(), nil
+}
+
+// GetProvisionScript returns the script for a server. Only a signed download
+// authorized to start provisioning can request the callback.
+func (s *Service) GetProvisionScript(ctx context.Context, serverID, teamID string, autoStart bool) (string, error) {
 	var server *models.Server
 	var err error
 
 	// Find server with optional team validation
-	if len(teamID) > 0 && teamID[0] != "" {
-		server, err = s.repos.Server().FindByIDAndTeam(ctx, serverID, teamID[0])
+	if teamID != "" {
+		server, err = s.repos.Server().FindByIDAndTeam(ctx, serverID, teamID)
 	} else {
 		server, err = s.repos.Server().FindByID(ctx, serverID)
 	}
@@ -782,7 +833,7 @@ func (s *Service) GetProvisionScript(ctx context.Context, serverID string, teamI
 	}
 
 	// Generate the provision script that authorizes our management key
-	script := s.generateAuthorizeKeyScript(server)
+	script := s.generateAuthorizeKeyScript(server, autoStart)
 	return script, nil
 }
 
@@ -803,17 +854,13 @@ func shellEscape(s string) string {
 //     custom_server provider) and presents server.PrivateKey. The
 //     matching public key therefore has to live in
 //     /root/.ssh/authorized_keys. If the user SSH's in as ubuntu/admin
-//     and pipes to bash without sudo, ~/.ssh expands to /home/<user>/
-//     and the key lands in the wrong place — the script reports
-//     "Management key authorized successfully" but the backend's later
-//     Try Connection fails with no path to recover from the user's
-//     terminal output. So: refuse to run as non-root, loudly.
+//     and runs the script without sudo, it exits with an error.
 //
 //  2. Write to /root/.ssh/authorized_keys explicitly, never ~/.ssh.
 //     Even when EUID is 0, $HOME can still be set to something else
 //     (e.g. when a user did `sudo -E bash`, or when piped through some
 //     CI shells). Hard-coding the path removes the variable entirely.
-func (s *Service) generateAuthorizeKeyScript(server *models.Server) string {
+func (s *Service) generateAuthorizeKeyScript(server *models.Server, autoStart bool) string {
 	// TrimSpace is load-bearing. ssh.MarshalAuthorizedKey appends a
 	// trailing newline, which would otherwise be baked into the script
 	// as `PUBLIC_KEY="ssh-rsa AAAA...==\n"`. When bash later expands
@@ -825,26 +872,17 @@ func (s *Service) generateAuthorizeKeyScript(server *models.Server) string {
 	// never runs. That bug stranded a customer's server in
 	// awaiting_connection — every retry no-op'd. Trim the key so the
 	// shell variable is a clean single-line value.
-	publicKey := strings.TrimSpace(string(server.PublicKey))
-	escapedName := shellEscape(server.Name)
+	publicKey := shellEscape(strings.TrimSpace(string(server.PublicKey)))
 
 	script := `#!/bin/bash
 set -e
 
 # Launch Server Provisioning Script
-# Server: '%s'
 
 if [ "$EUID" -ne 0 ]; then
-    echo "ERROR: This script must be run as root."
-    echo
-    echo "Re-run the provision command from your terminal with sudo, e.g.:"
-    echo "  wget --no-verbose -O - 'https://...' | sudo bash"
-    echo "or, if you're already in a shell, prefix it with sudo:"
-    echo "  sudo bash provision.sh"
+    echo "Run the provisioning script as root or with sudo." >&2
     exit 1
 fi
-
-echo "Authorizing Launch management key..."
 
 # Install into /root/.ssh explicitly — Launch connects as root, so the
 # key must land in root's authorized_keys regardless of $HOME at run
@@ -855,23 +893,39 @@ mkdir -p /root/.ssh
 chmod 700 /root/.ssh
 chown root:root /root/.ssh
 
-PUBLIC_KEY="%s"
+PUBLIC_KEY='%s'
 
 # grep -F: treat $PUBLIC_KEY as a fixed string (it contains +, /, =
 # from base64 that grep would otherwise read as regex metacharacters).
 # --: end option processing in case the key happens to start with -.
 if ! grep -qF -- "$PUBLIC_KEY" /root/.ssh/authorized_keys 2>/dev/null; then
     echo "$PUBLIC_KEY" >> /root/.ssh/authorized_keys
-    chmod 600 /root/.ssh/authorized_keys
-    chown root:root /root/.ssh/authorized_keys
-    echo "Management key authorized successfully."
-else
-    echo "Management key already authorized."
 fi
-
-echo "Provisioning script completed."
+chmod 600 /root/.ssh/authorized_keys
+chown root:root /root/.ssh/authorized_keys
 `
-	return fmt.Sprintf(script, escapedName, publicKey)
+	script = fmt.Sprintf(script, publicKey)
+
+	if server.Provider != types.ProviderCustom || server.ArchivedAt != nil {
+		return script + "echo 'Launch management key authorized.'\n"
+	}
+
+	statusURL := shellEscape(strings.TrimRight(s.frontendURL, "/") + "/servers?provision=" + server.ID)
+	if autoStart && (customProvisioningPending(server) || customProvisioningStarted(server)) {
+		callback := signedurl.PublicTemporarySign("/webhooks/servers/"+server.ID+"/provision", nil, time.Hour)
+		return script + fmt.Sprintf(`
+if wget -q -O /dev/null --timeout=30 --tries=1 --max-redirect=0 --post-data='' '%s'; then
+    printf 'Provisioning started. Check status: %%s\n' '%s'
+else
+    printf 'Server is ready for provisioning. Open Launch to try the connection: %%s\n' '%s' >&2
+    exit 1
+fi
+`, shellEscape(callback), statusURL, statusURL)
+	}
+	if customProvisioningPending(server) {
+		return script + fmt.Sprintf("printf 'Server is ready for provisioning. Open Launch to continue: %%s\\n' '%s'\n", statusURL)
+	}
+	return script + fmt.Sprintf("printf 'Launch management key authorized. Check status: %%s\\n' '%s'\n", statusURL)
 }
 
 // RetryProvision re-runs a failed server's pipeline from wherever it died.
