@@ -59,6 +59,7 @@ func (m *Module) createServices() *services.ServiceRegistry {
 			Repos:        m.repos,
 		},
 		ProviderFactory: m.providerFactory,
+		AppURL:          deps.Config.App.URL,
 	}
 
 	// Create service registry - handles all service creation and wiring

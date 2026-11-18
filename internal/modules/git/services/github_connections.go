@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/hibiken/asynq"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 
@@ -39,16 +40,18 @@ type GitHubSelectionRequest struct {
 	ExpectedGeneration       *uint64         `json:"expected_generation"`
 }
 type GitHubAttemptResponse struct {
-	AttemptID            string                     `json:"attempt_id"`
-	Status               string                     `json:"status"`
-	TeamID               string                     `json:"team_id"`
-	URL                  string                     `json:"url,omitempty"`
-	ExpiresAt            time.Time                  `json:"expires_at"`
-	SourceControlID      *string                    `json:"source_control_id,omitempty"`
-	ConnectionGeneration uint64                     `json:"connection_generation,omitempty"`
-	SelectionVersion     uint64                     `json:"selection_version"`
-	Installations        []GitHubInstallationChoice `json:"installations"`
-	InstallURL           string                     `json:"install_url,omitempty"`
+	TargetInstallationID    string                     `json:"target_installation_id,omitempty"`
+	InstallationUnavailable bool                       `json:"installation_unavailable,omitempty"`
+	AttemptID               string                     `json:"attempt_id"`
+	Status                  string                     `json:"status"`
+	TeamID                  string                     `json:"team_id"`
+	URL                     string                     `json:"url,omitempty"`
+	ExpiresAt               time.Time                  `json:"expires_at"`
+	SourceControlID         *string                    `json:"source_control_id,omitempty"`
+	ConnectionGeneration    uint64                     `json:"connection_generation,omitempty"`
+	SelectionVersion        uint64                     `json:"selection_version"`
+	Installations           []GitHubInstallationChoice `json:"installations"`
+	InstallURL              string                     `json:"install_url,omitempty"`
 }
 type GitHubInstallationChoice struct {
 	ID           string `json:"id"`
@@ -290,6 +293,16 @@ func (s *SourceControlService) GitHubAttempt(ctx context.Context, id, teamID, us
 		return GitHubAttemptResponse{}, err
 	}
 	out := attemptResponse(a)
+	if a.SourceControlID != nil {
+		var connection models.SourceControl
+		if err := s.DB().WithContext(ctx).Where("id = ? AND team_id = ? AND provider = ?", *a.SourceControlID, teamID, gittypes.GitProviderGitHub).First(&connection).Error; err != nil {
+			return out, errAttempt
+		}
+		if _, err := s.reviewGitHubConnection(ctx, a, connection.GetInstallationID()); err != nil {
+			return out, err
+		}
+		out.TargetInstallationID = connection.GetInstallationID()
+	}
 	if a.Status != "authorized" || a.AuthorizationID == nil {
 		return out, nil
 	}
@@ -309,9 +322,13 @@ func (s *SourceControlService) GitHubAttempt(ctx context.Context, id, teamID, us
 		if providers.ExtractFloatID(i, "app_id") != p.Config().AppID || i["suspended_at"] != nil {
 			continue
 		}
+		if out.TargetInstallationID != "" && providers.ExtractFloatID(i, "id") != out.TargetInstallationID {
+			continue
+		}
 		account, _ := i["account"].(map[string]any)
 		out.Installations = append(out.Installations, GitHubInstallationChoice{ID: providers.ExtractFloatID(i, "id"), AccountLogin: str(account, "login"), AccountType: str(account, "type"), AvatarURL: str(account, "avatar_url")})
 	}
+	out.InstallationUnavailable = out.TargetInstallationID != "" && len(out.Installations) == 0
 	state, err := secret()
 	if err != nil {
 		return out, err
@@ -530,6 +547,7 @@ func (s *SourceControlService) SelectGitHubRepositories(ctx context.Context, id,
 		return out, access.ErrAccessDenied
 	}
 	var sc models.SourceControl
+	var recoveryIntents []string
 	err = s.DB().WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var attempt models.GitHubConnectionAttempt
 		if tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&attempt, "id = ?", a.ID).Error != nil || attempt.Status != "authorized" {
@@ -719,6 +737,11 @@ func (s *SourceControlService) SelectGitHubRepositories(ctx context.Context, id,
 				}
 			}
 		}
+		var captureErr error
+		recoveryIntents, captureErr = CaptureGitHubWorkflowRecovery(ctx, tx, s.ProviderFactory(), "selection:"+attempt.ID, &sc, s.ServiceDeps().AppURL)
+		if captureErr != nil {
+			return captureErr
+		}
 		attempt.Status = "completed"
 		attempt.SourceControlID = &sc.ID
 		attempt.ConnectionGeneration = sc.Generation
@@ -728,6 +751,13 @@ func (s *SourceControlService) SelectGitHubRepositories(ctx context.Context, id,
 	})
 	if err != nil {
 		return out, err
+	}
+	var enqueue func(*asynq.Task) error
+	if s.Queue != nil {
+		enqueue = func(task *asynq.Task) error { _, err := s.Queue.EnqueueContext(ctx, task); return err }
+	}
+	if dispatchErr := DispatchGitHubIntentIDs(ctx, s.DB(), recoveryIntents, enqueue); dispatchErr != nil && s.Logger != nil {
+		s.Logger.Warn().Err(dispatchErr).Str("source_control_id", sc.ID).Msg("GitHub workflow recovery saved for retry")
 	}
 	_ = access.NewResolver(s.DB(), s.ProviderFactory()).RevokeConnectionPending(ctx, sc.ID)
 	if err = s.DB().WithContext(ctx).Where("source_control_id = ? AND selected = ? AND available = ?", sc.ID, true, true).Find(&sc.Repositories).Error; err != nil {

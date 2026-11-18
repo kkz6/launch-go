@@ -14,11 +14,11 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/git/access"
 	"github.com/kkz6/launch-go/internal/modules/git/models"
 	"github.com/kkz6/launch-go/internal/modules/git/providers"
+	"github.com/kkz6/launch-go/internal/modules/git/services"
 	siteaccess "github.com/kkz6/launch-go/internal/modules/site/gitaccess"
 	sitejobs "github.com/kkz6/launch-go/internal/modules/site/jobs"
 	sitemodels "github.com/kkz6/launch-go/internal/modules/site/models"
 	"github.com/kkz6/launch-go/internal/pkg/dbtype"
-	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -338,90 +338,22 @@ func (j *ProcessGitWebhookJob) captureGitHubPush(ctx context.Context, tx *gorm.D
 }
 
 func (j *ProcessGitWebhookJob) dispatchGitHubIntents(ctx context.Context, receiptID string) error {
-	var intents []models.GitHubWebhookIntent
-	if err := j.Deps.DB.WithContext(ctx).Where("delivery_id = ? AND dispatched_at IS NULL", receiptID).Find(&intents).Error; err != nil {
-		return err
+	var enqueue func(*asynq.Task) error
+	if j.Deps.Queue != nil {
+		enqueue = func(task *asynq.Task) error { return j.Deps.DispatchTask(task) }
 	}
-	if len(intents) > 0 && j.Deps.Queue == nil {
-		return fmt.Errorf("webhook dispatch queue unavailable")
-	}
-	for _, intent := range intents {
-		taskType := intent.TaskType
-		if taskType == "" {
-			taskType = sitejobs.TypeCreateDeployment
-		}
-		if taskType != sitejobs.TypeCreateDeployment && taskType != "docker:gha_bootstrap_workflow" {
-			return fmt.Errorf("unsupported webhook intent type")
-		}
-		task, err := pkgjobs.TaskWithID(taskType, intent.Payload, "github-intent:"+intent.ID, asynq.MaxRetry(10))
-		if err != nil {
-			return err
-		}
-		if err = j.Deps.DispatchTask(task); err != nil && err != asynq.ErrTaskIDConflict && err != asynq.ErrDuplicateTask {
-			return err
-		}
-		now := time.Now()
-		if err = j.Deps.DB.WithContext(ctx).Model(&intent).Update("dispatched_at", now).Error; err != nil {
-			return err
-		}
-	}
-	return nil
+	return services.DispatchGitHubIntents(ctx, j.Deps.DB, receiptID, enqueue)
 }
 
 func (j *ProcessGitWebhookJob) capturePermissionRecovery(ctx context.Context, tx *gorm.DB, receiptID, installationID string) error {
+	var connections []models.SourceControl
+	if err := tx.Where("provider = ? AND installation_id = ? AND status = ?", "github", installationID, "active").Find(&connections).Error; err != nil {
+		return err
+	}
 	var failures []error
-	for _, table := range []struct{ name, kind string }{{"docker_applications", "application"}, {"docker_composes", "compose"}} {
-		if !tx.Migrator().HasTable(table.name) {
-			continue
-		}
-		var rows []struct {
-			ID           string
-			TeamID       string
-			SourceConfig dbtype.JSONMap `gorm:"type:json"`
-		}
-		if err := tx.Table(table.name).Select("id,team_id,source_config").Where("build_location = ? AND deleted_at IS NULL", "github_actions").Find(&rows).Error; err != nil {
-			return err
-		}
-		for _, r := range rows {
-			if r.SourceConfig.GetString("gha_install_status") != "permissions_missing" {
-				continue
-			}
-			// Check the local installation before any account-specific provider
-			// call. Unrelated accounts cannot delay this installation's recovery.
-			var sc models.SourceControl
-			if err := tx.Where("id = ? AND team_id = ? AND provider = ? AND installation_id = ?", r.SourceConfig.GetString("source_control_id"), r.TeamID, "github", installationID).First(&sc).Error; err != nil {
-				if errors.Is(err, gorm.ErrRecordNotFound) {
-					continue
-				}
-				return err
-			}
-			key := eventHash(receiptID + ":" + table.kind + ":" + r.ID)
-			var existing int64
-			if err := tx.Model(&models.GitHubWebhookIntent{}).Where("id = ?", key).Count(&existing).Error; err != nil {
-				return err
-			}
-			if existing > 0 {
-				continue
-			}
-			expected, err := access.SnapshotFromMap(r.SourceConfig)
-			if err != nil || expected == nil {
-				continue
-			}
-			grant, err := access.NewResolver(tx, j.Deps.ProviderFactory).Resolve(ctx, access.Request{TeamID: r.TeamID, SourceControlID: r.SourceConfig.GetString("source_control_id"), RepositoryID: r.SourceConfig.GetString("repository_id"), Operation: access.ActionsBootstrap, Expected: expected})
-			if err != nil {
-				if errors.Is(err, access.ErrAccessDenied) || errors.Is(err, access.ErrStaleAccess) {
-					continue
-				}
-				failures = append(failures, err)
-				continue
-			}
-			if grant.InstallationID != installationID {
-				continue
-			}
-			intent := models.GitHubWebhookIntent{ID: key, DeliveryID: receiptID, TaskType: "docker:gha_bootstrap_workflow", Payload: dbtype.JSONMap{"workload_kind": table.kind, "workload_id": r.ID, "git_access": grant.Snapshot()}}
-			if err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&intent).Error; err != nil {
-				return err
-			}
+	for i := range connections {
+		if _, err := services.CaptureGitHubWorkflowRecovery(ctx, tx, j.Deps.ProviderFactory, receiptID, &connections[i], j.Deps.AppURL); err != nil {
+			failures = append(failures, err)
 		}
 	}
 	if len(failures) > 0 {

@@ -247,13 +247,14 @@ func TestGitHubPushFailureInOneAccountDoesNotRollbackOtherAccountDelivery(t *tes
 
 func TestGitHubPermissionRecoveryIgnoresOtherInstallationsBeforeProviderChecks(t *testing.T) {
 	j, db := githubEventFixture(t)
+	j.Deps.AppURL = "https://launch.test"
 	permissions := `{"contents":"write","workflows":"write","actions":"write","secrets":"write","variables":"write"}`
 	require.NoError(t, db.Model(&models.GitHubInstallation{}).Where("id = ?", "installation").Update("permissions", permissions).Error)
 	other := models.GitHubInstallation{Host: "github.com", AppID: "7", InstallationID: "84", Status: "active", Generation: 1, Permissions: permissions}
 	other.ID = "other-installation"
 	require.NoError(t, db.Create(&other).Error)
 	require.NoError(t, db.Model(&models.SourceControl{}).Where("id = ?", "connection-a").Updates(map[string]any{"installation_id": "84", "git_hub_installation_id": other.ID}).Error)
-	require.NoError(t, db.Exec("CREATE TABLE docker_applications (id TEXT PRIMARY KEY, team_id TEXT, source_config TEXT, build_location TEXT, deleted_at datetime)").Error)
+	require.NoError(t, db.Exec("CREATE TABLE docker_applications (id TEXT PRIMARY KEY, team_id TEXT, source_config TEXT, gha_deploy_token_hash TEXT, build_location TEXT, deleted_at datetime)").Error)
 	for _, team := range []string{"a", "b"} {
 		var repo models.SourceControlRepository
 		require.NoError(t, db.Where("source_control_id = ? AND selected = ?", "connection-"+team, true).First(&repo).Error)
@@ -270,6 +271,9 @@ func TestGitHubPermissionRecoveryIgnoresOtherInstallationsBeforeProviderChecks(t
 	require.NoError(t, db.Find(&intents).Error)
 	require.Len(t, intents, 1)
 	require.Equal(t, "app-b", intents[0].Payload.GetString("workload_id"))
+	require.Len(t, intents[0].Payload.GetString("binding_id"), 26)
+	require.Equal(t, "https://launch.test", intents[0].Payload.GetString("launch_base_url"))
+	require.Equal(t, true, intents[0].Payload["recovery"])
 }
 
 func TestGitHubLifecycleBeforeFirstConnectionPreservesRevocationEvidence(t *testing.T) {
@@ -304,4 +308,38 @@ func TestGitHubLifecycleBeforeFirstConnectionPreservesRevocationEvidence(t *test
 			require.Zero(t, connections, "a lifecycle receipt never creates local access")
 		})
 	}
+}
+
+func TestGitHubReconcileRestoresAlreadyReconnectedWorkflowsOnce(t *testing.T) {
+	j, db := githubEventFixture(t)
+	ctx := context.Background()
+	j.Deps.AppURL = "https://launch.test"
+	require.NoError(t, db.Model(&models.GitHubInstallation{}).Where("id = ?", "installation").Update("permissions", `{"contents":"write","workflows":"write","actions":"write","secrets":"write","variables":"write"}`).Error)
+	require.NoError(t, db.Exec("CREATE TABLE docker_applications (id TEXT PRIMARY KEY, team_id TEXT, source_config TEXT, gha_deploy_token_hash TEXT, build_location TEXT, deleted_at datetime)").Error)
+	var repo models.SourceControlRepository
+	require.NoError(t, db.Where("source_control_id = ? AND selected = ?", "connection-a", true).First(&repo).Error)
+	source := dbtype.JSONMap{"source_control_id": "connection-a", "repository_id": fmt.Sprint(repo.ID), "gha_workflow_sha": "old-sha", "gha_install_status": "ok"}
+	require.NoError(t, db.Table("docker_applications").Create(map[string]any{"id": "existing-app", "team_id": "a", "source_config": source, "gha_deploy_token_hash": "old-token", "build_location": "github_actions"}).Error)
+	reconcile := ReconcileGitHubAccessJob{Deps: j.Deps}
+	require.ErrorContains(t, reconcile.Handle(ctx), "queue unavailable")
+	var intents []models.GitHubWebhookIntent
+	require.NoError(t, db.Find(&intents).Error)
+	require.Len(t, intents, 1)
+	redis := miniredis.RunT(t)
+	j.Deps.Queue = queue.NewClient(config.RedisConfig{Address: redis.Addr()})
+	t.Cleanup(func() { _ = j.Deps.Queue.Close() })
+	require.NoError(t, reconcile.Handle(ctx))
+	queued, err := j.Deps.Queue.Inspector().ListPendingTasks("default")
+	require.NoError(t, err)
+	require.Len(t, queued, 1)
+	source["gha_recovery_status"] = "failed"
+	source["gha_recovery_binding_id"] = intents[0].Payload.GetString("binding_id")
+	require.NoError(t, db.Table("docker_applications").Where("id = ?", "existing-app").Update("source_config", source).Error)
+	require.NoError(t, reconcile.Handle(ctx))
+	require.NoError(t, db.Find(&intents).Error)
+	require.Len(t, intents, 1, "terminal failure does not create new bindings every minute")
+	require.NoError(t, db.Model(&models.SourceControlRepository{}).Where("id = ?", repo.ID).Update("grant_version", gorm.Expr("grant_version + 1")).Error)
+	require.NoError(t, reconcile.Handle(ctx))
+	require.NoError(t, db.Find(&intents).Error)
+	require.Len(t, intents, 2, "a new grant may recover automatically")
 }

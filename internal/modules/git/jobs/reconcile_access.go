@@ -6,6 +6,7 @@ import (
 	"github.com/hibiken/asynq"
 	"github.com/kkz6/launch-go/internal/modules/git/access"
 	"github.com/kkz6/launch-go/internal/modules/git/models"
+	"github.com/kkz6/launch-go/internal/modules/git/services"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 	"gorm.io/gorm"
 	"strconv"
@@ -65,6 +66,12 @@ func (j *ReconcileGitHubAccessJob) Handle(ctx context.Context) error {
 			if _, err := resolver.Resolve(ctx, access.Request{TeamID: sc.TeamID, SourceControlID: sc.ID, RepositoryID: strconv.FormatUint(repo.ID, 10), Operation: access.Read}); err != nil {
 				j.Deps.Logger.Warn().Str("source_control_id", sc.ID).Uint64("repository_id", repo.ID).Msg("Repository access requires review")
 			}
+		}
+		if err := j.Deps.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+			_, err := services.CaptureMissingGitHubWorkflowRecovery(ctx, tx, j.Deps.ProviderFactory, "reconcile:"+sc.ID, &sc, j.Deps.AppURL)
+			return err
+		}); err != nil {
+			failures = append(failures, err)
 		}
 	}
 	retiredCleanup := j.Deps.DB.Model(&models.GitHubCleanupManifest{}).Select("id").Where("expires_at <= ? OR status IN ?", time.Now(), []string{"completed", "failed_manual"})
