@@ -46,8 +46,7 @@ func TestCustomProvisionCommands(t *testing.T) {
 	require.Equal(t, "1", download.Query().Get("start"))
 	require.True(t, signer.Verify(download.Path, download.Query()))
 	require.NotEmpty(t, download.Query().Get("expires"))
-	require.Contains(t, command, "wget -q")
-	require.Contains(t, command, `printf '%s\n'`)
+	require.Contains(t, command, "wget -qO-")
 
 	legacy, err := url.Parse(server.GetProvisionScriptURL())
 	require.NoError(t, err)
@@ -292,10 +291,10 @@ wget() {
 		output, err := check.CombinedOutput()
 		if code == "0" {
 			require.NoError(t, err)
-			require.Equal(t, "Provisioning started. Check status: "+statusURL+"\n", string(output))
+			require.Equal(t, "Checking SSH connection with Launch...\nProvisioning started. Check status: "+statusURL+"\n", string(output))
 		} else {
 			require.Error(t, err)
-			require.Equal(t, "Server is ready for provisioning. Open Launch to try the connection: "+statusURL+"\n", string(output))
+			require.Equal(t, "Checking SSH connection with Launch...\nServer is ready for provisioning. Open Launch to try the connection: "+statusURL+"\n", string(output))
 		}
 	}
 }

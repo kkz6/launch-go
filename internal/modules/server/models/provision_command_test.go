@@ -2,6 +2,7 @@ package models
 
 import (
 	"net/url"
+	"os/exec"
 	"strings"
 	"testing"
 
@@ -24,7 +25,8 @@ func TestCustomServerProvisionCommandURLs(t *testing.T) {
 		{server.GetProvisionCommand(), false},
 		{server.GetAutomaticProvisionCommand(), true},
 	} {
-		require.Contains(t, tt.command, "wget -q -O -")
+		require.Contains(t, tt.command, "wget -qO-")
+		require.NotContains(t, tt.command, "\n")
 		link, err := url.Parse(strings.Split(tt.command, "'")[1])
 		require.NoError(t, err)
 		require.Equal(t, "app.example.test", link.Host)
@@ -32,5 +34,33 @@ func TestCustomServerProvisionCommandURLs(t *testing.T) {
 		require.True(t, signer.Verify(link.Path, link.Query()))
 		require.Equal(t, tt.automatic, link.Query().Get("start") == "1")
 		require.Equal(t, tt.automatic, link.Query().Has("expires"))
+	}
+}
+
+func TestProvisionCommandRunsDownloadedScript(t *testing.T) {
+	const stubs = `
+wget() {
+    printf '%s' "$TEST_PROVISION_SCRIPT"
+}
+sudo() { [ "$#" -eq 1 ] && "$@"; }
+`
+	for _, tt := range []struct {
+		name, script, output string
+		wantError            bool
+	}{
+		{name: "setup succeeded", script: "echo setup started", output: "setup started\n"},
+		{name: "setup failed", script: "echo setup failed >&2; exit 1", output: "setup failed\n", wantError: true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			cmd := exec.Command("bash", "-c", stubs+provisionCommand("https://app.example.test/provision/server"))
+			cmd.Env = append(cmd.Environ(), "TEST_PROVISION_SCRIPT="+tt.script)
+			output, err := cmd.CombinedOutput()
+			if tt.wantError {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+			}
+			require.Equal(t, tt.output, string(output))
+		})
 	}
 }

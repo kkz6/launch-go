@@ -912,6 +912,7 @@ chown root:root /root/.ssh/authorized_keys
 	if autoStart && (customProvisioningPending(server) || customProvisioningStarted(server)) {
 		callback := signedurl.PublicTemporarySign("/webhooks/servers/"+server.ID+"/provision", nil, time.Hour)
 		return script + fmt.Sprintf(`
+echo 'Checking SSH connection with Launch...'
 if wget -q -O /dev/null --timeout=30 --tries=1 --max-redirect=0 --post-data='' '%s'; then
     printf 'Provisioning started. Check status: %%s\n' '%s'
 else
