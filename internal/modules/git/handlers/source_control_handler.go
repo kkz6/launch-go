@@ -224,11 +224,11 @@ func (h *SourceControlHandler) GitHubAttempt(r *fiberctx.Request) error {
 }
 func (h *SourceControlHandler) GitHubCandidates(r *fiberctx.Request) error {
 	session, _ := r.Locals("sessionID").(string)
-	repos, generation, selectionVersion, err := h.service.GitHubCandidates(r.Context(), r.Params("attemptId"), r.TeamID, r.UserID, session, r.Params("installationId"))
+	result, err := h.service.GitHubCandidates(r.Context(), r.Params("attemptId"), r.TeamID, r.UserID, session, r.Params("installationId"))
 	if err != nil {
 		return err
 	}
-	return fiberctx.OK(r.Ctx, "Choose repositories for this account", fiber.Map{"repositories": repos, "connection_generation": generation, "selection_version": selectionVersion})
+	return fiberctx.OK(r.Ctx, "Choose repositories for this account", result)
 }
 func (h *SourceControlHandler) SelectGitHub(r *fiberctx.Request) error {
 	var req services.GitHubSelectionRequest

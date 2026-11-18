@@ -32,10 +32,11 @@ type BeginGitHubRequest struct {
 	AcknowledgeShared bool   `json:"acknowledge_shared"`
 }
 type GitHubSelectionRequest struct {
-	InstallationID           string   `json:"installation_id"`
-	RepositoryIDs            []string `json:"repository_ids"`
-	ExpectedSelectionVersion *uint64  `json:"expected_selection_version"`
-	ExpectedGeneration       *uint64  `json:"expected_generation"`
+	SourceControlID          json.RawMessage `json:"source_control_id"`
+	InstallationID           string          `json:"installation_id"`
+	RepositoryIDs            []string        `json:"repository_ids"`
+	ExpectedSelectionVersion *uint64         `json:"expected_selection_version"`
+	ExpectedGeneration       *uint64         `json:"expected_generation"`
 }
 type GitHubAttemptResponse struct {
 	AttemptID            string                     `json:"attempt_id"`
@@ -54,6 +55,12 @@ type GitHubInstallationChoice struct {
 	AccountLogin string `json:"account_login"`
 	AccountType  string `json:"account_type"`
 	AvatarURL    string `json:"avatar_url"`
+}
+type GitHubCandidatesResponse struct {
+	Repositories         []GitHubRepositoryChoice `json:"repositories"`
+	SourceControlID      *string                  `json:"source_control_id"`
+	ConnectionGeneration uint64                   `json:"connection_generation"`
+	SelectionVersion     uint64                   `json:"selection_version"`
 }
 type GitHubRepositoryChoice struct {
 	Unavailable        bool                   `json:"unavailable,omitempty"`
@@ -327,75 +334,104 @@ func (s *SourceControlService) GitHubAttempt(ctx context.Context, id, teamID, us
 	out.InstallURL = u.String()
 	return out, nil
 }
-func (s *SourceControlService) GitHubCandidates(ctx context.Context, id, teamID, userID, sessionID, installationID string) ([]GitHubRepositoryChoice, uint64, uint64, error) {
+
+// Resolve the local connection for the installation being reviewed without
+// binding a fresh attempt: the user may still switch installations before saving.
+func (s *SourceControlService) reviewGitHubConnection(ctx context.Context, attempt *models.GitHubConnectionAttempt, installationID string) (*models.SourceControl, error) {
+	var connection models.SourceControl
+	err := s.DB().WithContext(ctx).Where("team_id = ? AND provider = ? AND provider_id = ?", attempt.TeamID, gittypes.GitProviderGitHub, installationID).First(&connection).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) && attempt.SourceControlID == nil {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, errAttempt
+	}
+	if connection.GetInstallationID() != installationID || (attempt.SourceControlID != nil && connection.ID != *attempt.SourceControlID) {
+		return nil, fiberutil.Conflict("Reconnect the same GitHub installation for this connection")
+	}
+	if attempt.SourceControlID != nil && (connection.Generation != attempt.ConnectionGeneration || connection.SelectionVersion != attempt.SelectionVersion) {
+		return nil, access.ErrStaleAccess
+	}
+	return &connection, nil
+}
+func (s *SourceControlService) GitHubCandidates(ctx context.Context, id, teamID, userID, sessionID, installationID string) (GitHubCandidatesResponse, error) {
+	out := GitHubCandidatesResponse{Repositories: []GitHubRepositoryChoice{}}
 	a, err := s.loadAttempt(ctx, id, teamID, userID, sessionID)
 	if err != nil {
-		return nil, 0, 0, err
+		return out, err
 	}
 	if a.Status != "authorized" || a.AuthorizationID == nil {
-		return nil, 0, 0, errAttempt
+		return out, errAttempt
+	}
+	connection, err := s.reviewGitHubConnection(ctx, a, installationID)
+	if err != nil {
+		return out, err
+	}
+	if connection != nil {
+		out.SourceControlID = &connection.ID
+		out.ConnectionGeneration = connection.Generation
+		out.SelectionVersion = connection.SelectionVersion
 	}
 	p, err := access.GitHubProvider(s.ProviderFactory())
 	if err != nil {
-		return nil, 0, 0, err
+		return out, err
 	}
 	authorization, token, err := access.UserToken(ctx, s.DB(), p, *a.AuthorizationID)
 	if err != nil {
-		return nil, 0, 0, errAttempt
+		return out, errAttempt
 	}
 	if _, err = s.verifiedInstallation(ctx, p, token, installationID); err != nil {
-		return nil, 0, 0, err
+		return out, err
 	}
 	repos, err := p.GetUserInstallationRepositories(ctx, token, installationID)
 	if err != nil {
-		return nil, 0, 0, err
+		return out, err
 	}
 	selected := map[string]bool{}
 	saved := map[string]models.SourceControlRepository{}
 	emitted := map[string]bool{}
-	if a.SourceControlID != nil {
+	if out.SourceControlID != nil {
 		var existing []models.SourceControlRepository
-		if err = s.DB().WithContext(ctx).Where("source_control_id = ? AND selected = ?", *a.SourceControlID, true).Find(&existing).Error; err != nil {
-			return nil, 0, 0, err
+		if err = s.DB().WithContext(ctx).Where("source_control_id = ? AND selected = ?", *out.SourceControlID, true).Find(&existing).Error; err != nil {
+			return out, err
 		}
 		for _, r := range existing {
 			selected[r.GitHubRepositoryID] = true
 			saved[r.GitHubRepositoryID] = r
 		}
 	}
-	out := []GitHubRepositoryChoice{}
 	for _, r := range repos {
 		full := str(r, "full_name")
 		admin, err := p.UserRepositoryAdmin(ctx, token, full, authorization.Login)
 		if err != nil {
-			return nil, 0, 0, err
+			return out, err
 		}
 		if !admin {
 			continue
 		}
 		remoteID := providers.ExtractFloatID(r, "id")
 		var impact []GitHubWorkloadImpact
-		if selected[remoteID] && a.SourceControlID != nil {
-			impact, err = s.repositoryImpact(ctx, teamID, *a.SourceControlID, remoteID)
+		if selected[remoteID] && out.SourceControlID != nil {
+			impact, err = s.repositoryImpact(ctx, teamID, *out.SourceControlID, remoteID)
 			if err != nil {
-				return nil, 0, 0, err
+				return out, err
 			}
 		}
 		emitted[remoteID] = true
-		out = append(out, GitHubRepositoryChoice{AffectedWorkloads: impact, GitHubRepositoryID: remoteID, FullName: full, Name: str(r, "name"), DefaultBranch: str(r, "default_branch"), Private: boolean(r, "private"), Selected: selected[remoteID]})
+		out.Repositories = append(out.Repositories, GitHubRepositoryChoice{AffectedWorkloads: impact, GitHubRepositoryID: remoteID, FullName: full, Name: str(r, "name"), DefaultBranch: str(r, "default_branch"), Private: boolean(r, "private"), Selected: selected[remoteID]})
 	}
 	for remoteID, repo := range saved {
 		if emitted[remoteID] {
 			continue
 		}
-		impact, err := s.repositoryImpact(ctx, teamID, *a.SourceControlID, remoteID)
+		impact, err := s.repositoryImpact(ctx, teamID, *out.SourceControlID, remoteID)
 		if err != nil {
-			return nil, 0, 0, err
+			return out, err
 		}
-		out = append(out, GitHubRepositoryChoice{GitHubRepositoryID: remoteID, FullName: repo.FullName, Name: repo.Name, DefaultBranch: repo.DefaultBranch, Private: !repo.Public, Selected: true, Unavailable: true, AffectedWorkloads: impact})
+		out.Repositories = append(out.Repositories, GitHubRepositoryChoice{GitHubRepositoryID: remoteID, FullName: repo.FullName, Name: repo.Name, DefaultBranch: repo.DefaultBranch, Private: !repo.Public, Selected: true, Unavailable: true, AffectedWorkloads: impact})
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].FullName < out[j].FullName })
-	return out, a.ConnectionGeneration, a.SelectionVersion, nil
+	sort.Slice(out.Repositories, func(i, j int) bool { return out.Repositories[i].FullName < out.Repositories[j].FullName })
+	return out, nil
 }
 func (s *SourceControlService) SelectGitHubRepositories(ctx context.Context, id, teamID, userID, sessionID string, req GitHubSelectionRequest) (dto.SourceControlResponse, error) {
 	var out dto.SourceControlResponse
@@ -417,6 +453,28 @@ func (s *SourceControlService) SelectGitHubRepositories(ctx context.Context, id,
 		}
 		wanted[id] = true
 	}
+	observedConnection, err := s.reviewGitHubConnection(ctx, a, req.InstallationID)
+	if err != nil {
+		return out, err
+	}
+	// Omitted IDs support older clients; explicit null means the review found
+	// no connection, and must never overwrite one created in the meantime.
+	if len(req.SourceControlID) > 0 {
+		var reviewedID *string
+		if err := json.Unmarshal(req.SourceControlID, &reviewedID); err != nil {
+			return out, fiberutil.BadRequest("Invalid connection selection")
+		}
+		if (reviewedID == nil && observedConnection != nil) || (reviewedID != nil && (observedConnection == nil || *reviewedID != observedConnection.ID)) {
+			return out, access.ErrStaleAccess
+		}
+	}
+	if observedConnection != nil {
+		if req.ExpectedGeneration == nil || *req.ExpectedGeneration != observedConnection.Generation || req.ExpectedSelectionVersion == nil || *req.ExpectedSelectionVersion != observedConnection.SelectionVersion {
+			return out, access.ErrStaleAccess
+		}
+	} else if (req.ExpectedGeneration != nil && *req.ExpectedGeneration != 0) || (req.ExpectedSelectionVersion != nil && *req.ExpectedSelectionVersion != 0) {
+		return out, access.ErrStaleAccess
+	}
 	p, err := access.GitHubProvider(s.ProviderFactory())
 	if err != nil {
 		return out, err
@@ -428,9 +486,9 @@ func (s *SourceControlService) SelectGitHubRepositories(ctx context.Context, id,
 		return out, err
 	}
 	observedGrants := map[uint64]uint64{}
-	if a.SourceControlID != nil {
+	if observedConnection != nil {
 		var grants []models.SourceControlRepository
-		if err = s.DB().WithContext(ctx).Where("source_control_id = ?", *a.SourceControlID).Find(&grants).Error; err != nil {
+		if err = s.DB().WithContext(ctx).Where("source_control_id = ?", observedConnection.ID).Find(&grants).Error; err != nil {
 			return out, err
 		}
 		for _, grant := range grants {
@@ -480,6 +538,12 @@ func (s *SourceControlService) SelectGitHubRepositories(ctx context.Context, id,
 		if err := validateAttempt(ctx, tx, &attempt, teamID, userID, sessionID); err != nil {
 			return err
 		}
+		if attempt.AuthorizationID == nil || *attempt.AuthorizationID != authorization.ID || (attempt.SourceControlID == nil) != (a.SourceControlID == nil) {
+			return errAttempt
+		}
+		if attempt.SourceControlID != nil && (*attempt.SourceControlID != *a.SourceControlID || attempt.ConnectionGeneration != a.ConnectionGeneration || attempt.SelectionVersion != a.SelectionVersion) {
+			return errAttempt
+		}
 		var currentAuth models.GitHubAuthorization
 		if tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&currentAuth, "id = ?", authorization.ID).Error != nil || currentAuth.RevokedAt != nil || currentAuth.Generation != authorization.Generation {
 			return errAttempt
@@ -526,11 +590,11 @@ func (s *SourceControlService) SelectGitHubRepositories(ctx context.Context, id,
 		}
 		replacingAuthorization := false
 		removedRepositories := []string{}
-		if attempt.SourceControlID != nil {
-			if tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&sc, "id = ? AND team_id = ?", *attempt.SourceControlID, teamID).Error != nil {
+		if observedConnection != nil {
+			if tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&sc, "id = ? AND team_id = ? AND provider = ? AND provider_id = ?", observedConnection.ID, teamID, gittypes.GitProviderGitHub, req.InstallationID).Error != nil {
 				return errAttempt
 			}
-			if req.ExpectedGeneration == nil || *req.ExpectedGeneration != sc.Generation || sc.Generation != attempt.ConnectionGeneration || req.ExpectedSelectionVersion == nil || *req.ExpectedSelectionVersion != sc.SelectionVersion || sc.SelectionVersion != attempt.SelectionVersion {
+			if req.ExpectedGeneration == nil || *req.ExpectedGeneration != sc.Generation || sc.Generation != observedConnection.Generation || req.ExpectedSelectionVersion == nil || *req.ExpectedSelectionVersion != sc.SelectionVersion || sc.SelectionVersion != observedConnection.SelectionVersion {
 				return access.ErrStaleAccess
 			}
 			if sc.GetInstallationID() != req.InstallationID {
@@ -547,7 +611,7 @@ func (s *SourceControlService) SelectGitHubRepositories(ctx context.Context, id,
 				return err
 			}
 			if count > 0 {
-				return fiberutil.Conflict("Review the existing connection to change its repositories")
+				return access.ErrStaleAccess
 			}
 			sc = models.SourceControl{Provider: gittypes.GitProviderGitHub, ProviderID: req.InstallationID, Generation: 1, SelectionVersion: 1}
 			sc.TeamID = teamID
