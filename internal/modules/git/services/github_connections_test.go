@@ -46,6 +46,8 @@ type gitFixture struct {
 	revokeFailToken    string
 	admin              bool
 	repoIDs            []string
+	otherInstallation  bool
+	githubUserID       int64
 	tokenRequests      int
 }
 
@@ -88,7 +90,7 @@ func newGitFixtureDatabase(t *testing.T, usePostgres bool) *gitFixture {
 	for _, sql := range []string{"CREATE TABLE users (id text primary key,status text)", "INSERT INTO users VALUES ('user-a00000000000000000000','active'),('user-b00000000000000000000','active')", "CREATE TABLE teams (id text primary key, user_id text)", "CREATE TABLE team_user (team_id text,user_id text,role text)", "CREATE TABLE team_invitations (team_id text,email text,role text)", "INSERT INTO teams VALUES ('team-a00000000000000000000','user-a00000000000000000000'),('team-b00000000000000000000','user-b00000000000000000000')"} {
 		require.NoError(t, db.Exec(sql).Error)
 	}
-	f := &gitFixture{db: db, admin: true, repoIDs: []string{"101", "202", "303"}}
+	f := &gitFixture{db: db, admin: true, githubUserID: 99, repoIDs: []string{"101", "202", "303"}}
 	f.server = httptest.NewServer(http.HandlerFunc(f.serve))
 	t.Cleanup(f.server.Close)
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
@@ -119,14 +121,22 @@ func (f *gitFixture) serve(w http.ResponseWriter, r *http.Request) {
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{"access_token": "user-token", "refresh_token": "refresh-token", "expires_in": 3600, "refresh_token_expires_in": 86400})
 	case r.URL.Path == "/user":
-		_ = json.NewEncoder(w).Encode(map[string]any{"id": 99, "login": "sponsor"})
+		_ = json.NewEncoder(w).Encode(map[string]any{"id": f.githubUserID, "login": "sponsor"})
 	case r.URL.Path == "/user/installations":
-		_ = json.NewEncoder(w).Encode(map[string]any{"installations": []any{map[string]any{"id": 42, "app_id": 7, "account": map[string]any{"id": 10, "login": "org", "type": "Organization"}}}})
-	case r.URL.Path == "/user/installations/42/repositories":
+		installations := []any{map[string]any{"id": 42, "app_id": 7, "account": map[string]any{"id": 10, "login": "org", "type": "Organization"}}}
+		if f.otherInstallation {
+			installations = append(installations, map[string]any{"id": 43, "app_id": 7, "account": map[string]any{"id": 11, "login": "other", "type": "Organization"}})
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"installations": installations})
+	case r.URL.Path == "/user/installations/42/repositories" || (f.otherInstallation && r.URL.Path == "/user/installations/43/repositories"):
 		repos := []any{}
-		for _, id := range f.repoIDs {
+		repoIDs, owner := f.repoIDs, "org"
+		if r.URL.Path == "/user/installations/43/repositories" {
+			repoIDs, owner = []string{"404", "505"}, "other"
+		}
+		for _, id := range repoIDs {
 			n, _ := strconv.Atoi(id)
-			repos = append(repos, map[string]any{"id": n, "name": "repo" + id, "full_name": "org/repo" + id, "default_branch": "main", "private": true})
+			repos = append(repos, map[string]any{"id": n, "name": "repo" + id, "full_name": owner + "/repo" + id, "default_branch": "main", "private": true})
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{"repositories": repos})
 	case strings.HasSuffix(r.URL.Path, "/collaborators/sponsor/permission"):
@@ -135,7 +145,7 @@ func (f *gitFixture) serve(w http.ResponseWriter, r *http.Request) {
 			permission = "admin"
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{"permission": permission})
-	case r.URL.Path == "/app/installations/42":
+	case r.URL.Path == "/app/installations/42" || (f.otherInstallation && r.URL.Path == "/app/installations/43"):
 		f.mu.Lock()
 		hook := f.beforeInstallation
 		f.beforeInstallation = nil
@@ -143,7 +153,11 @@ func (f *gitFixture) serve(w http.ResponseWriter, r *http.Request) {
 		if hook != nil {
 			hook()
 		}
-		_ = json.NewEncoder(w).Encode(map[string]any{"id": 42, "app_id": 7, "account": map[string]any{"id": 10, "login": "org", "type": "Organization"}, "permissions": map[string]any{"contents": "write", "deployments": "write", "actions": "write", "workflows": "write", "secrets": "write", "variables": "write"}, "repository_selection": "selected"})
+		installationID, accountID, login := 42, 10, "org"
+		if r.URL.Path == "/app/installations/43" {
+			installationID, accountID, login = 43, 11, "other"
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"id": installationID, "app_id": 7, "account": map[string]any{"id": accountID, "login": login, "type": "Organization"}, "permissions": map[string]any{"contents": "write", "deployments": "write", "actions": "write", "workflows": "write", "secrets": "write", "variables": "write"}, "repository_selection": "selected"})
 	case r.URL.Path == "/app/installations/42/access_tokens":
 		var scope map[string]any
 		_ = json.NewDecoder(r.Body).Decode(&scope)
@@ -206,9 +220,9 @@ func TestGitHubTwoAccountsSelectOnlyTheirRepositories(t *testing.T) {
 	f := newGitFixture(t)
 	ctx := context.Background()
 	a := f.authorize(t, "team-a00000000000000000000", "user-a00000000000000000000", "session-a", "")
-	candidates, _, _, err := f.service.GitHubCandidates(ctx, a.AttemptID, "team-a00000000000000000000", "user-a00000000000000000000", "session-a", "42")
+	candidates, err := f.service.GitHubCandidates(ctx, a.AttemptID, "team-a00000000000000000000", "user-a00000000000000000000", "session-a", "42")
 	require.NoError(t, err)
-	require.Len(t, candidates, 3)
+	require.Len(t, candidates.Repositories, 3)
 	var count int64
 	require.NoError(t, f.db.Model(&models.SourceControlRepository{}).Count(&count).Error)
 	require.Zero(t, count, "listing candidates must not grant access")
@@ -504,13 +518,13 @@ func TestGitHubCandidatesRetainUnavailableSavedSelectionForReview(t *testing.T) 
 	sc := f.selectRepos(t, a, user, "session-a", "101")
 	f.repoIDs = []string{"202"}
 	review := f.authorize(t, team, user, "session-a", sc.id)
-	choices, _, revision, err := f.service.GitHubCandidates(ctx, review.AttemptID, team, user, "session-a", "42")
+	reviewed, err := f.service.GitHubCandidates(ctx, review.AttemptID, team, user, "session-a", "42")
 	require.NoError(t, err)
-	require.Equal(t, review.SelectionVersion, revision)
-	require.Len(t, choices, 2)
-	require.True(t, choices[0].Selected)
-	require.True(t, choices[0].Unavailable)
-	require.Equal(t, "101", choices[0].GitHubRepositoryID)
+	require.Equal(t, review.SelectionVersion, reviewed.SelectionVersion)
+	require.Len(t, reviewed.Repositories, 2)
+	require.True(t, reviewed.Repositories[0].Selected)
+	require.True(t, reviewed.Repositories[0].Unavailable)
+	require.Equal(t, "101", reviewed.Repositories[0].GitHubRepositoryID)
 }
 
 func TestGitHubPostgresSelectionRechecksMembershipAfterTeamLock(t *testing.T) {
