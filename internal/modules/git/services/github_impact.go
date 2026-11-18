@@ -45,7 +45,7 @@ func (s *SourceControlService) repositoryImpact(ctx context.Context, teamID, sou
 			Address                     string
 			SourceControlID             *string
 			SourceControlRepositoriesID *uint64
-			RepositoryDependencyIDs     dbtype.JSONStringSlice
+			RepositoryDependencyIDs     dbtype.JSONStringSlice `gorm:"type:json"`
 		}
 		if err := s.DB().WithContext(ctx).Table("sites").Select("id,address,source_control_id,source_control_repositories_id,repository_dependency_ids").Where("team_id = ?", teamID).Find(&rows).Error; err != nil {
 			return nil, err
@@ -63,7 +63,7 @@ func (s *SourceControlService) repositoryImpact(ctx context.Context, teamID, sou
 		var rows []struct {
 			ID           string
 			Name         string
-			SourceConfig dbtype.JSONMap
+			SourceConfig dbtype.JSONMap `gorm:"type:json"`
 		}
 		if err := s.DB().WithContext(ctx).Table(table.name).Select("id,name,source_config").Where("team_id = ? AND deleted_at IS NULL", teamID).Find(&rows).Error; err != nil {
 			return nil, err

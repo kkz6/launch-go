@@ -107,12 +107,33 @@ func (p *GitHubProvider) UserRepositoryAdmin(ctx context.Context, token, fullNam
 	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
 		return false, ErrPermissionDenied
 	}
-	result, err := p.userObject(ctx, token, "/repos/"+url.PathEscape(parts[0])+"/"+url.PathEscape(parts[1])+"/collaborators/"+url.PathEscape(login)+"/permission")
+	resp, err := p.DoRaw(ctx, http.MethodGet, "/repos/"+url.PathEscape(parts[0])+"/"+url.PathEscape(parts[1])+"/collaborators/"+url.PathEscape(login)+"/permission", token, nil)
 	if err != nil {
 		return false, err
 	}
-	permission, _ := result["permission"].(string)
-	return permission == "admin", nil
+	defer resp.Body.Close()
+	// An installation can list repositories that this user cannot administer.
+	// Deny that repository without preventing review of unrelated candidates.
+	if resp.StatusCode == http.StatusNotFound {
+		return false, nil
+	}
+	if resp.StatusCode == http.StatusForbidden && resp.Header.Get("X-RateLimit-Remaining") != "0" && resp.Header.Get("Retry-After") == "" {
+		var denial struct{ Message string }
+		if json.NewDecoder(resp.Body).Decode(&denial) == nil {
+			message := strings.ToLower(denial.Message)
+			if !strings.Contains(message, "rate limit") && !strings.Contains(message, "abuse") {
+				return false, nil
+			}
+		}
+	}
+	if resp.StatusCode != http.StatusOK {
+		return false, fmt.Errorf("GitHub user access unavailable: status %d", resp.StatusCode)
+	}
+	var result struct{ Permission string }
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return false, err
+	}
+	return result.Permission == "admin", nil
 }
 
 func (p *GitHubProvider) userPages(ctx context.Context, token, path, key string) ([]map[string]any, error) {

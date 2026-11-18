@@ -228,3 +228,36 @@ func TestGitHubPostgresFreshConnectRejectsConcurrentRevocation(t *testing.T) {
 		})
 	}
 }
+
+func TestGitHubTargetedAttemptOnlyOffersItsOwnInstallation(t *testing.T) {
+	f := newGitFixture(t)
+	ctx := context.Background()
+	f.otherInstallation = true
+	team, user, session := "team-a00000000000000000000", "user-a00000000000000000000", "session-a"
+	first := f.selectRepos(t, f.authorize(t, team, user, session, ""), user, session, "101")
+	secondAttempt := f.authorize(t, team, user, session, "")
+	review, err := f.service.GitHubCandidates(ctx, secondAttempt.AttemptID, team, user, session, "43")
+	require.NoError(t, err)
+	second, err := f.service.SelectGitHubRepositories(ctx, secondAttempt.AttemptID, team, user, session, selectionFromReview(t, review, "43", "404"))
+	require.NoError(t, err)
+	for _, row := range []struct{ id, installation string }{{first.id, "42"}, {second.ID, "43"}} {
+		attempt := f.authorize(t, team, user, session, row.id)
+		status, err := f.service.GitHubAttempt(ctx, attempt.AttemptID, team, user, session)
+		require.NoError(t, err)
+		require.Equal(t, row.installation, status.TargetInstallationID)
+		require.False(t, status.InstallationUnavailable)
+		require.Len(t, status.Installations, 1)
+		require.Equal(t, row.installation, status.Installations[0].ID)
+	}
+	fresh := f.authorize(t, team, user, session, "")
+	status, err := f.service.GitHubAttempt(ctx, fresh.AttemptID, team, user, session)
+	require.NoError(t, err)
+	require.Len(t, status.Installations, 2)
+	unavailable := f.authorize(t, team, user, session, second.ID)
+	f.otherInstallation = false
+	status, err = f.service.GitHubAttempt(ctx, unavailable.AttemptID, team, user, session)
+	require.NoError(t, err)
+	require.Empty(t, status.Installations)
+	require.True(t, status.InstallationUnavailable)
+	require.Equal(t, "43", status.TargetInstallationID)
+}

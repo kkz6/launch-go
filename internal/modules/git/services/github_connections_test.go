@@ -85,7 +85,7 @@ func newGitFixtureDatabase(t *testing.T, usePostgres bool) *gitFixture {
 		sqlDB.SetMaxOpenConns(1)
 	}
 	t.Cleanup(func() { sqlDB.Close() })
-	require.NoError(t, db.AutoMigrate(&models.SourceControl{}, &models.SourceControlRepository{}, &models.GitHubAuthorization{}, &models.GitHubInstallation{}, &models.GitHubInstallationRepository{}, &models.GitHubConnectionAttempt{}, &models.GitHubCredentialLease{}, &models.GitHubCleanupManifest{}))
+	require.NoError(t, db.AutoMigrate(&models.SourceControl{}, &models.SourceControlRepository{}, &models.GitHubAuthorization{}, &models.GitHubInstallation{}, &models.GitHubInstallationRepository{}, &models.GitHubConnectionAttempt{}, &models.GitHubCredentialLease{}, &models.GitHubCleanupManifest{}, &models.GitHubWebhookDelivery{}, &models.GitHubWebhookIntent{}))
 	require.NoError(t, db.Exec("CREATE UNIQUE INDEX idx_source_controls_provider_providerid_teamid ON source_controls (provider,provider_id,team_id)").Error)
 	for _, sql := range []string{"CREATE TABLE users (id text primary key,status text)", "INSERT INTO users VALUES ('user-a00000000000000000000','active'),('user-b00000000000000000000','active')", "CREATE TABLE teams (id text primary key, user_id text)", "CREATE TABLE team_user (team_id text,user_id text,role text)", "CREATE TABLE team_invitations (team_id text,email text,role text)", "INSERT INTO teams VALUES ('team-a00000000000000000000','user-a00000000000000000000'),('team-b00000000000000000000','user-b00000000000000000000')"} {
 		require.NoError(t, db.Exec(sql).Error)
@@ -102,7 +102,7 @@ func newGitFixtureDatabase(t *testing.T, usePostgres bool) *gitFixture {
 	require.NoError(t, err)
 	f.provider = p.(*providers.GitHubProvider)
 	log := zerolog.Nop()
-	deps := &ServiceDeps{ModuleDeps: service.ModuleDeps[*repositories.Registry]{Dependencies: service.NewDependencies(db, &log, nil, nil, nil), Repos: repositories.NewRegistry(db)}, ProviderFactory: factory}
+	deps := &ServiceDeps{ModuleDeps: service.ModuleDeps[*repositories.Registry]{Dependencies: service.NewDependencies(db, &log, nil, nil, nil), Repos: repositories.NewRegistry(db)}, ProviderFactory: factory, AppURL: "https://launch.test"}
 	f.service = NewSourceControlService(deps)
 	return f
 }

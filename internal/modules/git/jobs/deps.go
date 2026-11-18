@@ -17,6 +17,7 @@ type JobDeps struct {
 	*pkgjobs.Deps
 	Service         *services.SourceControlService
 	ProviderFactory *providers.ProviderFactory
+	AppURL          string
 }
 
 // NewJobDeps creates a new JobDeps from app dependencies.
@@ -25,7 +26,12 @@ func NewJobDeps(
 	service *services.SourceControlService,
 	providerFactory *providers.ProviderFactory,
 ) *JobDeps {
+	appURL := ""
+	if appDeps.Config != nil {
+		appURL = appDeps.Config.App.URL
+	}
 	return &JobDeps{
+		AppURL: appURL,
 		Deps: &pkgjobs.Deps{
 			DB:          appDeps.DB,
 			Logger:      appDeps.Logger,
@@ -46,7 +52,12 @@ func NewJobDepsWithParams(
 	service *services.SourceControlService,
 	providerFactory *providers.ProviderFactory,
 ) *JobDeps {
+	appURL := ""
+	if service != nil {
+		appURL = service.ServiceDeps().AppURL
+	}
 	return &JobDeps{
+		AppURL: appURL,
 		Deps: &pkgjobs.Deps{
 			DB:          db,
 			Logger:      logger,

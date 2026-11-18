@@ -21,6 +21,7 @@ var (
 type ServiceDeps struct {
 	service.ModuleDeps[*repositories.Registry]
 	ProviderFactory *providers.ProviderFactory
+	AppURL          string
 
 	// Service registry - allows services to access other services
 	registry *ServiceRegistry
