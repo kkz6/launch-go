@@ -88,7 +88,7 @@ jobs:
           MIGRATION_TEST_DSN: postgres://launch:launch@localhost:5432/launch_migration_test?sslmode=disable
           LAUNCH_GITHUB_TEST_POSTGRES_DSN: postgres://launch:launch@localhost:5432/postgres?sslmode=disable
           DOCKER_TEST_POSTGRES_DSN: postgres://launch:launch@localhost:5432/postgres?sslmode=disable
-        run: go test -coverprofile=coverage.out ./...
+        run: go test -coverpkg=./... -coverprofile=coverage.out ./...
 
       - name: Save coverage report
         uses: actions/upload-artifact@v7
