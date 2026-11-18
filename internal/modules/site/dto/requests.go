@@ -15,6 +15,7 @@ type CreateSiteRequest struct {
 	ZeroDowntimeDeployment      bool               `json:"zero_downtime_deployment"`
 	SourceControlID             *string            `json:"source_control_id" validate:"omitempty,ulid"`
 	SourceControlRepositoriesID *string            `json:"source_control_repositories_id" validate:"omitempty"`
+	RepositoryDependencyIDs     []string           `json:"repository_dependency_ids" validate:"omitempty,max=20,dive,numeric"`
 	RepositoryBranch            string             `json:"repository_branch" validate:"omitempty,max=255"`
 	CreateDNSRecord             bool               `json:"create_dns_record"`
 	ConnectedDomainID           *string            `json:"connected_domain_id" validate:"omitempty,ulid"`
@@ -55,21 +56,22 @@ func (r *CreateSiteRequest) Normalize() {
 
 // UpdateSiteRequest represents the request to update a site
 type UpdateSiteRequest struct {
-	PhpVersion                   *string `json:"php_version" validate:"omitempty,oneof=php80 php81 php82 php83 php84"`
-	WebFolder                    *string `json:"web_folder" validate:"omitempty,max=255"`
-	RepositoryBranch             *string `json:"repository_branch" validate:"omitempty,max=255"`
-	TLSSetting                   *string `json:"tls_setting" validate:"omitempty,oneof=auto custom internal off"`
-	PrivateKey                   *string `json:"private_key" validate:"omitempty"`
-	Certificate                  *string `json:"certificate" validate:"omitempty"`
-	SharedDirectories            *string `json:"shared_directories" validate:"omitempty"`
-	SharedFiles                  *string `json:"shared_files" validate:"omitempty"`
-	WriteableDirectories         *string `json:"writeable_directories" validate:"omitempty"`
-	HookBeforeUpdatingRepository *string `json:"hook_before_updating_repository" validate:"omitempty"`
-	HookAfterUpdatingRepository  *string `json:"hook_after_updating_repository" validate:"omitempty"`
-	HookBeforeMakingCurrent      *string `json:"hook_before_making_current" validate:"omitempty"`
-	HookAfterMakingCurrent       *string `json:"hook_after_making_current" validate:"omitempty"`
-	DeploymentReleasesRetention  *int    `json:"deployment_releases_retention" validate:"omitempty,min=1,max=50"`
-	QueueDeployments             *bool   `json:"queue_deployments" validate:"omitempty"`
+	RepositoryDependencyIDs      *[]string `json:"repository_dependency_ids" validate:"omitempty,max=20,dive,numeric"`
+	PhpVersion                   *string   `json:"php_version" validate:"omitempty,oneof=php80 php81 php82 php83 php84"`
+	WebFolder                    *string   `json:"web_folder" validate:"omitempty,max=255"`
+	RepositoryBranch             *string   `json:"repository_branch" validate:"omitempty,max=255"`
+	TLSSetting                   *string   `json:"tls_setting" validate:"omitempty,oneof=auto custom internal off"`
+	PrivateKey                   *string   `json:"private_key" validate:"omitempty"`
+	Certificate                  *string   `json:"certificate" validate:"omitempty"`
+	SharedDirectories            *string   `json:"shared_directories" validate:"omitempty"`
+	SharedFiles                  *string   `json:"shared_files" validate:"omitempty"`
+	WriteableDirectories         *string   `json:"writeable_directories" validate:"omitempty"`
+	HookBeforeUpdatingRepository *string   `json:"hook_before_updating_repository" validate:"omitempty"`
+	HookAfterUpdatingRepository  *string   `json:"hook_after_updating_repository" validate:"omitempty"`
+	HookBeforeMakingCurrent      *string   `json:"hook_before_making_current" validate:"omitempty"`
+	HookAfterMakingCurrent       *string   `json:"hook_after_making_current" validate:"omitempty"`
+	DeploymentReleasesRetention  *int      `json:"deployment_releases_retention" validate:"omitempty,min=1,max=50"`
+	QueueDeployments             *bool     `json:"queue_deployments" validate:"omitempty"`
 }
 
 // UpdateSSLRequest represents the request to update SSL settings.

@@ -435,6 +435,10 @@ func (s *AuthService) handleInvitation(ctx context.Context, tx *gorm.DB, user *m
 		return fiberutil.Forbidden()
 	}
 
+	if err := lockGitHubTeams(tx, invitation.TeamID); err != nil {
+		return err
+	}
+
 	// Add user to team
 	role := "member"
 	if invitation.Role != nil {
@@ -530,6 +534,10 @@ func (s *AuthService) acceptTeamInvitationExistingUser(
 	}
 
 	err := s.repos.DB().WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := lockGitHubTeams(tx, invitation.TeamID); err != nil {
+			return err
+		}
+
 		var count int64
 		if err := tx.Model(&models.TeamMember{}).
 			Where("team_id = ? AND user_id = ?", invitation.TeamID, user.ID).

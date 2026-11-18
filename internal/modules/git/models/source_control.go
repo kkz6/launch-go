@@ -31,6 +31,14 @@ type SourceControl struct {
 	URL                     *string                  `gorm:"type:varchar(255)" json:"url,omitempty"`
 	ProviderData            *string                  `gorm:"column:provider_data;type:json" json:"-"`
 	TokenExpiresAt          *time.Time               `gorm:"column:token_expires_at;type:timestamp null" json:"-"`
+	// GitHub connections are unusable until a verified user selects repositories.
+	Status                string  `gorm:"type:varchar(32);not null;default:reconnect_required" json:"status"`
+	SelectionVersion      uint64  `gorm:"not null;default:1" json:"selection_version"`
+	Generation            uint64  `gorm:"not null;default:1" json:"generation"`
+	GitHubAuthorizationID *string `gorm:"type:char(26);index" json:"-"`
+	GitHubInstallationID  *string `gorm:"type:char(26);index" json:"-"`
+
+	CleanupPending bool `gorm:"-" json:"cleanup_pending"`
 
 	// Relations
 	Repositories []SourceControlRepository `gorm:"foreignKey:SourceControlID;references:ID" json:"repositories,omitempty"`

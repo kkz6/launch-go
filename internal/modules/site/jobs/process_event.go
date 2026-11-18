@@ -98,10 +98,13 @@ func (l *restartQueuesOnDeploymentSucceeded) Handle(ctx context.Context, event p
 		return fmt.Errorf("queue client is not configured")
 	}
 
+	if payload.DeploymentID == "" {
+		return fmt.Errorf("post-deployment event is missing its deployment authorization")
+	}
 	taskID := pkgjobs.Dedup("site-event", event.ID, l.Name())
-	task, err := NewRestartAllSiteQueuesTask(
-		payload.SiteID,
-		nil,
+	task, err := pkgjobs.Task(
+		TypeRestartAllSiteQueues,
+		RestartAllSiteQueuesPayload{SiteID: payload.SiteID, DeploymentID: payload.DeploymentID},
 		asynq.TaskID(taskID),
 		asynq.MaxRetry(postDeployMaxRetries),
 	)

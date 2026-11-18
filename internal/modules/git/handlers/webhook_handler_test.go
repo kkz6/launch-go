@@ -47,6 +47,8 @@ func TestHandleWebhook_ReturnsServerErrorWhenQueueIsUnavailable(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodPost, "/webhooks/git/github", strings.NewReader(payload))
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-GitHub-Event", "push")
+	req.Header.Set("X-GitHub-Delivery", "delivery-1")
 	req.Header.Set("X-Hub-Signature-256", signature)
 
 	resp, err := app.Test(req)
@@ -93,6 +95,8 @@ func TestHandleWebhookValidationAndQueueing(t *testing.T) {
 			app.Post("/webhooks/git/:provider", handler.HandleWebhook)
 			req := httptest.NewRequest(http.MethodPost, "/webhooks/git/"+tt.provider, strings.NewReader(payload))
 			req.Header.Set("Content-Type", "application/json")
+			req.Header.Set("X-GitHub-Event", "push")
+			req.Header.Set("X-GitHub-Delivery", "delivery-1")
 			if tt.signature != "" {
 				req.Header.Set("X-Hub-Signature-256", tt.signature)
 			}

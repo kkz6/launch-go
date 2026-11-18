@@ -53,10 +53,9 @@ jobs:
   test:
     name: Test and coverage
     runs-on: ubuntu-latest
-    # Unit and service tests use in-memory sqlite. The one exception is the
-    # migration integrity test (internal/database/migrations), which runs the
-    # Postgres-specific migration set end to end against the postgres service
-    # below — it is skipped unless MIGRATION_TEST_DSN is set.
+    # Unit and service tests use in-memory SQLite. PostgreSQL also runs the
+    # full migration set and repository authorization/concurrency regressions.
+    # Keep their isolated schemas outside the database reset by migration tests.
     services:
       postgres:
         image: postgres:16
@@ -87,7 +86,9 @@ jobs:
       - name: Run tests
         env:
           MIGRATION_TEST_DSN: postgres://launch:launch@localhost:5432/launch_migration_test?sslmode=disable
-        run: go test -coverprofile=coverage.out ./...
+          LAUNCH_GITHUB_TEST_POSTGRES_DSN: postgres://launch:launch@localhost:5432/postgres?sslmode=disable
+          DOCKER_TEST_POSTGRES_DSN: postgres://launch:launch@localhost:5432/postgres?sslmode=disable
+        run: go test -coverpkg=./... -coverprofile=coverage.out ./...
 
       - name: Save coverage report
         uses: actions/upload-artifact@v7
@@ -144,6 +145,8 @@ jobs:
       - name: Run tests with race detection
         env:
           MIGRATION_TEST_DSN: postgres://launch:launch@localhost:5432/launch_migration_test?sslmode=disable
+          LAUNCH_GITHUB_TEST_POSTGRES_DSN: postgres://launch:launch@localhost:5432/postgres?sslmode=disable
+          DOCKER_TEST_POSTGRES_DSN: postgres://launch:launch@localhost:5432/postgres?sslmode=disable
         run: go test -race ./...
 
   build:

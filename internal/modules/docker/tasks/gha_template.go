@@ -24,8 +24,10 @@ import (
 // AppID is the docker_applications.id we're managing — webhook URLs
 // embed it so the handler can scope by it without a JWT.
 type ApplicationWorkflowData struct {
-	Branch         string
-	DockerfilePath string
+	BuildSecretPrefix string
+	WebhookVariable   string
+	Branch            string
+	DockerfilePath    string
 	// BuildType is the chosen builder: "dockerfile" | "nixpacks" | "".
 	// Empty means auto-detect (by Dockerfile presence) in the workflow;
 	// a non-empty value is honoured verbatim so an explicit choice isn't
@@ -66,10 +68,13 @@ type ApplicationWorkflowData struct {
 // docker-compose.yml at the repo root). ComposeID is the
 // docker_composes.id.
 type ComposeWorkflowData struct {
-	Branch          string
-	ComposeFilePath string
-	LaunchBaseURL   string
-	ComposeID       string
+	BuildSecretPrefix string
+	WebhookVariable   string
+	DeployTokenSecret string
+	Branch            string
+	ComposeFilePath   string
+	LaunchBaseURL     string
+	ComposeID         string
 	// ImagePackage is the GHCR package path (`<owner>/<stack-slug>`) this
 	// compose stack publishes to — its own package (#100). Drives the
 	// per-service image tag (`ghcr.io/<ImagePackage>:launch-<service>-<sha>`)
@@ -99,6 +104,12 @@ type ComposeWorkflowData struct {
 // golden-file tests stay byte-stable across template edits that only
 // add/remove blank lines.
 func RenderApplicationWorkflow(data ApplicationWorkflowData) (string, error) {
+	if data.BuildSecretPrefix == "" {
+		data.BuildSecretPrefix = "LAUNCH_BUILD_"
+	}
+	if data.WebhookVariable == "" {
+		data.WebhookVariable = "LAUNCH_WEBHOOK_URL"
+	}
 	if err := validateApplicationData(data); err != nil {
 		return "", err
 	}
@@ -109,6 +120,15 @@ func RenderApplicationWorkflow(data ApplicationWorkflowData) (string, error) {
 // RenderApplicationWorkflow. The compose YAML has a matrix step that
 // runs once per service that declares a `build:` directive.
 func RenderComposeWorkflow(data ComposeWorkflowData) (string, error) {
+	if data.BuildSecretPrefix == "" {
+		data.BuildSecretPrefix = "LAUNCH_BUILD_"
+	}
+	if data.WebhookVariable == "" {
+		data.WebhookVariable = "LAUNCH_WEBHOOK_URL"
+	}
+	if data.DeployTokenSecret == "" {
+		data.DeployTokenSecret = "LAUNCH_COMPOSE_" + strings.ToUpper(data.ComposeID) + "_TOKEN"
+	}
 	if err := validateComposeData(data); err != nil {
 		return "", err
 	}

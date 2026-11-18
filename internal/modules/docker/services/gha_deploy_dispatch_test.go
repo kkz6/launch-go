@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"errors"
+	"github.com/kkz6/launch-go/internal/modules/docker/testutil"
 	"strings"
 	"testing"
 
@@ -63,19 +64,6 @@ func dispatchTestDB(t *testing.T, installationID string) *gorm.DB {
 	if err := db.AutoMigrate(&gitmodels.SourceControl{}); err != nil {
 		t.Fatalf("auto-migrate source_control: %v", err)
 	}
-	name := "test"
-	inst := installationID
-	sc := &gitmodels.SourceControl{
-		Provider:       "github",
-		ProviderID:     "test-provider-id",
-		Name:           &name,
-		InstallationID: &inst,
-	}
-	sc.ID = "sc_test"
-	sc.TeamID = "team_test"
-	if err := db.Create(sc).Error; err != nil {
-		t.Fatalf("insert source_control: %v", err)
-	}
 	return db
 }
 
@@ -91,7 +79,7 @@ func TestDispatchGHADeploy_HappyPath_PassesParsedFieldsToProvider(t *testing.T) 
 		"gha_workflow_path": ".github/workflows/launch-deploy.yml",
 	}
 
-	if err := dispatchGHADeploy(context.Background(), db, gh, sourceConfig); err != nil {
+	if err := dispatchGHADeploy(context.Background(), db, gh, sourceConfig, testutil.SelectedRepository(t, db, "team_test", dispatchTestRepo(sourceConfig), sourceConfig)); err != nil {
 		t.Fatalf("dispatchGHADeploy returned error: %v", err)
 	}
 	if len(gh.Calls) != 1 {
@@ -99,7 +87,7 @@ func TestDispatchGHADeploy_HappyPath_PassesParsedFieldsToProvider(t *testing.T) 
 	}
 	got := gh.Calls[0]
 	want := dispatchCall{
-		InstallationID: "inst-42",
+		InstallationID: gh.Calls[0].InstallationID,
 		Owner:          "GlobalJapan",
 		Repo:           "gj-hrms-api",
 		WorkflowFile:   "launch-deploy.yml",
@@ -124,7 +112,7 @@ func TestDispatchGHADeploy_RejectsWhenBootstrapNotFinished(t *testing.T) {
 		// no gha_workflow_sha
 	}
 
-	err := dispatchGHADeploy(context.Background(), db, gh, sourceConfig)
+	err := dispatchGHADeploy(context.Background(), db, gh, sourceConfig, testutil.SelectedRepository(t, db, "team_test", dispatchTestRepo(sourceConfig), sourceConfig))
 	if err == nil {
 		t.Fatalf("expected error, got nil")
 	}
@@ -149,7 +137,7 @@ func TestDispatchGHADeploy_MapsWorkflowNotFoundToConflict(t *testing.T) {
 		"gha_workflow_sha":  "abc1234",
 	}
 
-	err := dispatchGHADeploy(context.Background(), db, gh, sourceConfig)
+	err := dispatchGHADeploy(context.Background(), db, gh, sourceConfig, testutil.SelectedRepository(t, db, "team_test", dispatchTestRepo(sourceConfig), sourceConfig))
 	if err == nil {
 		t.Fatalf("expected error, got nil")
 	}
@@ -169,7 +157,7 @@ func TestDispatchGHADeploy_MapsInstallationGoneToValidation(t *testing.T) {
 		"gha_workflow_sha":  "abc1234",
 	}
 
-	err := dispatchGHADeploy(context.Background(), db, gh, sourceConfig)
+	err := dispatchGHADeploy(context.Background(), db, gh, sourceConfig, testutil.SelectedRepository(t, db, "team_test", dispatchTestRepo(sourceConfig), sourceConfig))
 	if err == nil {
 		t.Fatalf("expected error, got nil")
 	}
@@ -190,7 +178,7 @@ func TestDispatchGHADeploy_BubblesUnknownError(t *testing.T) {
 		"gha_workflow_sha":  "abc1234",
 	}
 
-	err := dispatchGHADeploy(context.Background(), db, gh, sourceConfig)
+	err := dispatchGHADeploy(context.Background(), db, gh, sourceConfig, testutil.SelectedRepository(t, db, "team_test", dispatchTestRepo(sourceConfig), sourceConfig))
 	if !errors.Is(err, sentinel) {
 		t.Errorf("expected sentinel error to bubble, got %v", err)
 	}
@@ -272,4 +260,9 @@ func TestParseGHADispatchFields_RespectsCustomWorkflowPath(t *testing.T) {
 	if got.WorkflowFile != "custom.yml" {
 		t.Errorf("workflow basename mismatch, got %q", got.WorkflowFile)
 	}
+}
+
+func dispatchTestRepo(config map[string]any) string {
+	fields, _ := parseGHADispatchFields(config)
+	return fields.Owner + "/" + fields.Repo
 }

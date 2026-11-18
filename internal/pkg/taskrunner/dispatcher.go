@@ -149,7 +149,15 @@ func (d *Dispatcher) Run(ctx context.Context, pt *PendingTask) (*TaskResult, err
 
 // runLocal executes task on local machine
 func (d *Dispatcher) runLocal(ctx context.Context, pt *PendingTask) (*TaskResult, error) {
+	if err := validateTaskExecution(ctx, pt.Task); err != nil {
+		return nil, err
+	}
 	script := pt.Task.Script()
+	script, cleanupSecrets, err := prepareLocalSecrets(pt.Task, script)
+	if err != nil {
+		return nil, err
+	}
+	defer cleanupSecrets()
 
 	// Create temp script file
 	tmpFile, err := d.createTemp("", "task-*.sh")
@@ -174,6 +182,9 @@ func (d *Dispatcher) runLocal(ctx context.Context, pt *PendingTask) (*TaskResult
 	startTime := time.Now()
 
 	cmd := d.commandContext(ctx, "bash", tmpFile.Name())
+	if err := validateTaskExecution(ctx, pt.Task); err != nil {
+		return nil, err
+	}
 	output, err := cmd.CombinedOutput()
 
 	result := &TaskResult{
@@ -246,9 +257,24 @@ func (d *Dispatcher) runRemote(ctx context.Context, pt *PendingTask) (*TaskResul
 		Msg("runRemote: uploading script")
 
 	// Upload script
+	if err := validateTaskExecution(ctx, pt.Task); err != nil {
+		_ = sshClient.Close()
+		return nil, err
+	}
+	script, cleanupSecrets, err := prepareRemoteSecrets(ctx, sshClient, pt.Task, taskDir, script)
+	if err != nil {
+		_ = sshClient.Close()
+		return nil, err
+	}
 	if err := sshClient.Upload(ctx, []byte(script), taskPaths.Script, 0755); err != nil {
+		cleanupSecrets()
 		_ = sshClient.Close()
 		return nil, fmt.Errorf("failed to upload script: %w", err)
+	}
+	if err := validateTaskExecution(ctx, pt.Task); err != nil {
+		cleanupSecrets()
+		_ = sshClient.Close()
+		return nil, err
 	}
 
 	d.logger.Debug().
@@ -264,11 +290,16 @@ func (d *Dispatcher) runRemote(ctx context.Context, pt *PendingTask) (*TaskResul
 		// For background tasks, the SSH client will be closed by runRemoteBackground
 		// after starting the background process. A NEW connection will be created
 		// by MonitorBackgroundTask for monitoring.
-		return d.runRemoteBackground(ctx, sshClient, pt, taskPaths, startTime)
+		result, err := d.runRemoteBackground(ctx, sshClient, pt, taskPaths, startTime)
+		if err != nil {
+			cleanupSecrets()
+		}
+		return result, err
 	}
 
 	// For foreground tasks, close SSH client when done
 	defer sshClient.Close()
+	defer cleanupSecrets()
 	return d.runRemoteForeground(ctx, sshClient, pt, taskPaths, startTime)
 }
 

@@ -22,6 +22,7 @@ type ComposeDeployConfig struct {
 	ProjectName string
 
 	// One of these is set depending on the compose source type.
+	GitCredentials  string
 	GitRepo         string
 	GitBranch       string
 	ComposeFilePath string
@@ -59,15 +60,8 @@ type ComposeDeployConfig struct {
 	// into the YAML themselves and we don't rewrite docker-compose.yml.
 	FileMounts []ComposeFileMount
 
-	// RegistryLogins are the 0..N saved-credential rows the stack
-	// attached. The deploy script runs `docker login` for each
-	// before `docker compose pull/up` so private images on any of
-	// these registries resolve. We do a paired `docker logout` after
-	// the compose command finishes to avoid leaking ambient creds in
-	// the host's `~/.docker/config.json`.
-	//
-	// Plaintext only lives in this in-memory config struct; at-rest
-	// stays encrypted via dbtype.EncryptedString on the saved row.
+	// RegistryLogins populate the private per-deployment Docker configuration.
+	// Passwords never become part of the persisted SSH task script.
 	RegistryLogins []ComposeRegistryLogin
 
 	// ServiceImages, when non-empty, switches the compose deploy into
@@ -144,6 +138,7 @@ func DeployCompose(cfg ComposeDeployConfig) taskrunner.Task {
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName("Deploy Compose Stack"),
 		taskrunner.WithScript(buildComposeDeployScript(cfg)),
+		taskrunner.WithSecretFiles(deploymentSecretFiles(cfg.GitCredentials, cfg.RegistryLogins)),
 		taskrunner.WithTimeoutSeconds(1800),
 	)
 }
@@ -156,6 +151,7 @@ func buildComposeDeployScript(cfg ComposeDeployConfig) string {
 	var b strings.Builder
 	b.WriteString("#!/usr/bin/env bash\n")
 	b.WriteString("set -euo pipefail\n\n")
+	b.WriteString(isolatedCredentialsScript)
 
 	fmt.Fprintf(&b, "DEPLOY_ID=%q\n", cfg.DeploymentID)
 	fmt.Fprintf(&b, "PROJECT_SLUG=%q\n", cfg.ProjectSlug)
@@ -166,7 +162,15 @@ func buildComposeDeployScript(cfg ComposeDeployConfig) string {
 	b.WriteString("mkdir -p \"${STACK_DIR}\"\n")
 	b.WriteString("echo \"::LAUNCH::deploy_step::resolving_source\"\n")
 
-	if cfg.RawYAML != "" {
+	if cfg.RecreateOnly {
+		b.WriteString("cd \"${STACK_DIR}\"\n")
+		composeFile := cfg.ComposeFilePath
+		if composeFile == "" {
+			composeFile = "docker-compose.yml"
+		}
+		fmt.Fprintf(&b, "COMPOSE_FILE_PATH=%q\n", composeFile)
+		b.WriteString("test -f \"${COMPOSE_FILE_PATH}\" || { echo \"No existing compose deployment; deploy first\" >&2; exit 1; }\n")
+	} else if cfg.RawYAML != "" {
 		// Inline-YAML path: write the user-pasted content to a fresh
 		// compose file at the stack dir. Quoted heredoc keeps shell
 		// variables from being expanded by us — they belong to docker
@@ -191,6 +195,7 @@ BUILD_DIR="${STACK_DIR}/_build/${DEPLOY_ID}"
 mkdir -p "${BUILD_DIR}"
 git clone --depth 1 --branch %q %q "${BUILD_DIR}"
 cd "${BUILD_DIR}"
+git submodule update --init --recursive
 `, cfg.GitBranch, cfg.GitRepo)
 		// Default to docker-compose.yml; user can override per-stack.
 		composeFile := cfg.ComposeFilePath
@@ -300,72 +305,6 @@ cat > .env <<'LAUNCH_COMPOSE_ENV_EOF'
 		}
 	}
 
-	// Registry logins — one `docker login` per attached saved
-	// credential. Password piped via `--password-stdin` so it
-	// doesn't appear in `ps`. Each login uses a per-iteration
-	// heredoc sentinel so a password containing the sentinel can't
-	// terminate it early.
-	if len(cfg.RegistryLogins) > 0 {
-		b.WriteString("\necho \"::LAUNCH::deploy_step::registry_login\"\n")
-		b.WriteString("set +x\n")
-		// Same stderr-filter applied to every login: docker emits the
-		// "credentials stored unencrypted" warning unconditionally and
-		// it's noise an operator can't act on without host-level
-		// credential-helper setup that Launch doesn't take over. See
-		// deploy_application.go#buildImageStanza for the rationale.
-		const stderrFilter = `2> >(grep -v -E 'credentials are stored unencrypted|Configure a credential helper|credential-store' >&2)`
-		for i, l := range cfg.RegistryLogins {
-			tag := fmt.Sprintf("LAUNCH_DOCKER_PW_EOF_%d", i)
-			fmt.Fprintf(&b, "DOCKER_REGISTRY_URL_%d=%q\n", i, l.RegistryURL)
-			fmt.Fprintf(&b, "DOCKER_REGISTRY_USER_%d=%q\n", i, l.Username)
-			// Two paths: workflow-minted GHCR bearer (username
-			// "oauth2") → write directly to ~/.docker/config.json;
-			// everything else → docker login. See
-			// deploy_application.go#buildImageStanza for the rationale.
-			pwTag := tag
-			fmt.Fprintf(&b, "if [ \"${DOCKER_REGISTRY_USER_%d}\" = \"oauth2\" ]; then\n", i)
-			fmt.Fprintf(&b, "  REG_HOST_%d=\"${DOCKER_REGISTRY_URL_%d:-ghcr.io}\"\n", i, i)
-			b.WriteString("  mkdir -p \"${HOME}/.docker\"\n")
-			fmt.Fprintf(&b, "  cat <<DOCKER_CONFIG_EOF_%d > \"${HOME}/.docker/config.json\"\n", i)
-			fmt.Fprintf(&b, "{\"auths\":{\"${REG_HOST_%d}\":{\"registrytoken\":\"$(cat <<'%s'\n", i, pwTag)
-			b.WriteString(l.Password)
-			if !strings.HasSuffix(l.Password, "\n") {
-				b.WriteString("\n")
-			}
-			fmt.Fprintf(&b, "%s\n)\"}}}\n", pwTag)
-			fmt.Fprintf(&b, "DOCKER_CONFIG_EOF_%d\n", i)
-			b.WriteString("else\n")
-			fmt.Fprintf(&b, "  if [ -n \"${DOCKER_REGISTRY_URL_%d}\" ]; then\n", i)
-			fmt.Fprintf(&b,
-				"    docker login --username \"${DOCKER_REGISTRY_USER_%d}\" --password-stdin \"${DOCKER_REGISTRY_URL_%d}\" %s <<'%s'\n",
-				i, i, stderrFilter, tag,
-			)
-			b.WriteString(l.Password)
-			if !strings.HasSuffix(l.Password, "\n") {
-				b.WriteString("\n")
-			}
-			fmt.Fprintf(&b, "%s\n", tag)
-			b.WriteString("  else\n")
-			fmt.Fprintf(&b,
-				"    docker login --username \"${DOCKER_REGISTRY_USER_%d}\" --password-stdin %s <<'%s'\n",
-				i, stderrFilter, tag,
-			)
-			b.WriteString(l.Password)
-			if !strings.HasSuffix(l.Password, "\n") {
-				b.WriteString("\n")
-			}
-			fmt.Fprintf(&b, "%s\n", tag)
-			b.WriteString("  fi\n")
-			b.WriteString("fi\n")
-		}
-		// (no `set -x` here — closing the login block with `set -x`
-		// would LEAK shell tracing into every subsequent step,
-		// burying the actual program output behind `+ command` echoes
-		// in the captured log. Mirrors the same fix on the
-		// application path; see deploy_application.go#buildImageStanza
-		// for the longer-form rationale.)
-	}
-
 	// `--network launch-network` happens inside the compose file (each
 	// service declares the network); the platform pre-creates it on the
 	// server, but compose doesn't take a top-level --network flag the
@@ -402,24 +341,6 @@ cat > .env <<'LAUNCH_COMPOSE_ENV_EOF'
   -f "${COMPOSE_FILE_PATH}" \
   up -d --remove-orphans
 `)
-	}
-	// Pair the logins with logouts so the host's docker config
-	// doesn't gain stale credential entries. `|| true` keeps `set -e`
-	// from failing the deploy if the logout itself errors — the
-	// containers are already up, the deploy succeeded.
-	if len(cfg.RegistryLogins) > 0 {
-		// docker logout also touches the same config.json that triggers
-		// the credential-store warning on login, so it prints the
-		// warning on stderr too. Same filter applied here to keep
-		// the captured log clean.
-		const stderrFilter = `2> >(grep -v -E 'credentials are stored unencrypted|Configure a credential helper|credential-store' >&2)`
-		for i := range cfg.RegistryLogins {
-			fmt.Fprintf(&b, "if [ -n \"${DOCKER_REGISTRY_URL_%d}\" ]; then\n", i)
-			fmt.Fprintf(&b, "  docker logout \"${DOCKER_REGISTRY_URL_%d}\" %s || true\n", i, stderrFilter)
-			b.WriteString("else\n")
-			fmt.Fprintf(&b, "  docker logout %s || true\n", stderrFilter)
-			b.WriteString("fi\n")
-		}
 	}
 	b.WriteString("\necho \"::LAUNCH::deploy_step::done\"\n")
 

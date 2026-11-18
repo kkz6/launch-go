@@ -62,7 +62,8 @@ func TestProcessGitWebhookHandleAcceptsValidNoopPayload(t *testing.T) {
 	job := &ProcessGitWebhookJob{
 		Deps: &JobDeps{Deps: &pkgjobs.Deps{Logger: &logger}, ProviderFactory: factory},
 		Payload: ProcessGitWebhookPayload{
-			Provider:  "github",
+			Provider: "github",
+			Event:    "ping", DeliveryID: "test-ping",
 			Payload:   payload,
 			Signature: githubJobSignature([]byte(payload), "secret"),
 		},

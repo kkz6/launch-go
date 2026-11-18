@@ -34,6 +34,7 @@ type SiteResponse struct {
 	TLSSetting                   string                           `json:"tls_setting"`
 	ZeroDowntimeDeployment       bool                             `json:"zero_downtime_deployment"`
 	DeploymentReleasesRetention  int                              `json:"deployment_releases_retention"`
+	RepositoryDependencyIDs      []string                         `json:"repository_dependency_ids,omitempty"`
 	RepositoryBranch             string                           `json:"repository_branch"`
 	Path                         string                           `json:"path"`
 	WebFolder                    string                           `json:"web_folder"`
@@ -247,6 +248,7 @@ func ToSiteResponse(site *models.Site) SiteResponse {
 		ZeroDowntimeDeployment:       site.ZeroDowntimeDeployment,
 		DeploymentReleasesRetention:  site.DeploymentReleasesRetention,
 		RepositoryBranch:             repositoryBranch,
+		RepositoryDependencyIDs:      site.RepositoryDependencyIDs,
 		Path:                         site.Path,
 		WebFolder:                    site.WebFolder,
 		PhpVersion:                   phpVersion,

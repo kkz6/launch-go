@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	gitaccess "github.com/kkz6/launch-go/internal/modules/git/access"
 	"strings"
 
 	"gorm.io/gorm"
@@ -166,6 +167,19 @@ func (s *UserService) DeleteAccount(ctx context.Context, userID, password string
 	}
 
 	err = s.repos.DB().WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		teamIDs := make([]string, 0, len(ownedTeams))
+		for _, team := range ownedTeams {
+			teamIDs = append(teamIDs, team.ID)
+		}
+		if err := lockGitHubTeams(tx, teamIDs...); err != nil {
+			return err
+		}
+		if err := gitaccess.RevokeLocalUser(ctx, tx, userID); err != nil {
+			return err
+		}
+		if err := tx.Where("user_id = ?", userID).Delete(&models.TeamMember{}).Error; err != nil {
+			return err
+		}
 		for _, team := range ownedTeams {
 			if team.UserID != userID {
 				continue

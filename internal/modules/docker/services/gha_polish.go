@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"github.com/kkz6/launch-go/internal/modules/docker/dto"
-	"github.com/kkz6/launch-go/internal/modules/docker/jobs"
 	dockertypes "github.com/kkz6/launch-go/internal/modules/docker/types"
 	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 )
@@ -43,7 +42,7 @@ func (s *ApplicationService) RotateGHAToken(
 	if app.BuildLocation != dockertypes.BuildLocationGitHubActions {
 		return dto.GHATokenRotateResponse{}, fiberutil.Validation("Application is not configured for GitHub Actions builds")
 	}
-	task, err := jobs.NewGHABootstrapWorkflowTask("application", app.ID, true, s.AppURL())
+	task, err := newAuthorizedBootstrapTask(ctx, s.BaseService, "application", app.ID, app.TeamID, app.SourceConfig, true, s.AppURL())
 	if err != nil {
 		return dto.GHATokenRotateResponse{}, err
 	}
@@ -70,7 +69,7 @@ func (s *ApplicationService) ResyncGHA(
 	if app.BuildLocation != dockertypes.BuildLocationGitHubActions {
 		return fiberutil.Validation("Application is not configured for GitHub Actions builds")
 	}
-	task, err := jobs.NewGHABootstrapWorkflowTask("application", app.ID, false, s.AppURL())
+	task, err := newAuthorizedBootstrapTask(ctx, s.BaseService, "application", app.ID, app.TeamID, app.SourceConfig, false, s.AppURL())
 	if err != nil {
 		return err
 	}
@@ -103,7 +102,7 @@ func (s *ApplicationService) SetAutoDeployGHA(
 	}); err != nil {
 		return err
 	}
-	task, err := jobs.NewGHABootstrapWorkflowTask("application", app.ID, false, s.AppURL())
+	task, err := newAuthorizedBootstrapTask(ctx, s.BaseService, "application", app.ID, app.TeamID, app.SourceConfig, false, s.AppURL())
 	if err != nil {
 		return err
 	}
@@ -132,11 +131,20 @@ func (s *ApplicationService) DisableGHA(
 	if app.BuildLocation != dockertypes.BuildLocationGitHubActions {
 		return fiberutil.Validation("Application is not configured for GitHub Actions builds")
 	}
+	if !workflowMutationLocked(ctx) {
+		return s.BaseService.withWorkflowMutation(ctx, "application", applicationID, func(locked context.Context) error {
+			return s.DisableGHA(locked, applicationID, projectID, serverID, teamID, userID)
+		})
+	}
+
 	if err := s.Repos().Application().UpdateFields(ctx, app.ID, map[string]any{
 		"build_location":        dockertypes.BuildLocationServer,
 		"gha_deploy_token_hash": nil,
 		"source_config":         stripGHAFields(app.SourceConfig),
 	}); err != nil {
+		return err
+	}
+	if err := s.BaseService.queueGHACleanup(ctx, app.SourceConfig); err != nil {
 		return err
 	}
 	s.BroadcastToTeam(teamID, "docker.application.gha_disabled", map[string]any{
@@ -161,7 +169,7 @@ func (s *ComposeService) RotateGHAToken(
 	if compose.BuildLocation != dockertypes.BuildLocationGitHubActions {
 		return dto.GHATokenRotateResponse{}, fiberutil.Validation("Compose stack is not configured for GitHub Actions builds")
 	}
-	task, err := jobs.NewGHABootstrapWorkflowTask("compose", compose.ID, true, s.AppURL())
+	task, err := newAuthorizedBootstrapTask(ctx, s.BaseService, "compose", compose.ID, compose.TeamID, compose.SourceConfig, true, s.AppURL())
 	if err != nil {
 		return dto.GHATokenRotateResponse{}, err
 	}
@@ -188,7 +196,7 @@ func (s *ComposeService) ResyncGHA(
 	if compose.BuildLocation != dockertypes.BuildLocationGitHubActions {
 		return fiberutil.Validation("Compose stack is not configured for GitHub Actions builds")
 	}
-	task, err := jobs.NewGHABootstrapWorkflowTask("compose", compose.ID, false, s.AppURL())
+	task, err := newAuthorizedBootstrapTask(ctx, s.BaseService, "compose", compose.ID, compose.TeamID, compose.SourceConfig, false, s.AppURL())
 	if err != nil {
 		return err
 	}
@@ -218,7 +226,7 @@ func (s *ComposeService) SetAutoDeployGHA(
 	}); err != nil {
 		return err
 	}
-	task, err := jobs.NewGHABootstrapWorkflowTask("compose", compose.ID, false, s.AppURL())
+	task, err := newAuthorizedBootstrapTask(ctx, s.BaseService, "compose", compose.ID, compose.TeamID, compose.SourceConfig, false, s.AppURL())
 	if err != nil {
 		return err
 	}
@@ -247,11 +255,20 @@ func (s *ComposeService) DisableGHA(
 	if compose.BuildLocation != dockertypes.BuildLocationGitHubActions {
 		return fiberutil.Validation("Compose stack is not configured for GitHub Actions builds")
 	}
+	if !workflowMutationLocked(ctx) {
+		return s.BaseService.withWorkflowMutation(ctx, "compose", composeID, func(locked context.Context) error {
+			return s.DisableGHA(locked, composeID, projectID, serverID, teamID, userID)
+		})
+	}
+
 	if err := s.Repos().Compose().UpdateFields(ctx, compose.ID, map[string]any{
 		"build_location":        dockertypes.BuildLocationServer,
 		"gha_deploy_token_hash": nil,
 		"source_config":         stripGHAFields(compose.SourceConfig),
 	}); err != nil {
+		return err
+	}
+	if err := s.BaseService.queueGHACleanup(ctx, compose.SourceConfig); err != nil {
 		return err
 	}
 	s.BroadcastToTeam(teamID, "docker.compose.gha_disabled", map[string]any{

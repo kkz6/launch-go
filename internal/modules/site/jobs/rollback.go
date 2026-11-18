@@ -73,6 +73,11 @@ func (j *RollbackJob) Handle(ctx context.Context) (handleErr error) {
 		return fmt.Errorf("failed to find site: %w", err)
 	}
 
+	authorization, err := newPostDeploymentCheck(ctx, j.Deps, j.site, j.deployment.ID)
+	if err != nil {
+		return err
+	}
+
 	// Get server
 	j.server, err = j.Deps.ServerRepos.Server().FindByID(ctx, j.site.ServerID)
 	if err != nil {
@@ -139,6 +144,9 @@ func (j *RollbackJob) Handle(ctx context.Context) (handleErr error) {
 		CurrentDirectory: currentDirectory,
 		Runtime:          tasks.RuntimeActivationConfig{SitePath: j.site.Path, SiteType: j.site.Type, PhpVersion: j.site.PhpVersion},
 	})
+	if err := authorization.attach(task); err != nil {
+		return err
+	}
 
 	j.Deps.Logger.Info().
 		Str("site_id", j.site.ID).

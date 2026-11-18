@@ -82,10 +82,8 @@ func TestDeploymentCompletionAdvancesZeroDowntimeQueueOnlyOnce(t *testing.T) {
 func queuedDeploymentCallback(t *testing.T, zeroDowntime bool) (*gorm.DB, *deploySiteTask) {
 	t.Helper()
 	db := deploymentCallbackDB(t)
-	require.NoError(t, db.Exec("ALTER TABLE deployments ADD COLUMN team_id TEXT").Error)
-	require.NoError(t, db.Exec("CREATE TABLE sites (id TEXT PRIMARY KEY, zero_downtime_deployment BOOLEAN)").Error)
 	require.NoError(t, db.Exec("CREATE TABLE tasks (id TEXT PRIMARY KEY, output TEXT)").Error)
-	require.NoError(t, db.Exec("INSERT INTO sites VALUES (?, ?)", "site-1", zeroDowntime).Error)
+	require.NoError(t, db.Exec("UPDATE sites SET zero_downtime_deployment = ? WHERE id = ?", zeroDowntime, "site-1").Error)
 	for i, id := range []string{"waiting-1", "waiting-2"} {
 		require.NoError(t, db.Exec(
 			"INSERT INTO deployments (id, site_id, team_id, status, created_at) VALUES (?, ?, ?, ?, ?)",

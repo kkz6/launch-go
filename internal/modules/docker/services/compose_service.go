@@ -2,6 +2,8 @@ package services
 
 import (
 	"context"
+	"github.com/kkz6/launch-go/internal/modules/docker/gitaccess"
+	"github.com/kkz6/launch-go/internal/modules/git/access"
 	"strings"
 	"time"
 
@@ -173,6 +175,19 @@ func (s *ComposeService) CreateCompose(
 		c.BuildLocation = dockertypes.BuildLocationGitHubActions
 	}
 
+	if c.SourceConfig != nil {
+		operation := access.Clone
+		if c.BuildLocation == dockertypes.BuildLocationGitHubActions {
+			operation = access.ActionsBootstrap
+		}
+		snapshot, err := gitaccess.Bind(ctx, s.DB(), s.GitProviders(), teamID, c.SourceConfig, operation)
+		if err != nil {
+			return dto.ComposeResponse{}, fiberutil.Validation(err.Error())
+		}
+		if c.BuildLocation == dockertypes.BuildLocationGitHubActions && snapshot == nil {
+			return dto.ComposeResponse{}, fiberutil.Validation("GitHub Actions requires a selected GitHub repository")
+		}
+	}
 	if err := s.Repos().Compose().Create(ctx, c); err != nil {
 		return dto.ComposeResponse{}, err
 	}
@@ -182,7 +197,7 @@ func (s *ComposeService) CreateCompose(
 	// workflow YAML + secret + variables land on the repo.
 	if c.BuildLocation == dockertypes.BuildLocationGitHubActions {
 		baseURL := s.AppURL()
-		task, err := jobs.NewGHABootstrapWorkflowTask("compose", c.ID, true, baseURL)
+		task, err := newAuthorizedBootstrapTask(ctx, s.BaseService, "compose", c.ID, c.TeamID, c.SourceConfig, true, baseURL)
 		if err != nil {
 			s.LogError(err, "build gha bootstrap task (compose)", "compose_id", c.ID)
 		} else if err := s.EnqueueTask(task); err != nil {
@@ -373,6 +388,15 @@ func (s *ComposeService) DeleteCompose(
 		return fiberutil.NotFound()
 	}
 
+	if c.BuildLocation == dockertypes.BuildLocationGitHubActions && !workflowMutationLocked(ctx) {
+		return s.BaseService.withWorkflowMutation(ctx, "compose", id, func(locked context.Context) error {
+			return s.DeleteCompose(locked, id, projectID, serverID, teamID, userID, removeVolumes)
+		})
+	}
+	if err := s.BaseService.queueGHACleanup(ctx, c.SourceConfig); err != nil {
+		return err
+	}
+
 	// Resolve slugs unconditionally — the remove script uses them for
 	// the stack-dir + traefik-config cleanup paths even when the
 	// stack was never deployed (those paths might exist from a
@@ -507,7 +531,7 @@ func (s *ComposeService) DeleteDeployment(
 	}
 
 	if deleteFromGHA && dep.GHARunID != nil && *dep.GHARunID != "" {
-		if err := deleteGHAWorkflowRun(ctx, s.DB(), s.GitProviders(), c.SourceConfig, *dep.GHARunID); err != nil {
+		if err := deleteGHAWorkflowRun(ctx, s.DB(), s.GitProviders(), c.SourceConfig, *dep.GHARunID, c.TeamID); err != nil {
 			return err
 		}
 	}
@@ -551,7 +575,7 @@ func (s *ComposeService) GetDeploymentGHASteps(
 		}, nil
 	}
 
-	wfJobs, err := fetchGHARunSteps(ctx, s.DB(), s.GitProviders(), c.SourceConfig, *dep.GHARunID)
+	wfJobs, err := fetchGHARunSteps(ctx, s.DB(), s.GitProviders(), c.SourceConfig, *dep.GHARunID, c.TeamID)
 	if err != nil {
 		return nil, err
 	}
@@ -645,6 +669,11 @@ func (s *ComposeService) Deploy(
 		return dep, nil
 	}
 
+	snapshot, err := gitaccess.Bind(ctx, s.DB(), s.GitProviders(), teamID, c.SourceConfig, access.Clone)
+	if err != nil {
+		return nil, fiberutil.Validation(err.Error())
+	}
+
 	now := time.Now().UTC()
 	deployment := &models.Deployment{
 		TargetType: "compose",
@@ -659,7 +688,7 @@ func (s *ComposeService) Deploy(
 		return nil, err
 	}
 
-	task, err := jobs.NewDeployComposeTask(composeID, deployment.ID, serverID, teamID)
+	task, err := jobs.NewDeployComposeTask(composeID, deployment.ID, serverID, teamID, gitaccess.PinnedSnapshots(c.SourceConfig, snapshot)...)
 	if err != nil {
 		return nil, err
 	}
@@ -820,6 +849,12 @@ func buildComposeSource(req *dto.CreateComposeRequest) (
 		sourceConfig = dbtype.JSONMap{
 			"repo":   strings.TrimSpace(req.Git.Repo),
 			"branch": strings.TrimSpace(req.Git.Branch),
+		}
+		if len(req.Git.DependencyRepositoryIDs) > 0 {
+			sourceConfig["dependency_repository_ids"] = req.Git.DependencyRepositoryIDs
+		}
+		if req.Git.RepositoryID != nil {
+			sourceConfig["repository_id"] = *req.Git.RepositoryID
 		}
 		if req.Git.SourceControlID != nil && *req.Git.SourceControlID != "" {
 			sourceConfig["source_control_id"] = *req.Git.SourceControlID

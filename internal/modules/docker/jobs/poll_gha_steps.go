@@ -2,15 +2,15 @@ package jobs
 
 import (
 	"context"
-	"errors"
 	"fmt"
+	"github.com/kkz6/launch-go/internal/modules/docker/gitaccess"
+	"github.com/kkz6/launch-go/internal/modules/git/access"
 	"path"
 	"time"
 
 	"github.com/hibiken/asynq"
 
 	dockermodels "github.com/kkz6/launch-go/internal/modules/docker/models"
-	gitmodels "github.com/kkz6/launch-go/internal/modules/git/models"
 	gitproviders "github.com/kkz6/launch-go/internal/modules/git/providers"
 	gittypes "github.com/kkz6/launch-go/internal/modules/git/types"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
@@ -43,12 +43,14 @@ const (
 // re-enqueues. RunID is empty on the first tick and filled once the run
 // is discovered (or read off the deployment row's webhook-set value).
 type PollGHAStepsPayload struct {
-	TargetType       string `json:"target_type"` // "application" | "compose"
-	TargetID         string `json:"target_id"`
-	DeploymentID     string `json:"deployment_id"`
-	RunID            string `json:"run_id,omitempty"`
-	DispatchedAtUnix int64  `json:"dispatched_at_unix"`
-	Attempt          int    `json:"attempt"`
+	GitAccess        *access.Snapshot `json:"git_access,omitempty"`
+	TeamID           string           `json:"team_id"`
+	TargetType       string           `json:"target_type"` // "application" | "compose"
+	TargetID         string           `json:"target_id"`
+	DeploymentID     string           `json:"deployment_id"`
+	RunID            string           `json:"run_id,omitempty"`
+	DispatchedAtUnix int64            `json:"dispatched_at_unix"`
+	Attempt          int              `json:"attempt"`
 }
 
 // NewPollGHAStepsTask builds the asynq task. Dispatched by the deploy
@@ -91,6 +93,9 @@ func (j *PollGHAStepsJob) Handle(ctx context.Context) error {
 		return nil
 	}
 
+	if dep.TeamID != p.TeamID || dep.TargetType != p.TargetType || dep.TargetID != p.TargetID {
+		return nil
+	}
 	gh, gctx, ok := j.resolveContext(ctx, p.TargetType, p.TargetID)
 	if !ok {
 		return nil
@@ -102,7 +107,7 @@ func (j *PollGHAStepsJob) Handle(ctx context.Context) error {
 		if dep.GHARunID != nil && *dep.GHARunID != "" {
 			runID = *dep.GHARunID
 		} else {
-			run, err := gh.FindLatestWorkflowRun(ctx, gctx.installationID, gctx.owner, gctx.repo, gctx.workflowFile, gctx.branch, dispatchedAt)
+			run, err := gh.FindLatestWorkflowRun(gctx.context, gctx.installationID, gctx.owner, gctx.repo, gctx.workflowFile, gctx.branch, dispatchedAt)
 			if err != nil || run == nil {
 				// Not visible yet (or transient) — keep hunting until the
 				// discovery deadline, then give up.
@@ -124,7 +129,7 @@ func (j *PollGHAStepsJob) Handle(ctx context.Context) error {
 		}
 	}
 
-	wfJobs, err := gh.ListWorkflowRunJobs(ctx, gctx.installationID, gctx.owner, gctx.repo, runID)
+	wfJobs, err := gh.ListWorkflowRunJobs(gctx.context, gctx.installationID, gctx.owner, gctx.repo, runID)
 	if err != nil {
 		// Transient — try again within the deadline.
 		j.reschedule(p, runID)
@@ -153,6 +158,7 @@ func (j *PollGHAStepsJob) reschedule(p PollGHAStepsPayload, runID string) {
 
 // ghaPollContext is the resolved GitHub coordinates for a workload.
 type ghaPollContext struct {
+	context        context.Context
 	owner          string
 	repo           string
 	workflowFile   string
@@ -165,6 +171,7 @@ type ghaPollContext struct {
 // ok=false on any failure (caller stops quietly).
 func (j *PollGHAStepsJob) resolveContext(ctx context.Context, targetType, targetID string) (*gitproviders.GitHubProvider, ghaPollContext, bool) {
 	var sc map[string]any
+	var teamID string
 	switch targetType {
 	case "application":
 		var app dockermodels.Application
@@ -172,12 +179,14 @@ func (j *PollGHAStepsJob) resolveContext(ctx context.Context, targetType, target
 			return nil, ghaPollContext{}, false
 		}
 		sc = map[string]any(app.SourceConfig)
+		teamID = app.TeamID
 	case "compose":
 		var c dockermodels.Compose
 		if err := j.Deps.DB.WithContext(ctx).Where("id = ?", targetID).First(&c).Error; err != nil {
 			return nil, ghaPollContext{}, false
 		}
 		sc = map[string]any(c.SourceConfig)
+		teamID = c.TeamID
 	default:
 		return nil, ghaPollContext{}, false
 	}
@@ -187,8 +196,8 @@ func (j *PollGHAStepsJob) resolveContext(ctx context.Context, targetType, target
 		return nil, ghaPollContext{}, false
 	}
 
-	installationID, err := j.resolvePollInstallationID(ctx, cfg.SourceControlID)
-	if err != nil {
+	resolved, err := gitaccess.Resolve(ctx, j.Deps.DB, j.Deps.GitProviders, teamID, sc, access.ActionsRead, j.Payload.GitAccess, true)
+	if err != nil || resolved == nil || teamID != j.Payload.TeamID {
 		return nil, ghaPollContext{}, false
 	}
 
@@ -210,22 +219,9 @@ func (j *PollGHAStepsJob) resolveContext(ctx context.Context, targetType, target
 		repo:           cfg.Repo,
 		workflowFile:   path.Base(cfg.WorkflowPath),
 		branch:         branch,
-		installationID: installationID,
+		installationID: resolved.InstallationID,
+		context:        resolved.Context(ctx),
 	}, true
-}
-
-func (j *PollGHAStepsJob) resolvePollInstallationID(ctx context.Context, sourceControlID string) (string, error) {
-	if sourceControlID == "" {
-		return "", errors.New("source_control_id missing")
-	}
-	var sc gitmodels.SourceControl
-	if err := j.Deps.DB.WithContext(ctx).Where("id = ?", sourceControlID).First(&sc).Error; err != nil {
-		return "", err
-	}
-	if sc.InstallationID == nil || *sc.InstallationID == "" {
-		return "", errors.New("source_control has no installation_id")
-	}
-	return *sc.InstallationID, nil
 }
 
 // broadcastSteps emits the current job/step snapshot on the team channel.

@@ -5,9 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
-	"strings"
 	"time"
 
+	"github.com/kkz6/launch-go/internal/modules/git/access"
 	"github.com/kkz6/launch-go/internal/modules/git/contracts"
 	"github.com/kkz6/launch-go/internal/modules/git/dto"
 	"github.com/kkz6/launch-go/internal/modules/git/models"
@@ -51,6 +51,7 @@ func (s *SourceControlService) ListSourceControls(ctx context.Context, teamID st
 	}
 	out := make([]dto.SourceControlResponse, len(scs))
 	for i := range scs {
+		s.decorateCleanup(ctx, &scs[i])
 		out[i] = dto.ToSourceControlResponse(&scs[i])
 	}
 	return out, nil
@@ -63,6 +64,7 @@ func (s *SourceControlService) GetSourceControl(ctx context.Context, id, teamID 
 	if err != nil {
 		return dto.SourceControlResponse{}, fiberutil.NotFoundAs(err, "Source control not found")
 	}
+	s.decorateCleanup(ctx, sc)
 	return dto.ToSourceControlResponse(sc), nil
 }
 
@@ -112,11 +114,15 @@ func (s *SourceControlService) Connect(ctx context.Context, teamID, userID strin
 	if err != nil {
 		return dto.SourceControlResponse{}, err
 	}
+	s.decorateCleanup(ctx, sc)
 	return dto.ToSourceControlResponse(sc), nil
 }
 
 // connect runs the provider-connection flow and returns the model.
 func (s *SourceControlService) connectInstallation(ctx context.Context, teamID, userID string, providerType gittypes.GitProviderType, installationID string) (*models.SourceControl, error) {
+	if providerType == gittypes.GitProviderGitHub {
+		return nil, access.ErrAccessDenied
+	}
 	// Ensure this installation is not already claimed by another team
 	if err := s.ensureInstallationNotClaimed(ctx, providerType, installationID, teamID); err != nil {
 		return nil, err
@@ -182,28 +188,17 @@ func (s *SourceControlService) connectInstallation(ctx context.Context, teamID, 
 // Disconnect disconnects a source control. Signature matches DeleteFunc;
 // userID is part of the framework-mutation convention.
 func (s *SourceControlService) Disconnect(ctx context.Context, id, teamID, userID string) error {
-	_ = userID
-	sc, err := s.Repos().SourceControl().FindByIDAndTeam(ctx, id, teamID)
-	if err != nil {
+	if err := access.RequireManager(ctx, s.DB(), teamID, userID); err != nil {
 		return err
 	}
-
-	// Check if there are associated sites
-	if s.siteChecker != nil {
-		hasSites, err := s.siteChecker.HasSitesBySourceControlID(ctx, sc.ID)
-		if err != nil {
-			return err
-		}
-		if hasSites {
-			return ErrHasSites
-		}
-	}
-
-	return s.Repos().SourceControl().DeleteWithRepositories(ctx, sc.ID)
+	return access.NewResolver(s.DB(), s.ProviderFactory()).Disconnect(ctx, id, teamID)
 }
 
 // GetInstallationURL gets the installation URL for a provider
 func (s *SourceControlService) GetInstallationURL(providerType gittypes.GitProviderType) (string, error) {
+	if providerType == gittypes.GitProviderGitHub {
+		return "", fiberutil.BadRequest("Start a verified GitHub connection from account settings")
+	}
 	provider, err := s.ProviderFactory().GetProvider(providers.GitProviderType(providerType))
 	if err != nil {
 		return "", err
@@ -217,19 +212,13 @@ func (s *SourceControlService) ListSourceControlsByProvider(ctx context.Context,
 	return s.Repos().SourceControl().FindByTeamAndProvider(ctx, teamID, providerType)
 }
 
-// GetInstallationRepositoriesFromAPI gets repositories from the provider API
-func (s *SourceControlService) GetInstallationRepositoriesFromAPI(ctx context.Context, providerType gittypes.GitProviderType, installationID string) ([]map[string]interface{}, error) {
-	provider, err := s.ProviderFactory().GetProvider(providers.GitProviderType(providerType))
+// GetCachedRepositories gets repositories from the database cache
+func (s *SourceControlService) GetCachedRepositories(ctx context.Context, providerType gittypes.GitProviderType, installationID, teamID string) ([]models.SourceControlRepository, error) {
+	sc, err := s.GetSourceControlByInstallation(ctx, providerType, installationID, contracts.WithTeamID(teamID))
 	if err != nil {
 		return nil, err
 	}
-
-	return provider.GetInstallationRepositories(ctx, installationID)
-}
-
-// GetCachedRepositories gets repositories from the database cache
-func (s *SourceControlService) GetCachedRepositories(ctx context.Context, providerType gittypes.GitProviderType, installationID, teamID string) ([]models.SourceControlRepository, error) {
-	return s.Repos().SourceControlRepo().GetInstallationRepositories(ctx, providerType, installationID, teamID)
+	return s.GetRepositoriesBySourceControlID(ctx, sc.ID, teamID)
 }
 
 // SyncRepositories syncs repositories for a source control
@@ -266,6 +255,9 @@ func (s *SourceControlService) SyncRepositories(ctx context.Context, sc *models.
 
 // SyncInstallationRepositories syncs repositories for an installation
 func (s *SourceControlService) SyncInstallationRepositories(ctx context.Context, sc *models.SourceControl, repos []map[string]interface{}) error {
+	if sc.Provider == gittypes.GitProviderGitHub {
+		return s.syncGitHubInventory(ctx, sc, repos)
+	}
 	// Get existing repositories
 	existingRepos, err := s.Repos().SourceControlRepo().FindRepositoriesBySourceControlID(ctx, sc.ID)
 	if err != nil {
@@ -338,6 +330,9 @@ func (s *SourceControlService) RefreshInstallationRepositories(ctx context.Conte
 
 // SyncUserInstallation syncs a user's installation
 func (s *SourceControlService) SyncUserInstallation(ctx context.Context, providerType gittypes.GitProviderType, installationID, teamID, userID string) error {
+	if providerType == gittypes.GitProviderGitHub {
+		return access.ErrAccessDenied
+	}
 	// Ensure this installation is not already claimed by another team
 	if err := s.ensureInstallationNotClaimed(ctx, providerType, installationID, teamID); err != nil {
 		return err
@@ -465,6 +460,7 @@ func (s *SourceControlService) GetInstallationsWithRepositoryCounts(ctx context.
 
 		summaries := make([]dto.InstallationSummaryData, len(sourceControls))
 		for i, sc := range sourceControls {
+			s.decorateCleanup(ctx, &sc)
 			summaries[i] = dto.InstallationSummaryFromSourceControl(&sc)
 		}
 
@@ -476,6 +472,20 @@ func (s *SourceControlService) GetInstallationsWithRepositoryCounts(ctx context.
 
 // DeleteByInstallationID deletes all source controls by installation ID (webhook handler)
 func (s *SourceControlService) DeleteByInstallationID(ctx context.Context, provider gittypes.GitProviderType, installationID string) error {
+	if provider == gittypes.GitProviderGitHub {
+		connections, err := s.Repos().SourceControl().FindByInstallationID(ctx, installationID)
+		if err != nil {
+			return err
+		}
+		for _, sc := range connections {
+			if sc.Provider == provider {
+				if err := access.NewResolver(s.DB(), s.ProviderFactory()).Disconnect(ctx, sc.ID, sc.TeamID); err != nil {
+					return err
+				}
+			}
+		}
+		return nil
+	}
 	_, err := s.Repos().SourceControl().DeleteByInstallationID(ctx, provider, installationID)
 	return err
 }
@@ -554,55 +564,25 @@ func (s *SourceControlService) UpdateRepositoryCount(ctx context.Context, source
 
 // GetRepositoriesBySourceControlID gets all repositories for a source control
 func (s *SourceControlService) GetRepositoriesBySourceControlID(ctx context.Context, sourceControlID, teamID string) ([]models.SourceControlRepository, error) {
-	// Verify the source control belongs to the team
-	if _, err := s.Repos().SourceControl().FindByIDAndTeam(ctx, sourceControlID, teamID); err != nil {
+	sc, err := s.Repos().SourceControl().FindByIDAndTeam(ctx, sourceControlID, teamID)
+	if err != nil {
 		return nil, err
 	}
-
-	return s.Repos().SourceControlRepo().FindRepositoriesBySourceControlID(ctx, sourceControlID)
+	if sc.Status != "active" {
+		return []models.SourceControlRepository{}, nil
+	}
+	var repos []models.SourceControlRepository
+	err = s.DB().WithContext(ctx).Where("source_control_id = ? AND selected = ? AND available = ?", sourceControlID, true, true).Find(&repos).Error
+	return repos, err
 }
 
 // SaveRepository fetches a repository from the git provider and saves it to the database
 func (s *SourceControlService) SaveRepository(ctx context.Context, sourceControlID, teamID, repoFullName string) (*models.SourceControlRepository, error) {
-	// Get the source control scoped to team
-	sc, err := s.Repos().SourceControl().FindByIDAndTeam(ctx, sourceControlID, teamID)
+	grant, err := access.NewResolver(s.DB(), s.ProviderFactory()).Resolve(ctx, access.Request{TeamID: teamID, SourceControlID: sourceControlID, Repository: repoFullName, Operation: access.Read})
 	if err != nil {
-		return nil, fmt.Errorf("failed to find source control: %w", err)
+		return nil, err
 	}
-
-	if sc.InstallationID == nil || *sc.InstallationID == "" {
-		return nil, ErrNoInstallationID
-	}
-
-	// Get the provider
-	provider, err := s.ProviderFactory().GetProvider(providers.GitProviderType(sc.Provider))
-	if err != nil {
-		return nil, fmt.Errorf("failed to get provider: %w", err)
-	}
-
-	// Parse owner and repo from full_name (e.g., "owner/repo")
-	parts := strings.SplitN(repoFullName, "/", 2)
-	if len(parts) != 2 {
-		return nil, fmt.Errorf("invalid repository full name: %s", repoFullName)
-	}
-	owner, repoName := parts[0], parts[1]
-
-	// Fetch repository from provider
-	repoData, err := provider.GetRepository(ctx, *sc.InstallationID, owner, repoName)
-	if err != nil {
-		return nil, fmt.Errorf("failed to fetch repository from provider: %w", err)
-	}
-
-	// Convert to RepositoryData
-	data := dto.RepositoryDataFromAPIResponse(repoData)
-
-	// Upsert the repository
-	repo, err := s.Repos().SourceControlRepo().UpsertRepository(ctx, sourceControlID, data)
-	if err != nil {
-		return nil, fmt.Errorf("failed to save repository: %w", err)
-	}
-
-	return repo, nil
+	return grant.Repository, nil
 }
 
 // AppInstallationDataFromSourceControl converts a SourceControl model to AppInstallationData for handler responses
@@ -661,3 +641,14 @@ func fromProviderAppInstallationData(p *providers.AppInstallationData) *dto.AppI
 		AppID:                   p.AppID,
 	}
 }
+
+func (s *SourceControlService) decorateCleanup(ctx context.Context, sc *models.SourceControl) {
+	var count int64
+	err := s.DB().WithContext(ctx).Model(&models.GitHubCredentialLease{}).Where("source_control_id = ? AND status = ?", sc.ID, "revoke_pending").Count(&count).Error
+	sc.CleanupPending = err != nil || count > 0
+	var cleanupCount int64
+	cleanupErr := s.DB().WithContext(ctx).Model(&models.GitHubCleanupManifest{}).Where("source_control_id = ? AND status IN ?", sc.ID, []string{"pending", "failed_cleanup"}).Count(&cleanupCount).Error
+	sc.CleanupPending = sc.CleanupPending || cleanupErr != nil || cleanupCount > 0
+}
+
+var _ contracts.SourceControlService = (*SourceControlService)(nil)

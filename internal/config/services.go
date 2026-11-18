@@ -41,6 +41,9 @@ type GitHubConfig struct {
 	PrivateKey    string `env:"GITHUB_PRIVATE_KEY" default:""`
 	WebhookSecret string `env:"GITHUB_WEBHOOK_SECRET" default:""`
 	AppSlug       string `env:"GITHUB_APP_SLUG" default:""`
+	ClientID      string `env:"GITHUB_CLIENT_ID" default:""`
+	ClientSecret  string `env:"GITHUB_CLIENT_SECRET" default:""`
+	CallbackURL   string `env:"GITHUB_CALLBACK_URL" default:""`
 }
 
 // GitLabConfig holds GitLab-specific configuration

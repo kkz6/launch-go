@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 	"github.com/stretchr/testify/assert"
 
 	servermodels "github.com/kkz6/launch-go/internal/modules/server/models"
@@ -20,15 +21,20 @@ func TestBuildDeployConfig_IncludesNotificationContext(t *testing.T) {
 
 	deployment := &models.Deployment{}
 	deployment.ID = "deployment-1"
+	deployment.SiteID = site.ID
+	deployment.TeamID = site.TeamID
 
 	job := &DeployJob{
-		Deps: &JobDeps{FrontendURL: "https://launchctl.io/"},
+		Deps: &JobDeps{Deps: &pkgjobs.Deps{}, FrontendURL: "https://launchctl.io/"},
 		server: &servermodels.Server{
 			Name: "production-01",
 		},
 	}
 
-	config := job.buildDeployConfig(context.Background(), site, deployment, "team-1")
+	config, err := job.buildDeployConfig(context.Background(), site, deployment, "team-1")
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	assert.Equal(t, "production-01", config.ServerName)
 	assert.Equal(

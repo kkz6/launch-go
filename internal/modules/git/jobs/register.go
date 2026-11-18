@@ -24,5 +24,6 @@ func Register(
 
 func registerHandlers(mux *asynq.ServeMux) {
 	pkgjobs.RegisterTyped(mux, TypeProcessGitWebhook, NewProcessGitWebhookJob)
+	pkgjobs.RegisterTyped(mux, TypeReconcileGitHubAccess, NewReconcileGitHubAccessJob)
 	pkgjobs.RegisterTyped(mux, TypeSyncInstallationRepos, NewSyncInstallationReposJob)
 }

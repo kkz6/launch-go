@@ -24,6 +24,7 @@ const (
 
 // CaddyfilePayload holds data for Caddyfile operations
 type CaddyfilePayload struct {
+	DeploymentID       string  `json:"deployment_id,omitempty"`
 	SiteID             string  `json:"site_id"`
 	UserID             *string `json:"user_id,omitempty"`
 	ReservationClaimed bool    `json:"reservation_claimed,omitempty"`
@@ -32,8 +33,9 @@ type CaddyfilePayload struct {
 
 // InstallCaddyfileJob handles site Caddyfile installation
 type InstallCaddyfileJob struct {
-	Deps    *JobDeps
-	Payload CaddyfilePayload
+	deploymentGuard postDeploymentCheck
+	Deps            *JobDeps
+	Payload         CaddyfilePayload
 
 	// Model fields for Failed() callback
 	site   *models.Site
@@ -55,6 +57,10 @@ func (j *InstallCaddyfileJob) Handle(ctx context.Context) error {
 		return fmt.Errorf("failed to find site: %w", err)
 	}
 	j.site = site
+	j.deploymentGuard, err = newPostDeploymentCheck(ctx, j.Deps, site, j.Payload.DeploymentID)
+	if err != nil {
+		return err
+	}
 
 	// Get server
 	server, err := j.Deps.ServerRepos.Server().FindByID(ctx, site.ServerID)
@@ -83,6 +89,9 @@ func (j *InstallCaddyfileJob) Handle(ctx context.Context) error {
 			CertPEM:       pointerString(activeCert.Certificate),
 			KeyPEM:        string(activeCert.PrivateKey),
 		}})
+		if err := j.deploymentGuard.attach(certTask); err != nil {
+			return err
+		}
 		certResult, certErr := j.Deps.RunTask(server, certTask).AsRoot().Dispatch(ctx)
 		if certErr != nil {
 			j.Deps.Logger.Error().Err(certErr).Str("site_id", site.ID).Msg("Failed to write certificate files")
@@ -115,6 +124,9 @@ func (j *InstallCaddyfileJob) Handle(ctx context.Context) error {
 	})
 
 	// Execute the task on the server
+	if err := j.deploymentGuard.attach(task); err != nil {
+		return err
+	}
 	result, err := j.Deps.RunTask(server, task).AsRoot().Dispatch(ctx)
 	if err != nil {
 		j.Deps.Logger.Error().Err(err).Str("site_id", site.ID).Msg("Failed to install Caddyfile")
@@ -132,8 +144,14 @@ func (j *InstallCaddyfileJob) Handle(ctx context.Context) error {
 	// Update site imports
 	if err := j.updateSiteImports(ctx, server, site); err != nil {
 		j.Deps.Logger.Error().Err(err).Str("site_id", site.ID).Msg("Failed to update site imports")
+		if j.Payload.DeploymentID != "" {
+			return err
+		}
 	}
 
+	if err := j.deploymentGuard.validate(ctx); err != nil {
+		return err
+	}
 	// Mark site as installed and clear pending flags
 	now := time.Now()
 	site.InstalledAt = &now
@@ -171,6 +189,9 @@ func (j *InstallCaddyfileJob) Failed(ctx context.Context, err error) {
 		return
 	}
 
+	if _, err := newPostDeploymentCheck(ctx, j.Deps, site, j.Payload.DeploymentID); err != nil {
+		return
+	}
 	now := time.Now()
 	site.InstalledAt = nil
 	site.InstallationFailedAt = &now
@@ -480,6 +501,9 @@ func (j *InstallCaddyfileJob) updateSiteImports(ctx context.Context, server *ser
 		AddPath: site.Path,
 	})
 
+	if err := j.deploymentGuard.attach(task); err != nil {
+		return err
+	}
 	// Execute on server
 	_, err := j.Deps.RunTask(server, task).AsRoot().Dispatch(ctx)
 	return err

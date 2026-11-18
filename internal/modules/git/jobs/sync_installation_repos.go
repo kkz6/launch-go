@@ -38,6 +38,10 @@ func (j *SyncInstallationReposJob) Handle(ctx context.Context) error {
 		return fmt.Errorf("invalid provider: %w", err)
 	}
 
+	if j.Payload.TeamID == "" || j.Payload.UserID == "" {
+		return fmt.Errorf("missing account context for repository sync")
+	}
+
 	// Find source control for this installation
 	sc, err := j.Deps.Service.GetSourceControlByInstallation(ctx, providerType, j.Payload.InstallationID, contracts.WithTeamID(j.Payload.TeamID))
 	if err != nil {
@@ -64,10 +68,10 @@ func (j *SyncInstallationReposJob) Handle(ctx context.Context) error {
 		return fmt.Errorf("failed to sync repositories: %w", err)
 	}
 
-	// Update repository count
-	repositoryCount := len(repositories)
-	if err := j.Deps.Service.UpdateRepositoryCount(ctx, sc.ID, repositoryCount); err != nil {
-		j.Deps.Logger.Warn().Err(err).Msg("Failed to update repository count")
+	// Counts describe selected account grants, never installation inventory.
+	var repositoryCount int64
+	if err := j.Deps.DB.WithContext(ctx).Table("source_control_repositories").Where("source_control_id = ? AND selected = ? AND available = ?", sc.ID, true, true).Count(&repositoryCount).Error; err != nil {
+		return err
 	}
 
 	j.Deps.Logger.Info().

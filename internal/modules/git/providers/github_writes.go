@@ -2,7 +2,9 @@ package providers
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -459,4 +461,58 @@ func (p *GitHubProvider) TriggerWorkflowDispatch(
 			owner, repo, workflowFile, branch, resp.StatusCode, string(raw),
 		)
 	}
+}
+
+// DeleteContents removes one generated file with its current blob SHA. A missing
+// file is success, so cleanup can safely retry after a partial failure.
+func (p *GitHubProvider) DeleteContents(ctx context.Context, installationID, owner, repo, path, branch string, expectedDigest ...string) error {
+	if len(expectedDigest) != 1 || len(expectedDigest[0]) != 64 {
+		return errors.New("workflow cleanup requires its recorded content digest")
+	}
+	token, err := p.GetInstallationToken(ctx, installationID)
+	if err != nil {
+		return err
+	}
+	apiPath := fmt.Sprintf("/repos/%s/%s/contents/%s", owner, repo, path)
+	resp, err := p.DoRaw(ctx, http.MethodGet, apiPath+"?ref="+url.QueryEscape(branch), token, nil)
+	if err != nil {
+		return err
+	}
+	if resp.StatusCode == http.StatusNotFound {
+		_ = resp.Body.Close()
+		return nil
+	}
+	if resp.StatusCode != http.StatusOK {
+		_ = resp.Body.Close()
+		return fmt.Errorf("GitHub workflow cleanup read failed: status %d", resp.StatusCode)
+	}
+	var content struct {
+		SHA      string `json:"sha"`
+		Content  string `json:"content"`
+		Encoding string `json:"encoding"`
+	}
+	if err = DecodeJSON(resp, &content); err != nil {
+		return err
+	}
+	if content.Encoding != "base64" || content.SHA == "" {
+		return errors.New("GitHub workflow content unavailable for safe cleanup")
+	}
+	raw, err := base64.StdEncoding.DecodeString(content.Content)
+	if err != nil {
+		return err
+	}
+	digest := sha256.Sum256(raw)
+	if hex.EncodeToString(digest[:]) != expectedDigest[0] {
+		return errors.New("GitHub workflow was modified; remove it manually after reviewing the changes")
+	}
+	body := map[string]interface{}{"message": "Remove launchctl deployment workflow", "sha": content.SHA, "branch": branch}
+	resp, err = p.DoRaw(ctx, http.MethodDelete, apiPath, token, body)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusNotFound {
+		return nil
+	}
+	return fmt.Errorf("GitHub workflow cleanup failed: status %d", resp.StatusCode)
 }

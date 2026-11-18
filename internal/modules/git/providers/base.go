@@ -149,6 +149,18 @@ func (b *BaseGitProvider) Delete(ctx context.Context, path string, token string,
 // DoRaw performs an authenticated request and returns the raw fiberctx.
 // Caller is responsible for closing the response body.
 func (b *BaseGitProvider) DoRaw(ctx context.Context, method, path string, token string, body interface{}) (*http.Response, error) {
+	if authorization, err := repositoryAuthorization(ctx); err == nil {
+		if err := authorization.Validate(ctx); err != nil {
+			return nil, err
+		}
+		if scoped, ok := authorization.(interface {
+			ValidateRequest(context.Context, string, string, any) error
+		}); ok {
+			if err := scoped.ValidateRequest(ctx, method, path, body); err != nil {
+				return nil, err
+			}
+		}
+	}
 	req := b.Request(method, path, token)
 	if body != nil {
 		req.WithJSONBody(body)
@@ -391,6 +403,9 @@ func (b *BaseGitProvider) GetOAuthToken() (string, error) {
 
 // ExtractFloatID extracts an ID from a float64 value in a map.
 func ExtractFloatID(data map[string]interface{}, key string) string {
+	if id, ok := data[key].(json.Number); ok {
+		return id.String()
+	}
 	if idFloat, ok := data[key].(float64); ok {
 		return fmt.Sprintf("%.0f", idFloat)
 	}

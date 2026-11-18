@@ -118,10 +118,19 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          bearer=$(curl -fsSL \
+          token_response=$(curl -fsS \
             -u "${GITHUB_ACTOR}:${GITHUB_TOKEN}" \
-            "https://ghcr.io/token?service=ghcr.io&scope=repository:kkz6/teststack:pull" \
-            | jq -r '.token // empty')
+            "https://ghcr.io/token?service=ghcr.io&scope=repository:kkz6/teststack:pull")
+          bearer=$(jq -r '.token // .access_token // empty' <<<"$token_response")
+          expires_in=$(jq -er '(.expires_in // 60) | select(type == "number" and . >= 60 and . <= 3600 and floor == .)' <<<"$token_response")
+          # Registry token specification defaults to 60 seconds when expiry is omitted.
+          issued_at=$(jq -r '.issued_at // empty' <<<"$token_response")
+          if [ -n "$issued_at" ]; then
+            minted_at=$(date -u -d "$issued_at" +%s)
+          else
+            minted_at=$(date -u +%s)
+          fi
+          expires_at=$((minted_at + expires_in))
           if [ -z "$bearer" ]; then
             echo "::error::Failed to mint GHCR pull token"
             exit 1
@@ -132,14 +141,16 @@ jobs:
             echo "$bearer"
             echo "LAUNCH_BEARER_EOF"
           } >> "$GITHUB_OUTPUT"
-          echo "minted_at=$(date -u +%s)" >> "$GITHUB_OUTPUT"
+          echo "minted_at=$minted_at" >> "$GITHUB_OUTPUT"
+          echo "expires_at=$expires_at" >> "$GITHUB_OUTPUT"
 
       - name: Notify Launch (success)
         id: notify
         env:
-          TOKEN: ${{ secrets.LAUNCH_DEPLOY_TOKEN }}
+          TOKEN: ${{ secrets.LAUNCH_COMPOSE_01HJXVHGRGTQRX4P0G3Y8R6CK8_TOKEN }}
           GHCR_BEARER: ${{ steps.ghcr_token.outputs.bearer }}
           GHCR_BEARER_MINTED_AT: ${{ steps.ghcr_token.outputs.minted_at }}
+          GHCR_BEARER_EXPIRES_AT: ${{ steps.ghcr_token.outputs.expires_at }}
         run: |
           resp=$(curl --fail-with-body -sS --connect-timeout 10 --max-time 30 -X POST \
             -H "Authorization: Bearer $TOKEN" \
@@ -152,7 +163,8 @@ jobs:
               --arg url           '${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}' \
               --arg pull          "$GHCR_BEARER" \
               --arg minted_at     "$GHCR_BEARER_MINTED_AT" \
-              '{service_images:$images, commit_sha:$sha, branch:$branch, run_id:$run_id, run_url:$url, ghcr_pull_token:$pull, ghcr_pull_token_minted_at:$minted_at}')" \
+              --arg expires_at "$GHCR_BEARER_EXPIRES_AT" \
+              '{service_images:$images, commit_sha:$sha, branch:$branch, run_id:$run_id, run_url:$url, ghcr_pull_token:$pull, ghcr_pull_token_minted_at:$minted_at, ghcr_pull_token_expires_at:$expires_at}')" \
             "${{ vars.LAUNCH_WEBHOOK_URL }}/api/webhooks/docker/composes/01HJXVHGRGTQRX4P0G3Y8R6CK8/deploy") \
             || { echo "::error::Launch rejected the deploy notify"; echo "$resp"; exit 1; }
           echo "$resp"
@@ -166,7 +178,7 @@ jobs:
       - name: Wait for Launch deploy to finish
         timeout-minutes: 22
         env:
-          TOKEN: ${{ secrets.LAUNCH_DEPLOY_TOKEN }}
+          TOKEN: ${{ secrets.LAUNCH_COMPOSE_01HJXVHGRGTQRX4P0G3Y8R6CK8_TOKEN }}
           DEPLOYMENT_ID: ${{ steps.notify.outputs.deployment_id }}
         run: |
           set -uo pipefail
@@ -215,7 +227,7 @@ jobs:
     steps:
       - name: Notify Launch (failure)
         env:
-          TOKEN: ${{ secrets.LAUNCH_DEPLOY_TOKEN }}
+          TOKEN: ${{ secrets.LAUNCH_COMPOSE_01HJXVHGRGTQRX4P0G3Y8R6CK8_TOKEN }}
         run: |
           curl -sS --connect-timeout 10 --max-time 30 -X POST \
             -H "Authorization: Bearer $TOKEN" \

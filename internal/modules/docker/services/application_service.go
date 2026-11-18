@@ -2,6 +2,8 @@ package services
 
 import (
 	"context"
+	"github.com/kkz6/launch-go/internal/modules/docker/gitaccess"
+	"github.com/kkz6/launch-go/internal/modules/git/access"
 	"strings"
 	"time"
 
@@ -169,6 +171,19 @@ func (s *ApplicationService) CreateApplication(
 		}
 	}
 
+	if app.SourceConfig != nil {
+		operation := access.Clone
+		if app.BuildLocation == dockertypes.BuildLocationGitHubActions {
+			operation = access.ActionsBootstrap
+		}
+		snapshot, err := gitaccess.Bind(ctx, s.DB(), s.GitProviders(), teamID, app.SourceConfig, operation)
+		if err != nil {
+			return dto.ApplicationResponse{}, fiberutil.Validation(err.Error())
+		}
+		if app.BuildLocation == dockertypes.BuildLocationGitHubActions && snapshot == nil {
+			return dto.ApplicationResponse{}, fiberutil.Validation("GitHub Actions requires a selected GitHub repository")
+		}
+	}
 	if err := s.Repos().Application().Create(ctx, app); err != nil {
 		return dto.ApplicationResponse{}, err
 	}
@@ -179,7 +194,7 @@ func (s *ApplicationService) CreateApplication(
 	// can re-sync from the GitHub Actions detail subtab in slice I.
 	if app.BuildLocation == dockertypes.BuildLocationGitHubActions {
 		baseURL := s.appURL()
-		task, err := jobs.NewGHABootstrapWorkflowTask("application", app.ID, true, baseURL)
+		task, err := newAuthorizedBootstrapTask(ctx, s.BaseService, "application", app.ID, app.TeamID, app.SourceConfig, true, baseURL)
 		if err != nil {
 			s.LogError(err, "build gha bootstrap task", "application_id", app.ID)
 		} else if err := s.EnqueueTask(task); err != nil {
@@ -296,7 +311,7 @@ func (s *ApplicationService) applyBuildConfigUpdate(
 
 	if app.BuildLocation == dockertypes.BuildLocationGitHubActions {
 		cfg, pending := bumpGHAPendingChanges(app.SourceConfig)
-		if err := s.Repos().Application().UpdateSourceConfig(ctx, app.ID, cfg); err != nil {
+		if err := s.Repos().Application().MergeSourceConfig(ctx, app.ID, map[string]any{"gha_pending_changes": cfg["gha_pending_changes"]}); err != nil {
 			s.LogError(err, "persist gha pending-changes", "application_id", app.ID)
 		} else {
 			s.BroadcastToTeam(teamID, "docker.application.gha_out_of_sync", map[string]any{
@@ -390,6 +405,15 @@ func (s *ApplicationService) DeleteApplication(
 	}
 	if app.ProjectID != projectID {
 		return fiberutil.NotFound()
+	}
+
+	if app.BuildLocation == dockertypes.BuildLocationGitHubActions && !workflowMutationLocked(ctx) {
+		return s.BaseService.withWorkflowMutation(ctx, "application", id, func(locked context.Context) error {
+			return s.DeleteApplication(locked, id, projectID, serverID, teamID, userID, removeVolumes)
+		})
+	}
+	if err := s.BaseService.queueGHACleanup(ctx, app.SourceConfig); err != nil {
+		return err
 	}
 
 	// Resolve the container name BEFORE soft-deleting so the job
@@ -638,7 +662,7 @@ func (s *ApplicationService) DeleteDeployment(
 	}
 
 	if deleteFromGHA && dep.GHARunID != nil && *dep.GHARunID != "" {
-		if err := deleteGHAWorkflowRun(ctx, s.DB(), s.GitProviders(), app.SourceConfig, *dep.GHARunID); err != nil {
+		if err := deleteGHAWorkflowRun(ctx, s.DB(), s.GitProviders(), app.SourceConfig, *dep.GHARunID, app.TeamID); err != nil {
 			return err
 		}
 	}
@@ -684,7 +708,7 @@ func (s *ApplicationService) GetDeploymentGHASteps(
 		}, nil
 	}
 
-	wfJobs, err := fetchGHARunSteps(ctx, s.DB(), s.GitProviders(), app.SourceConfig, *dep.GHARunID)
+	wfJobs, err := fetchGHARunSteps(ctx, s.DB(), s.GitProviders(), app.SourceConfig, *dep.GHARunID, app.TeamID)
 	if err != nil {
 		return nil, err
 	}
@@ -750,6 +774,11 @@ func (s *ApplicationService) Deploy(
 		return dep, nil
 	}
 
+	snapshot, err := gitaccess.Bind(ctx, s.DB(), s.GitProviders(), teamID, app.SourceConfig, access.Clone)
+	if err != nil {
+		return nil, fiberutil.Validation(err.Error())
+	}
+
 	now := time.Now().UTC()
 	deployment := &models.Deployment{
 		TargetType: "application",
@@ -764,7 +793,7 @@ func (s *ApplicationService) Deploy(
 		return nil, err
 	}
 
-	task, err := jobs.NewDeployApplicationTask(applicationID, deployment.ID, serverID, teamID)
+	task, err := jobs.NewDeployApplicationTask(applicationID, deployment.ID, serverID, teamID, gitaccess.PinnedSnapshots(app.SourceConfig, snapshot)...)
 	if err != nil {
 		return nil, err
 	}
@@ -1203,6 +1232,12 @@ func buildSourceConfig(req *dto.CreateApplicationRequest) (
 		source = dbtype.JSONMap{
 			"repo":   strings.TrimSpace(req.Git.Repo),
 			"branch": strings.TrimSpace(req.Git.Branch),
+		}
+		if len(req.Git.DependencyRepositoryIDs) > 0 {
+			source["dependency_repository_ids"] = req.Git.DependencyRepositoryIDs
+		}
+		if req.Git.RepositoryID != nil {
+			source["repository_id"] = *req.Git.RepositoryID
 		}
 		if req.Git.SourceControlID != nil && *req.Git.SourceControlID != "" {
 			source["source_control_id"] = *req.Git.SourceControlID

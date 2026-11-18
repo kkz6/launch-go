@@ -20,6 +20,11 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 
 	// Settings UI routes.
 	settings := router.Group("/settings", authMiddleware, middleware.TeamScope(), middleware.VerifySubscription())
+	githubAttempts := settings.Group("/git-providers/github/connection-attempts", middleware.Can("git.source_control.connect"))
+	githubAttempts.Post("/", fiberutil.Handler(handler.BeginGitHub))
+	githubAttempts.Get("/:attemptId", fiberutil.Handler(handler.GitHubAttempt))
+	githubAttempts.Get("/:attemptId/installations/:installationId/repositories", fiberutil.Handler(handler.GitHubCandidates))
+	githubAttempts.Post("/:attemptId/selection", fiberutil.Handler(handler.SelectGitHub))
 	settings.Get("/git-providers", fiberutil.Handler(handler.GetInstallationsWithCounts))
 	settings.Get("/git-providers/:provider/installation-url", handler.GetInstallationURL)
 	settings.Get("/git-providers/:provider/installations", fiberutil.Handler(handler.GetInstallations))

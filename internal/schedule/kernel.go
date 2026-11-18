@@ -4,6 +4,7 @@ import (
 	backupjobs "github.com/kkz6/launch-go/internal/modules/backup/jobs"
 	certjobs "github.com/kkz6/launch-go/internal/modules/certificate/jobs"
 	dockerjobs "github.com/kkz6/launch-go/internal/modules/docker/jobs"
+	gitjobs "github.com/kkz6/launch-go/internal/modules/git/jobs"
 	serverjobs "github.com/kkz6/launch-go/internal/modules/server/jobs"
 	sitejobs "github.com/kkz6/launch-go/internal/modules/site/jobs"
 	"github.com/kkz6/launch-go/internal/pkg/queue"
@@ -30,6 +31,7 @@ import (
 //   - WithMaxRetry(n)        - Set max retry attempts
 func GetScheduledTasks() []queue.ScheduledTask {
 	return []queue.ScheduledTask{
+		EveryMinute(gitjobs.NewReconcileGitHubAccessTask, WithName("github-access-reconciliation"), DefaultPriority()),
 		// ┌─────────────────────────────────────────────────────────────────┐
 		// │                     Server Maintenance                          │
 		// └─────────────────────────────────────────────────────────────────┘

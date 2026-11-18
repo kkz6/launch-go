@@ -8,11 +8,13 @@ import (
 
 	"github.com/hibiken/asynq"
 
+	gitaccess "github.com/kkz6/launch-go/internal/modules/git/access"
 	gitmodels "github.com/kkz6/launch-go/internal/modules/git/models"
 	gitproviders "github.com/kkz6/launch-go/internal/modules/git/providers"
 	"github.com/kkz6/launch-go/internal/modules/site/contracts"
 	"github.com/kkz6/launch-go/internal/modules/site/deployments"
 	"github.com/kkz6/launch-go/internal/modules/site/dto"
+	siteaccess "github.com/kkz6/launch-go/internal/modules/site/gitaccess"
 	"github.com/kkz6/launch-go/internal/modules/site/jobs"
 	"github.com/kkz6/launch-go/internal/modules/site/models"
 	sitetypes "github.com/kkz6/launch-go/internal/modules/site/types"
@@ -69,6 +71,14 @@ func (s *DeploymentService) FetchLatestCommitData(ctx context.Context, site *mod
 		return nil
 	}
 
+	grant, err := siteaccess.Resolve(ctx, s.DB(), s.providerFactory, site, gitaccess.Read, nil)
+	if err != nil {
+		return nil
+	}
+	if grant != nil {
+		ctx = grant.Context(ctx)
+	}
+
 	// Get source control
 	sourceControl, err := s.gitReader.FindSourceControlByID(ctx, *site.SourceControlID, site.TeamID)
 	if err != nil {
@@ -81,6 +91,10 @@ func (s *DeploymentService) FetchLatestCommitData(ctx context.Context, site *mod
 	repo, err := s.gitReader.FindRepositoryByID(ctx, repoID)
 	if err != nil {
 		s.LogError(err, "Failed to find repository for commit data", "site_id", site.ID)
+		return nil
+	}
+
+	if repo.SourceControlID != sourceControl.ID {
 		return nil
 	}
 
@@ -179,6 +193,11 @@ func (s *DeploymentService) Rollback(ctx context.Context, siteID, serverID, team
 		return nil, err
 	}
 
+	authorization, err := siteaccess.Capture(ctx, s.DB(), s.providerFactory, site)
+	if err != nil {
+		return nil, err
+	}
+
 	// Create rollback deployment
 	commitData := map[string]any{
 		"rollback_to": targetDeployment.ID,
@@ -201,6 +220,7 @@ func (s *DeploymentService) Rollback(ctx context.Context, siteID, serverID, team
 		Status:     sitetypes.DeploymentStatusPending,
 		GitHash:    targetDeployment.GitHash,
 		CommitData: commitData,
+		GitAccess:  authorization,
 	}
 	deployment.SiteID = site.ID
 	deployment.TeamID = site.TeamID
@@ -225,6 +245,11 @@ func (s *DeploymentService) Rollback(ctx context.Context, siteID, serverID, team
 // envVars are transient environment variables (e.g. database credentials) passed through the job payload
 // and never persisted in the database.
 func (s *DeploymentService) createDeployment(ctx context.Context, site *models.Site, userID string, commitData map[string]any, envVars map[string]string) (*models.Deployment, error) {
+	authorization, err := siteaccess.Capture(ctx, s.DB(), s.providerFactory, site)
+	if err != nil {
+		return nil, err
+	}
+
 	// Convert empty userID to nil (webhook deployments have no user)
 	userIDPtr := stringToPtr(userID)
 
@@ -244,6 +269,7 @@ func (s *DeploymentService) createDeployment(ctx context.Context, site *models.S
 				Status:     sitetypes.DeploymentStatusQueued,
 				GitHash:    gitHash,
 				CommitData: commitData,
+				GitAccess:  authorization,
 			}
 			deployment.SiteID = site.ID
 			deployment.TeamID = site.TeamID
@@ -265,6 +291,7 @@ func (s *DeploymentService) createDeployment(ctx context.Context, site *models.S
 		Status:     sitetypes.DeploymentStatusPending,
 		GitHash:    gitHash,
 		CommitData: commitData,
+		GitAccess:  authorization,
 	}
 	deployment.SiteID = site.ID
 	deployment.TeamID = site.TeamID

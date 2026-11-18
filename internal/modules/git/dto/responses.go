@@ -11,6 +11,10 @@ import (
 // SourceControlResponse is the response for a source control
 type SourceControlResponse struct {
 	ID                      string               `json:"id"`
+	Status                  string               `json:"status"`
+	SelectionVersion        uint64               `json:"selection_version"`
+	Generation              uint64               `json:"generation"`
+	CleanupPending          bool                 `json:"cleanup_pending"`
 	Provider                string               `json:"provider"`
 	ProviderLabel           string               `json:"provider_label"`
 	Login                   string               `json:"login"`
@@ -31,12 +35,17 @@ type SourceControlResponse struct {
 // ToSourceControlResponse converts a SourceControl to SourceControlResponse
 func ToSourceControlResponse(sc *models.SourceControl) SourceControlResponse {
 	repositoryCount := 0
-	if sc.RepositoryCount != nil {
-		repositoryCount = *sc.RepositoryCount
+	if sc.Status == "active" {
+		for _, r := range sc.Repositories {
+			if r.Selected && r.Available {
+				repositoryCount++
+			}
+		}
 	}
 
 	resp := SourceControlResponse{
-		ID:                      sc.ID,
+		ID:     sc.ID,
+		Status: sc.Status, Generation: sc.Generation, SelectionVersion: sc.SelectionVersion, CleanupPending: sc.CleanupPending,
 		Provider:                sc.Provider.String(),
 		ProviderLabel:           sc.Provider.Label(),
 		HasMultipleRepositories: sc.HasMultipleRepositories,
@@ -75,7 +84,12 @@ func ToSourceControlResponse(sc *models.SourceControl) SourceControlResponse {
 	}
 
 	if len(sc.Repositories) > 0 {
-		resp.Repositories = pkgdto.TransformSlice(sc.Repositories, ToRepositoryResponse)
+		for i := range sc.Repositories {
+			r := &sc.Repositories[i]
+			if sc.Status == "active" && r.Selected && r.Available {
+				resp.Repositories = append(resp.Repositories, ToRepositoryResponse(r))
+			}
+		}
 	}
 
 	return resp
@@ -83,26 +97,28 @@ func ToSourceControlResponse(sc *models.SourceControl) SourceControlResponse {
 
 // RepositoryResponse is the response for a repository
 type RepositoryResponse struct {
-	ID             string                 `json:"id"`
-	Name           string                 `json:"name"`
-	FullName       string                 `json:"full_name"`
-	Public         bool                   `json:"public"`
-	DefaultBranch  string                 `json:"default_branch"`
-	HTMLURL        string                 `json:"html_url,omitempty"`
-	SSHURL         string                 `json:"ssh_url,omitempty"`
-	AdditionalData map[string]interface{} `json:"additional_data,omitempty"`
+	ID                 string                 `json:"id"`
+	GitHubRepositoryID string                 `json:"github_repository_id,omitempty"`
+	Name               string                 `json:"name"`
+	FullName           string                 `json:"full_name"`
+	Public             bool                   `json:"public"`
+	DefaultBranch      string                 `json:"default_branch"`
+	HTMLURL            string                 `json:"html_url,omitempty"`
+	SSHURL             string                 `json:"ssh_url,omitempty"`
+	AdditionalData     map[string]interface{} `json:"additional_data,omitempty"`
 }
 
 // ToRepositoryResponse converts a SourceControlRepository to RepositoryResponse
 func ToRepositoryResponse(repo *models.SourceControlRepository) RepositoryResponse {
 	resp := RepositoryResponse{
-		ID:            strconv.FormatUint(repo.ID, 10),
-		Name:          repo.Name,
-		FullName:      repo.FullName,
-		Public:        repo.Public,
-		DefaultBranch: repo.GetDefaultBranchOrMain(),
-		HTMLURL:       repo.GetHTMLURL(),
-		SSHURL:        repo.SSHURL,
+		ID:                 strconv.FormatUint(repo.ID, 10),
+		GitHubRepositoryID: repo.GitHubRepositoryID,
+		Name:               repo.Name,
+		FullName:           repo.FullName,
+		Public:             repo.Public,
+		DefaultBranch:      repo.GetDefaultBranchOrMain(),
+		HTMLURL:            repo.GetHTMLURL(),
+		SSHURL:             repo.SSHURL,
 	}
 
 	if repo.AdditionalData != nil {
@@ -130,6 +146,11 @@ type InstallationsResponse struct {
 // InstallationSummaryData represents a summary of an installation (matches Laravel's InstallationSummaryData)
 type InstallationSummaryData struct {
 	ID                      string  `json:"id"`
+	SourceControlID         string  `json:"sourceControlId"`
+	Status                  string  `json:"status"`
+	SelectionVersion        uint64  `json:"selection_version"`
+	Generation              uint64  `json:"generation"`
+	CleanupPending          bool    `json:"cleanup_pending"`
 	AccountLogin            string  `json:"accountLogin"`
 	AccountType             string  `json:"accountType"`
 	AccountAvatarURL        *string `json:"accountAvatarUrl"`
@@ -143,11 +164,16 @@ type InstallationSummaryData struct {
 // InstallationSummaryFromSourceControl creates an InstallationSummaryData from a SourceControl
 func InstallationSummaryFromSourceControl(sc *models.SourceControl) InstallationSummaryData {
 	repositoryCount := 0
-	if sc.RepositoryCount != nil {
-		repositoryCount = *sc.RepositoryCount
+	if sc.Status == "active" {
+		for _, r := range sc.Repositories {
+			if r.Selected && r.Available {
+				repositoryCount++
+			}
+		}
 	}
 
 	summary := InstallationSummaryData{
+		SourceControlID: sc.ID, Status: sc.Status, Generation: sc.Generation, SelectionVersion: sc.SelectionVersion, CleanupPending: sc.CleanupPending,
 		HasMultipleRepositories: sc.HasMultipleRepositories,
 		RepositoryCount:         repositoryCount,
 	}
