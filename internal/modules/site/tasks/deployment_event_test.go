@@ -188,16 +188,19 @@ func deploymentCallbackDB(t *testing.T) *gorm.DB {
 		CREATE TABLE deployments (
 			id TEXT PRIMARY KEY,
 			site_id TEXT,
+ team_id TEXT,
 			status TEXT,
 			created_at DATETIME,
 			updated_at DATETIME
 		)
 	`).Error)
 	require.NoError(t, db.Exec(
-		"INSERT INTO deployments (id, site_id, status, created_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)",
+		"INSERT INTO deployments (id, site_id, team_id, status, created_at) VALUES (?, ?, 'team-1', ?, CURRENT_TIMESTAMP)",
 		"deployment-1",
 		"site-1",
 		sitetypes.DeploymentStatusPending,
 	).Error)
+	require.NoError(t, db.Exec("CREATE TABLE sites (id TEXT PRIMARY KEY, team_id TEXT, zero_downtime_deployment BOOLEAN)").Error)
+	require.NoError(t, db.Exec("INSERT INTO sites VALUES (?, ?, ?)", "site-1", "team-1", false).Error)
 	return db
 }

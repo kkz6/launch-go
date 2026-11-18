@@ -129,6 +129,7 @@ func (r *ServiceRegistry) SetCrossModuleDeps(deps *CrossModuleDeps) {
 	}
 	if deps.ProviderFactory != nil {
 		r.deployment.SetProviderFactory(deps.ProviderFactory)
+		r.site.providerFactory = deps.ProviderFactory
 	}
 	if deps.StoredCerts != nil {
 		r.ssl.SetStoredCertificateRepository(deps.StoredCerts)

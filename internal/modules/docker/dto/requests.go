@@ -71,6 +71,8 @@ type ImageSourceInput struct {
 
 // GitSourceInput carries the info needed to clone + build from a git repo.
 type GitSourceInput struct {
+	RepositoryID            *string  `json:"repository_id" validate:"omitempty,numeric"`
+	DependencyRepositoryIDs []string `json:"dependency_repository_ids" validate:"omitempty,max=20,dive,numeric"`
 	// Repo is the clone URL — https://github.com/owner/repo or an ssh remote.
 	Repo   string `json:"repo" validate:"required,min=1,max=512"`
 	Branch string `json:"branch" validate:"required,min=1,max=255"`
@@ -153,9 +155,11 @@ type CreateComposeRequest struct {
 
 // ComposeGitInput clones a repository containing a docker-compose file.
 type ComposeGitInput struct {
-	Repo            string  `json:"repo" validate:"required,min=1,max=512"`
-	Branch          string  `json:"branch" validate:"required,min=1,max=255"`
-	SourceControlID *string `json:"source_control_id,omitempty"`
+	RepositoryID            *string  `json:"repository_id" validate:"omitempty,numeric"`
+	DependencyRepositoryIDs []string `json:"dependency_repository_ids" validate:"omitempty,max=20,dive,numeric"`
+	Repo                    string   `json:"repo" validate:"required,min=1,max=512"`
+	Branch                  string   `json:"branch" validate:"required,min=1,max=255"`
+	SourceControlID         *string  `json:"source_control_id,omitempty"`
 	// ComposeFilePath defaults to docker-compose.yml if empty.
 	ComposeFilePath *string `json:"compose_file_path,omitempty" validate:"omitempty,max=512"`
 	// BuildLocation matches the application-side toggle. When set to

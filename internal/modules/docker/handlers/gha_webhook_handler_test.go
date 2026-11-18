@@ -2,12 +2,21 @@ package handlers
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"github.com/alicebob/miniredis/v2"
+	"github.com/kkz6/launch-go/internal/config"
+	"github.com/kkz6/launch-go/internal/database/serializers"
+	"github.com/kkz6/launch-go/internal/modules/docker/gitaccess"
+	"github.com/kkz6/launch-go/internal/modules/docker/testutil"
+	"github.com/kkz6/launch-go/internal/modules/git/access"
+	"github.com/kkz6/launch-go/internal/pkg/queue"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"testing"
 	"time"
 
@@ -66,9 +75,21 @@ func setupHandler(t *testing.T) (*gofiber.App, *gorm.DB, *dockermodels.Applicati
 	app.ID = util.NewULID()
 	app.TeamID = util.NewULID()
 	app.ServerID = util.NewULID()
+	testutil.SelectedRepository(t, db, app.TeamID, "kkz6/test-repo", app.SourceConfig)
 	require.NoError(t, db.Create(app).Error)
+	var read dockermodels.Application
+	require.NoError(t, db.First(&read, "id = ?", app.ID).Error)
+	snapshot, err := gitaccess.BootstrapSnapshot(read.SourceConfig)
+	require.NoError(t, err)
+	_, err = gitaccess.Resolve(context.Background(), db, nil, read.TeamID, read.SourceConfig, access.Clone, snapshot, true)
+	require.NoError(t, err)
 
-	h := NewGHAWebhookHandler(GHAWebhookHandlerConfig{DB: db})
+	require.NoError(t, db.AutoMigrate(&dockermodels.RegistryLease{}))
+	require.NoError(t, serializers.SetEncryptionKey([]byte("0123456789abcdef0123456789abcdef")))
+	redis := miniredis.RunT(t)
+	q := queue.NewClient(config.RedisConfig{Address: redis.Addr()})
+	t.Cleanup(func() { _ = q.Close() })
+	h := NewGHAWebhookHandler(GHAWebhookHandlerConfig{DB: db, Queue: q})
 	fapp := gofiber.New(gofiber.Config{
 		ErrorHandler: func(c *gofiber.Ctx, err error) error {
 			// Use Fiber's stock error mapping so our fiberutil.* helpers
@@ -105,9 +126,15 @@ func setupComposeHandler(t *testing.T) (*gofiber.App, *gorm.DB, *dockermodels.Co
 	compose.ID = util.NewULID()
 	compose.TeamID = util.NewULID()
 	compose.ServerID = util.NewULID()
+	testutil.SelectedRepository(t, db, compose.TeamID, "kkz6/test-stack", compose.SourceConfig)
 	require.NoError(t, db.Create(compose).Error)
 
-	h := NewGHAWebhookHandler(GHAWebhookHandlerConfig{DB: db})
+	require.NoError(t, db.AutoMigrate(&dockermodels.RegistryLease{}))
+	require.NoError(t, serializers.SetEncryptionKey([]byte("0123456789abcdef0123456789abcdef")))
+	redis := miniredis.RunT(t)
+	q := queue.NewClient(config.RedisConfig{Address: redis.Addr()})
+	t.Cleanup(func() { _ = q.Close() })
+	h := NewGHAWebhookHandler(GHAWebhookHandlerConfig{DB: db, Queue: q})
 	fapp := gofiber.New(gofiber.Config{
 		ErrorHandler: gofiber.DefaultErrorHandler,
 	})
@@ -153,6 +180,7 @@ func TestGHAApplicationDeploy_HappyPath_CreatesPendingDeployment(t *testing.T) {
 	app, db, application := setupHandler(t)
 
 	body := applicationDeployPayload{
+		GHCRPullToken: "test-ghcr-pull-token", GHCRPullTokenMintedAt: strconv.FormatInt(time.Now().Unix(), 10), GHCRPullTokenExpiresAt: strconv.FormatInt(time.Now().Add(10*time.Minute).Unix(), 10),
 		ImageTag:  "ghcr.io/kkz6/test-repo:launch-abc1234",
 		CommitSHA: "abc1234567890",
 		Branch:    "main",
@@ -197,6 +225,7 @@ func TestGHAApplicationDeploy_PrunesOldestDeployment(t *testing.T) {
 	}
 
 	body := applicationDeployPayload{
+		GHCRPullToken: "test-ghcr-pull-token", GHCRPullTokenMintedAt: strconv.FormatInt(time.Now().Unix(), 10), GHCRPullTokenExpiresAt: strconv.FormatInt(time.Now().Add(10*time.Minute).Unix(), 10),
 		ImageTag:  "ghcr.io/kkz6/test-repo:launch-new",
 		CommitSHA: "new-commit",
 		Branch:    "main",
@@ -228,6 +257,7 @@ func TestGHAApplicationDeploy_ReturnsErrorWhenRetainedInsertFails(t *testing.T) 
 	`).Error)
 
 	body := applicationDeployPayload{
+		GHCRPullToken: "test-ghcr-pull-token", GHCRPullTokenMintedAt: strconv.FormatInt(time.Now().Unix(), 10), GHCRPullTokenExpiresAt: strconv.FormatInt(time.Now().Add(10*time.Minute).Unix(), 10),
 		ImageTag: "ghcr.io/kkz6/test-repo:launch-fail",
 		RunID:    "failed-insert-run",
 	}
@@ -253,6 +283,7 @@ func TestGHAApplicationDeploy_AdoptsDispatchPlaceholder(t *testing.T) {
 	require.NoError(t, db.Create(placeholder).Error)
 
 	body := applicationDeployPayload{
+		GHCRPullToken: "test-ghcr-pull-token", GHCRPullTokenMintedAt: strconv.FormatInt(time.Now().Unix(), 10), GHCRPullTokenExpiresAt: strconv.FormatInt(time.Now().Add(10*time.Minute).Unix(), 10),
 		ImageTag:  "ghcr.io/kkz6/test-repo:launch-abc1234",
 		CommitSHA: "abc1234567890",
 		Branch:    "main",
@@ -274,6 +305,7 @@ func TestGHAApplicationDeploy_BadToken_Returns401_NoRow(t *testing.T) {
 	app, db, application := setupHandler(t)
 
 	body := applicationDeployPayload{
+		GHCRPullToken: "test-ghcr-pull-token", GHCRPullTokenMintedAt: strconv.FormatInt(time.Now().Unix(), 10), GHCRPullTokenExpiresAt: strconv.FormatInt(time.Now().Add(10*time.Minute).Unix(), 10),
 		ImageTag: "ghcr.io/kkz6/test-repo:launch-x", RunID: "22",
 	}
 	resp, _ := post(t, app, "/api/webhooks/docker/applications/"+application.ID+"/deploy", "totally-wrong-token", body)
@@ -286,7 +318,8 @@ func TestGHAApplicationDeploy_BadToken_Returns401_NoRow(t *testing.T) {
 
 func TestGHAApplicationDeploy_MissingBearer_Returns401(t *testing.T) {
 	app, _, application := setupHandler(t)
-	body := applicationDeployPayload{ImageTag: "ghcr.io/kkz6/test-repo:x", RunID: "1"}
+	body := applicationDeployPayload{
+		GHCRPullToken: "test-ghcr-pull-token", GHCRPullTokenMintedAt: strconv.FormatInt(time.Now().Unix(), 10), GHCRPullTokenExpiresAt: strconv.FormatInt(time.Now().Add(10*time.Minute).Unix(), 10), ImageTag: "ghcr.io/kkz6/test-repo:x", RunID: "1"}
 	resp, _ := post(t, app, "/api/webhooks/docker/applications/"+application.ID+"/deploy", "", body)
 	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
 }
@@ -295,6 +328,7 @@ func TestGHAApplicationDeploy_IdempotentRetry_SameRunReusesRow(t *testing.T) {
 	app, db, application := setupHandler(t)
 
 	body := applicationDeployPayload{
+		GHCRPullToken: "test-ghcr-pull-token", GHCRPullTokenMintedAt: strconv.FormatInt(time.Now().Unix(), 10), GHCRPullTokenExpiresAt: strconv.FormatInt(time.Now().Add(10*time.Minute).Unix(), 10),
 		ImageTag:  "ghcr.io/kkz6/test-repo:launch-xyz",
 		CommitSHA: "deadbeef",
 		Branch:    "main",
@@ -329,13 +363,12 @@ func TestGHAApplicationDeploy_AcceptsGHCRBearerPayload(t *testing.T) {
 	app, db, application := setupHandler(t)
 
 	body := applicationDeployPayload{
-		ImageTag:              "ghcr.io/kkz6/test-repo:launch-bearer",
-		CommitSHA:             "abc1234567890",
-		Branch:                "main",
-		RunID:                 "with-bearer-001",
-		RunURL:                "https://github.com/kkz6/test-repo/actions/runs/with-bearer-001",
-		GHCRPullToken:         "ghs_VeryDefinitelyFakeBearerForTestingOnly_xxxxxxxxxxx",
-		GHCRPullTokenMintedAt: "1717000000",
+		GHCRPullToken: "test-ghcr-pull-token", GHCRPullTokenMintedAt: strconv.FormatInt(time.Now().Unix(), 10), GHCRPullTokenExpiresAt: strconv.FormatInt(time.Now().Add(10*time.Minute).Unix(), 10),
+		ImageTag:  "ghcr.io/kkz6/test-repo:launch-bearer",
+		CommitSHA: "abc1234567890",
+		Branch:    "main",
+		RunID:     "with-bearer-001",
+		RunURL:    "https://github.com/kkz6/test-repo/actions/runs/with-bearer-001",
 	}
 	resp, raw := post(t, app, "/api/webhooks/docker/applications/"+application.ID+"/deploy", rawToken, body)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
@@ -364,6 +397,7 @@ func TestGHAApplicationDeploy_RejectsImageOutsideConfiguredRepository(t *testing
 	app, db, application := setupHandler(t)
 
 	body := applicationDeployPayload{
+		GHCRPullToken: "test-ghcr-pull-token", GHCRPullTokenMintedAt: strconv.FormatInt(time.Now().Unix(), 10), GHCRPullTokenExpiresAt: strconv.FormatInt(time.Now().Add(10*time.Minute).Unix(), 10),
 		ImageTag: "ghcr.io/attacker/evil:latest", // not in gha_image_repository
 		RunID:    "77",
 	}
@@ -384,6 +418,7 @@ func TestGHAApplicationDeploy_NonGHAApp_Returns404(t *testing.T) {
 	require.NoError(t, db.Model(application).Update("build_location", "server").Error)
 
 	body := applicationDeployPayload{
+		GHCRPullToken: "test-ghcr-pull-token", GHCRPullTokenMintedAt: strconv.FormatInt(time.Now().Unix(), 10), GHCRPullTokenExpiresAt: strconv.FormatInt(time.Now().Add(10*time.Minute).Unix(), 10),
 		ImageTag: "ghcr.io/kkz6/test-repo:launch-z", RunID: "1",
 	}
 	resp, _ := post(t, app, "/api/webhooks/docker/applications/"+application.ID+"/deploy", rawToken, body)
@@ -429,6 +464,7 @@ func TestGHAComposeDeploy_AcceptsServiceImagesMap(t *testing.T) {
 	app, db, compose := setupComposeHandler(t)
 
 	body := composeDeployPayload{
+		GHCRPullToken: "test-ghcr-pull-token", GHCRPullTokenMintedAt: strconv.FormatInt(time.Now().Unix(), 10), GHCRPullTokenExpiresAt: strconv.FormatInt(time.Now().Add(10*time.Minute).Unix(), 10),
 		ServiceImages: map[string]string{
 			"web":    "ghcr.io/kkz6/test-stack:launch-web-abc1234",
 			"worker": "ghcr.io/kkz6/test-stack:launch-worker-abc1234",
@@ -454,6 +490,7 @@ func TestGHAComposeDeploy_RejectsImageOutsideConfiguredRepository(t *testing.T) 
 	app, _, compose := setupComposeHandler(t)
 
 	body := composeDeployPayload{
+		GHCRPullToken: "test-ghcr-pull-token", GHCRPullTokenMintedAt: strconv.FormatInt(time.Now().Unix(), 10), GHCRPullTokenExpiresAt: strconv.FormatInt(time.Now().Add(10*time.Minute).Unix(), 10),
 		ServiceImages: map[string]string{
 			"web": "ghcr.io/attacker/evil:latest",
 		},
@@ -481,6 +518,19 @@ func TestPrimaryServiceImage_IsDeterministic(t *testing.T) {
 // tests have a real row to query.
 func deploymentIDFromDeploy(t *testing.T, app *gofiber.App, path string, body any) string {
 	t.Helper()
+	switch payload := body.(type) {
+	case applicationDeployPayload:
+		payload.GHCRPullToken = "test-token"
+		payload.GHCRPullTokenMintedAt = strconv.FormatInt(time.Now().Unix(), 10)
+		payload.GHCRPullTokenExpiresAt = strconv.FormatInt(time.Now().Add(10*time.Minute).Unix(), 10)
+		body = payload
+	case composeDeployPayload:
+		payload.GHCRPullToken = "test-token"
+		payload.GHCRPullTokenMintedAt = strconv.FormatInt(time.Now().Unix(), 10)
+		payload.GHCRPullTokenExpiresAt = strconv.FormatInt(time.Now().Add(10*time.Minute).Unix(), 10)
+		body = payload
+	}
+
 	resp, raw := post(t, app, path, rawToken, body)
 	require.Equal(t, http.StatusOK, resp.StatusCode, "deploy notify should succeed: %s", string(raw))
 	var env deployEnvelope

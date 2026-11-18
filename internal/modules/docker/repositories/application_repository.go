@@ -63,7 +63,7 @@ func (r *ApplicationRepository) MergeSourceConfig(
 	return r.DB.WithContext(ctx).
 		Model(&models.Application{}).
 		Where("id = ?", id).
-		Update("source_config", gorm.Expr("COALESCE(source_config, '{}'::jsonb) || ?::jsonb", string(b))).Error
+		Update("source_config", gorm.Expr("COALESCE(source_config::jsonb, '{}'::jsonb) || ?::jsonb", string(b))).Error
 }
 
 // UpdateBuildConfig writes the build_type and build_config columns together.

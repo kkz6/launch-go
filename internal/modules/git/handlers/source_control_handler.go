@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"github.com/gofiber/fiber/v2"
-	"github.com/rs/zerolog/log"
 
 	"github.com/kkz6/launch-go/internal/modules/git/contracts"
 	"github.com/kkz6/launch-go/internal/modules/git/dto"
@@ -92,16 +91,16 @@ func (h *SourceControlHandler) GetInstallationRepositories(r *fiberctx.Request) 
 	}
 	installationID := r.Params("installationId")
 
-	if _, err := h.service.GetSourceControlByInstallation(r.Context(), providerType, installationID, contracts.WithTeamID(r.TeamID)); err != nil {
-		return fiberctx.NotFound("Installation not found")
-	}
-
-	repos, err := h.service.GetInstallationRepositoriesFromAPI(r.Context(), providerType, installationID)
+	repos, err := h.service.GetCachedRepositories(r.Context(), providerType, installationID, r.TeamID)
 	if err != nil {
 		return err
 	}
+	selected := make([]dto.RepositoryResponse, len(repos))
+	for i := range repos {
+		selected[i] = dto.ToRepositoryResponse(&repos[i])
+	}
 	return fiberctx.OK(r.Ctx, "Repositories retrieved", fiber.Map{
-		"repositories":    repos,
+		"repositories":    selected,
 		"provider":        providerStr,
 		"installation_id": installationID,
 	})
@@ -129,7 +128,7 @@ func (h *SourceControlHandler) GetCachedInstallationRepositories(r *fiberctx.Req
 	})
 }
 
-// RefreshInstallationRepositories triggers a background sync.
+// RefreshInstallationRepositories waits for inventory reconciliation.
 func (h *SourceControlHandler) RefreshInstallationRepositories(r *fiberctx.Request) error {
 	providerType, err := fiberctx.MustParseEnum(r.Ctx, "provider", "Invalid provider", gittypes.ParseGitProviderType)
 	if err != nil {
@@ -144,49 +143,25 @@ func (h *SourceControlHandler) RefreshInstallationRepositories(r *fiberctx.Reque
 	if err := h.service.RefreshInstallationRepositories(r.Context(), sc); err != nil {
 		return err
 	}
-	return fiberctx.OK(r.Ctx, "Repositories are being synced in the background", fiber.Map{"status": "success"})
+	return fiberctx.OK(r.Ctx, "Repositories refreshed", fiber.Map{"status": "success"})
 }
 
-// HandleInstallationCallback handles the OAuth callback after a user
-// installs the provider's app. Skipped: OAuth callback with redirect
-// semantics — errors redirect rather than return JSON.
+// HandleInstallationCallback verifies one session-bound OAuth or setup state.
+// The frontend handles navigation from this structured, non-sensitive result.
 func (h *SourceControlHandler) HandleInstallationCallback(c *fiber.Ctx) error {
-	const redirectTo = "/settings/git-providers"
 	teamID, userID, err := fiberctx.MustGetTeamAndUserID(c)
 	if err != nil {
-		return c.Redirect(redirectTo)
+		return err
 	}
-	installationID := c.Query("installation_id")
-	setupAction := c.Query("setup_action")
-	if installationID == "" {
-		return c.Redirect(redirectTo)
+	if c.Params("provider") != "github" {
+		return fiberctx.BadRequest("Provider not supported")
 	}
-	providerType, err := gittypes.ParseGitProviderType(c.Params("provider"))
+	sessionID, _ := c.Locals("sessionID").(string)
+	result, err := h.service.CompleteGitHubCallback(c.UserContext(), teamID, userID, sessionID, c.Query("state"), c.Query("code"), c.Query("installation_id"))
 	if err != nil {
-		return c.Redirect(redirectTo)
+		return err
 	}
-
-	// Record the installation for any callback that carries an
-	// installation_id. This used to be gated on setup_action=="install",
-	// so a reconnect — which GitHub returns as "update" once the app is
-	// already installed — recorded nothing. Sync errors were also swallowed
-	// (`_ =`), which hid failures; log them now.
-	existingSC, getErr := h.service.GetSourceControlByInstallation(c.Context(), providerType, installationID, contracts.WithTeamID(teamID))
-	var syncErr error
-	if getErr == nil && existingSC != nil {
-		syncErr = h.service.RefreshInstallationRepositories(c.Context(), existingSC)
-	} else {
-		syncErr = h.service.SyncUserInstallation(c.Context(), providerType, installationID, teamID, userID)
-	}
-	if syncErr != nil {
-		log.Error().Err(syncErr).
-			Str("provider", string(providerType)).
-			Str("installation_id", installationID).
-			Str("setup_action", setupAction).
-			Str("team_id", teamID).
-			Msg("git installation callback sync failed")
-	}
-	return c.Redirect(redirectTo)
+	return fiberctx.OK(c, "GitHub identity verified", result)
 }
 
 // TestConnection probes the provider for connectivity.
@@ -225,4 +200,45 @@ func (h *SourceControlHandler) GetInstallationsWithCounts(r *fiberctx.Request) e
 		"appInstallations":   installations,
 		"availableProviders": providers,
 	})
+}
+
+func (h *SourceControlHandler) BeginGitHub(r *fiberctx.Request) error {
+	var req services.BeginGitHubRequest
+	if err := r.BodyParser(&req); err != nil {
+		return fiberctx.BadRequest("Invalid connection request")
+	}
+	session, _ := r.Locals("sessionID").(string)
+	result, err := h.service.BeginGitHub(r.Context(), r.TeamID, r.UserID, session, req)
+	if err != nil {
+		return err
+	}
+	return fiberctx.OK(r.Ctx, "GitHub verification started", result)
+}
+func (h *SourceControlHandler) GitHubAttempt(r *fiberctx.Request) error {
+	session, _ := r.Locals("sessionID").(string)
+	result, err := h.service.GitHubAttempt(r.Context(), r.Params("attemptId"), r.TeamID, r.UserID, session)
+	if err != nil {
+		return err
+	}
+	return fiberctx.OK(r.Ctx, "GitHub connection", result)
+}
+func (h *SourceControlHandler) GitHubCandidates(r *fiberctx.Request) error {
+	session, _ := r.Locals("sessionID").(string)
+	repos, generation, selectionVersion, err := h.service.GitHubCandidates(r.Context(), r.Params("attemptId"), r.TeamID, r.UserID, session, r.Params("installationId"))
+	if err != nil {
+		return err
+	}
+	return fiberctx.OK(r.Ctx, "Choose repositories for this account", fiber.Map{"repositories": repos, "connection_generation": generation, "selection_version": selectionVersion})
+}
+func (h *SourceControlHandler) SelectGitHub(r *fiberctx.Request) error {
+	var req services.GitHubSelectionRequest
+	if err := r.BodyParser(&req); err != nil {
+		return fiberctx.BadRequest("Invalid repository selection")
+	}
+	session, _ := r.Locals("sessionID").(string)
+	result, err := h.service.SelectGitHubRepositories(r.Context(), r.Params("attemptId"), r.TeamID, r.UserID, session, req)
+	if err != nil {
+		return err
+	}
+	return fiberctx.OK(r.Ctx, "Repository selection saved", result)
 }

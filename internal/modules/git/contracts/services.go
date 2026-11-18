@@ -10,13 +10,12 @@ import (
 
 // SourceControlService defines the interface for source control business logic
 type SourceControlService interface {
-	ListSourceControls(ctx context.Context, teamID string) ([]models.SourceControl, error)
-	GetSourceControl(ctx context.Context, id, teamID string) (*models.SourceControl, error)
-	Connect(ctx context.Context, userID, teamID string, providerType gittypes.GitProviderType, installationID string) (*models.SourceControl, error)
-	Disconnect(ctx context.Context, id, teamID string) error
+	ListSourceControls(ctx context.Context, teamID string) ([]dto.SourceControlResponse, error)
+	GetSourceControl(ctx context.Context, id, teamID string) (dto.SourceControlResponse, error)
+	Connect(ctx context.Context, teamID, userID string, req *dto.ConnectProviderRequest) (dto.SourceControlResponse, error)
+	Disconnect(ctx context.Context, id, teamID, userID string) error
 	GetInstallationURL(providerType gittypes.GitProviderType) (string, error)
 	ListSourceControlsByProvider(ctx context.Context, providerType gittypes.GitProviderType, teamID string) ([]models.SourceControl, error)
-	GetInstallationRepositoriesFromAPI(ctx context.Context, providerType gittypes.GitProviderType, installationID string) ([]map[string]interface{}, error)
 	GetCachedRepositories(ctx context.Context, providerType gittypes.GitProviderType, installationID, teamID string) ([]models.SourceControlRepository, error)
 	SyncRepositories(ctx context.Context, sc *models.SourceControl) error
 	SyncInstallationRepositories(ctx context.Context, sc *models.SourceControl, repositories []map[string]interface{}) error
@@ -27,6 +26,6 @@ type SourceControlService interface {
 	DeleteByInstallationID(ctx context.Context, provider gittypes.GitProviderType, installationID string) error
 	GetSourceControlByInstallation(ctx context.Context, providerType gittypes.GitProviderType, installationID string, opts ...InstallationQueryOption) (*models.SourceControl, error)
 	TestConnection(ctx context.Context, providerType gittypes.GitProviderType) error
-	// SaveRepository fetches a repository from the git provider and saves it to the database
+	// SaveRepository resolves an existing explicit selection; it never imports a grant.
 	SaveRepository(ctx context.Context, sourceControlID, teamID, repoFullName string) (*models.SourceControlRepository, error)
 }

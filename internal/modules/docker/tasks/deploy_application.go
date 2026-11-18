@@ -39,6 +39,7 @@ type DeployConfig struct {
 	// on the reload path.
 	RecreateOnly bool
 	// Git source.
+	GitCredentials string
 	GitRepo        string
 	GitBranch      string
 	BuildType      dockertypes.BuildType
@@ -77,17 +78,8 @@ type DeployConfig struct {
 	HealthcheckCommand string
 	ExtraPorts         []string
 
-	// Registry authentication for source_type=image. When username +
-	// password are both non-empty, the deploy script runs
-	// `docker login` BEFORE `docker pull`, then `docker logout` after
-	// so the host's ambient docker config doesn't gain a stale entry.
-	// RegistryURL: empty → Docker Hub (`docker login` with no host
-	// argument); non-empty → that host (e.g. "ghcr.io").
-	//
-	// Wiring: the application service resolves whichever path is set
-	// (saved credential vs inline) and hands the plaintext values to
-	// the renderer. Plaintext only lives in memory; the at-rest
-	// values stay encrypted via dbtype.EncryptedString.
+	// Registry credentials stay in memory until delivered in a private task
+	// secret file; every invocation receives its own Docker configuration.
 	RegistryURL      string
 	RegistryUsername string
 	RegistryPassword string
@@ -138,6 +130,7 @@ func DeployApplication(cfg DeployConfig) taskrunner.Task {
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName("Deploy Application"),
 		taskrunner.WithScript(script),
+		taskrunner.WithSecretFiles(deploymentSecretFiles(cfg.GitCredentials, []ComposeRegistryLogin{{RegistryURL: cfg.RegistryURL, Username: cfg.RegistryUsername, Password: cfg.RegistryPassword}})),
 		taskrunner.WithTimeoutSeconds(1800),
 	)
 }
@@ -154,6 +147,7 @@ func buildDeployScript(cfg DeployConfig) string {
 
 	b.WriteString("#!/usr/bin/env bash\n")
 	b.WriteString("set -euo pipefail\n\n")
+	b.WriteString(isolatedCredentialsScript)
 
 	fmt.Fprintf(&b, "DEPLOY_ID=%q\n", cfg.DeploymentID)
 	fmt.Fprintf(&b, "CONTAINER_NAME=%q\n", cfg.ContainerName)
@@ -359,131 +353,10 @@ echo "::LAUNCH::deploy_step::done"
 
 // buildImageStanza handles source_type=image: optionally login to a
 // private registry, pull a pre-built image, logout. No build step.
-//
-// `docker login` reads the password from stdin (`--password-stdin`)
-// so the secret never lands in `ps` output or the script's shell
-// history. The login → pull → logout sequence is wrapped in a
-// subshell so a non-auth pull failure still tears the login down.
-//
-// docker login + docker logout both print
-//
-//	"WARNING! Your credentials are stored unencrypted in
-//	 /root/.docker/config.json. Configure a credential helper..."
-//
-// to stderr unconditionally — there's no --quiet flag. Operators
-// can't act on it without host-level credential-helper setup that
-// Launch deliberately doesn't take over, so we filter just those
-// three known lines through process substitution. docker's exit
-// code is preserved (proc-sub doesn't sit in the pipeline) so a
-// genuine auth failure still surfaces. Bash-only — the remote
-// script always runs under bash.
-const dockerCredFilter = `2> >(grep -v -E 'credentials are stored unencrypted|Configure a credential helper|credential-store' >&2)`
-
 func buildImageStanza(cfg DeployConfig) string {
-	var b strings.Builder
-	if cfg.RegistryUsername != "" && cfg.RegistryPassword != "" {
-		b.WriteString("\necho \"::LAUNCH::deploy_step::registry_login\"\n")
-		fmt.Fprintf(&b, "DOCKER_REGISTRY_URL=%q\n", cfg.RegistryURL)
-		fmt.Fprintf(&b, "DOCKER_REGISTRY_USER=%q\n", cfg.RegistryUsername)
-		// Heredoc the password so it doesn't land in `ps` or the
-		// script's shell history. `set +x` is defensive against a
-		// future `set -x` getting flipped on for debugging — keeps
-		// the password out of any shell trace regardless.
-		//
-		// IMPORTANT: closing this block with `set +x` (not `set -x`)
-		// so we don't accidentally LEAK shell tracing into the rest
-		// of the deploy. An earlier version closed with `set -x` and
-		// every subsequent docker command got echoed as `+ docker...`
-		// in the captured log, which buried the actually-useful
-		// program output behind a wall of trace lines.
-		b.WriteString("set +x\n")
-		// When the password is a registry-bearer (workflow-minted GHCR
-		// pull token relay), `docker login` rejects it — GHCR's login
-		// validator expects PATs / install tokens, not pre-minted
-		// bearers. So instead of going through docker login we write
-		// the bearer DIRECTLY to ~/.docker/config.json's
-		// `auths.<registry>.registrytoken` field, which makes docker
-		// attach `Authorization: Bearer <bearer>` to subsequent pulls
-		// without any login round-trip.
-		//
-		// Detection: when the username is "oauth2" the deploy was
-		// initiated by the GHA bearer-relay path; anything else
-		// (e.g. "x-access-token" for install-token fallback,
-		// real customer usernames for Docker Hub etc.) is a normal
-		// PAT/credential and goes through docker login as before.
-		b.WriteString(`if [ "${DOCKER_REGISTRY_USER}" = "oauth2" ]; then
-  # Bearer-relay path. Write the token directly into the docker
-  # config so subsequent pulls send Authorization: Bearer <token>
-  # without trying to round-trip through docker login.
-  REG_HOST="${DOCKER_REGISTRY_URL:-ghcr.io}"
-  mkdir -p "${HOME}/.docker"
-  cat <<DOCKER_CONFIG_EOF > "${HOME}/.docker/config.json"
-{"auths":{"${REG_HOST}":{"registrytoken":"$(cat <<'LAUNCH_DOCKER_PW_EOF'
-`)
-		b.WriteString(cfg.RegistryPassword)
-		b.WriteString(`
-LAUNCH_DOCKER_PW_EOF
-)"}}}
-DOCKER_CONFIG_EOF
-else
-`)
-		fmt.Fprintf(&b, "  if [ -n \"${DOCKER_REGISTRY_URL}\" ]; then\n")
-		fmt.Fprintf(&b, "    docker login --username \"${DOCKER_REGISTRY_USER}\" --password-stdin \"${DOCKER_REGISTRY_URL}\" %s <<'LAUNCH_DOCKER_PW_EOF'\n", dockerCredFilter)
-		b.WriteString(cfg.RegistryPassword)
-		b.WriteString("\nLAUNCH_DOCKER_PW_EOF\n")
-		b.WriteString("  else\n")
-		fmt.Fprintf(&b, "    docker login --username \"${DOCKER_REGISTRY_USER}\" --password-stdin %s <<'LAUNCH_DOCKER_PW_EOF'\n", dockerCredFilter)
-		b.WriteString(cfg.RegistryPassword)
-		b.WriteString("\nLAUNCH_DOCKER_PW_EOF\n")
-		b.WriteString("  fi\n")
-		b.WriteString("fi\n")
-		// (no `set -x` here — that was the bug; see comment above)
-	}
-	fmt.Fprintf(&b, `
-echo "::LAUNCH::deploy_step::pulling_image"
-DOCKER_IMAGE=%q
-docker pull "${DOCKER_IMAGE}"
-`, cfg.Image)
-	if cfg.RegistryUsername != "" && cfg.RegistryPassword != "" {
-		// Cleanup. The bearer-relay path manages its own config.json
-		// directly so the canonical `docker logout` is a no-op there;
-		// just overwrite the config.json back to an empty auths map
-		// so the next deploy on the same host starts from a clean
-		// slate. PAT path keeps `docker logout` since it owns the
-		// credential helper entry.
-		b.WriteString(`if [ "${DOCKER_REGISTRY_USER}" = "oauth2" ]; then
-  if [ -f "${HOME}/.docker/config.json" ]; then
-    echo '{"auths":{}}' > "${HOME}/.docker/config.json"
-  fi
-else
-`)
-		fmt.Fprintf(&b, "  if [ -n \"${DOCKER_REGISTRY_URL}\" ]; then\n")
-		fmt.Fprintf(&b, "    docker logout \"${DOCKER_REGISTRY_URL}\" %s || true\n", dockerCredFilter)
-		b.WriteString("  else\n")
-		fmt.Fprintf(&b, "    docker logout %s || true\n", dockerCredFilter)
-		b.WriteString("  fi\n")
-		b.WriteString("fi\n")
-	}
-	return b.String()
+	return fmt.Sprintf("\necho \"::LAUNCH::deploy_step::pulling_image\"\nDOCKER_IMAGE=%q\ndocker pull \"${DOCKER_IMAGE}\"\n", cfg.Image)
 }
 
-// renderBuildSecretsPrelude writes each build secret to a 0600 file
-// under /run/launch/${DEPLOY_ID}.bsec/ (tmpfs) and populates a bash
-// array BUILD_SECRET_FLAGS the caller expands into the `docker build`
-// command. Always populated (even with zero secrets) so callers can
-// reference "${BUILD_SECRET_FLAGS[@]}" without conditional logic.
-//
-// Same security pattern as the runtime env-file:
-//   - umask 077 in a subshell so files are 0600 on creation (no race)
-//   - quoted heredoc ('LAUNCH_BSEC_EOF') so $ in values isn't expanded
-//   - EXIT trap removes the whole directory on success or failure
-//   - newline-containing values are skipped (would break the heredoc
-//     format); service-layer validation already prevents this
-//
-// `set +u` around the trap is intentional — the deploy script runs
-// under `set -euo pipefail`, and `${BUILD_SECRET_FLAGS[@]}` would
-// otherwise trip on the empty case on bash 4.x. We restore `set -u`
-// immediately after so the rest of the script keeps its strictness.
 func renderBuildSecretsPrelude(b *strings.Builder, cfg DeployConfig) {
 	b.WriteString(`
 # Build-time secrets (BuildKit --mount=type=secret). Distinct from
@@ -585,6 +458,7 @@ echo "::LAUNCH::deploy_step::cloning_repository"
 mkdir -p "${BUILD_DIR}"
 git clone --depth 1 --branch %q %q "${BUILD_DIR}"
 cd "${BUILD_DIR}"
+git submodule update --init --recursive
 
 echo "::LAUNCH::deploy_step::building_image"
 DOCKER_IMAGE="launch/${PROJECT_SLUG}-${APP_SLUG}:${DEPLOY_ID}"

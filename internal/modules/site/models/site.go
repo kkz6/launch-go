@@ -40,6 +40,7 @@ type Site struct {
 	EnabledFeatures              EnabledFeaturesSlice   `gorm:"column:enabled_features;type:json;serializer:json" json:"enabled_features,omitempty"`
 	PendingFeatures              dbtype.JSONStringSlice `gorm:"column:pending_features;type:json;serializer:json" json:"pending_features,omitempty"`
 	SourceControlRepositoriesID  *uint64                `gorm:"column:source_control_repositories_id;index" json:"source_control_repositories_id,omitempty"`
+	RepositoryDependencyIDs      dbtype.JSONStringSlice `gorm:"column:repository_dependency_ids;type:json;serializer:json" json:"repository_dependency_ids,omitempty"`
 	RepositoryBranch             *string                `gorm:"column:repository_branch;type:varchar(255)" json:"repository_branch,omitempty"`
 	DeployToken                  *string                `gorm:"column:deploy_token;type:varchar(32)" json:"-"`
 	DeployNotificationEmail      *string                `gorm:"column:deploy_notification_email;type:varchar(255)" json:"deploy_notification_email,omitempty"`

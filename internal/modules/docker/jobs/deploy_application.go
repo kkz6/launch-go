@@ -4,6 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/kkz6/launch-go/internal/modules/docker/gitaccess"
+	"github.com/kkz6/launch-go/internal/modules/docker/registryaccess"
+	"github.com/kkz6/launch-go/internal/modules/git/access"
 	"regexp"
 	"strconv"
 	"strings"
@@ -25,33 +28,22 @@ const TypeDeployApplication = "docker:deploy_application"
 // DeployApplicationPayload travels through asynq — IDs only, never model
 // pointers (per CLAUDE.md "Callback data must only contain IDs").
 //
-// Override* fields are used by the GitHub Actions webhook path so a
-// successful CI build can hand us a freshly-built GHCR image plus a
-// short-lived installation token without persisting either on the
-// application row. When any Override* is set, the deploy job uses the
-// overrides verbatim instead of reading source_type/RegistryCredential
-// off the application. The whole shape stays IDs-only — these are
-// passed by the webhook handler from the GHA notify body, not loaded
-// from the DB.
+// GitHub Actions carries an image and an opaque, deployment-bound registry
+// reference. Repository access snapshots fence work queued before revocation.
 type DeployApplicationPayload struct {
-	ApplicationID string `json:"application_id"`
-	DeploymentID  string `json:"deployment_id"`
-	ServerID      string `json:"server_id"`
-	TeamID        string `json:"team_id"`
+	GitAccess                   *access.Snapshot  `json:"git_access,omitempty"`
+	Dependencies                []access.Snapshot `json:"git_dependencies,omitempty"`
+	RegistryCredentialReference string            `json:"registry_credential_reference,omitempty"`
+	ApplicationID               string            `json:"application_id"`
+	DeploymentID                string            `json:"deployment_id"`
+	ServerID                    string            `json:"server_id"`
+	TeamID                      string            `json:"team_id"`
 
 	// OverrideImage forces SourceType=image with this image. Set by the
 	// GHA webhook with the tag the workflow just pushed to GHCR.
 	OverrideImage string `json:"override_image,omitempty"`
-	// OverrideRegistryURL / Username / Password override the docker
-	// login credentials the deploy script uses before `docker pull`.
-	// For GHA the URL is "ghcr.io", the username is "oauth2" (when
-	// the workflow minted a GHCR pull bearer) or "x-access-token"
-	// (when falling back to the GitHub App installation token), and
-	// the password is the corresponding token.
-	//
-	// NOTE: OverrideRegistryPassword is a secret. The custom String()
-	// method on this struct redacts it; if you add another channel
-	// that formats this struct, mirror the redaction there.
+	// Legacy fields are decoded only to reject old queued raw credentials. The
+	// worker fills them in memory after redeeming a protected registry lease.
 	OverrideRegistryURL      string `json:"override_registry_url,omitempty"`
 	OverrideRegistryUsername string `json:"override_registry_username,omitempty"`
 	OverrideRegistryPassword string `json:"override_registry_password,omitempty"`
@@ -128,6 +120,32 @@ func (j *DeployApplicationJob) Handle(ctx context.Context) error {
 		return err
 	}
 
+	if !j.Payload.Recreate {
+		if _, err := gitaccess.Resolve(ctx, j.Deps.DB, j.Deps.GitProviders, j.app.TeamID, j.app.SourceConfig, access.Clone, j.Payload.GitAccess, true); err != nil {
+			j.markDeploymentFailed(ctx, err.Error())
+			return nil
+		}
+	}
+	if j.Payload.OverrideRegistryPassword != "" {
+		j.markDeploymentFailed(ctx, "legacy queued registry credentials are no longer accepted; start a new deployment")
+		return nil
+	}
+	if j.Payload.RegistryCredentialReference != "" {
+		packageName, _ := j.app.SourceConfig["gha_image_repository"].(string)
+		if err := registryaccess.ValidateImage(j.Payload.OverrideImage, packageName); err != nil {
+			j.markDeploymentFailed(ctx, err.Error())
+			return nil
+		}
+		password, err := registryaccess.Redeem(ctx, j.Deps.DB, j.Payload.RegistryCredentialReference, j.deployment, packageName, j.Payload.GitAccess)
+		if err != nil {
+			j.markDeploymentFailed(ctx, err.Error())
+			return nil
+		}
+		j.Payload.OverrideRegistryURL = "ghcr.io"
+		j.Payload.OverrideRegistryUsername = "oauth2"
+		j.Payload.OverrideRegistryPassword = password
+		defer registryaccess.Delete(context.WithoutCancel(ctx), j.Deps.DB, j.Payload.RegistryCredentialReference)
+	}
 	// Fail fast if the GHCR pull bearer the workflow stamped on the
 	// payload is about to expire. Without this, docker pull would
 	// surface an opaque 401 with no hint why — and asynq would retry
@@ -215,11 +233,15 @@ func (j *DeployApplicationJob) Handle(ctx context.Context) error {
 			cfg.Image = ref
 		}
 	}
-	// Rewrite the git URL with embedded credentials when a connected
-	// source-control account was selected on the application. No-op for
-	// public repos. Failures fall back to the original URL — see
-	// resolveAuthenticatedCloneURL.
-	cfg.GitRepo = j.Deps.resolveAuthenticatedCloneURL(ctx, map[string]any(j.app.SourceConfig), cfg.GitRepo)
+	// Resolve a canonical clone URL and separately delivered repository credentials.
+	if !j.Payload.Recreate && cfg.GitRepo != "" {
+		var err error
+		cfg.GitRepo, cfg.GitCredentials, err = j.Deps.resolveCloneCredentials(ctx, j.app.TeamID, j.app.SourceConfig, cfg.GitRepo, j.Payload.GitAccess, j.Payload.Dependencies)
+		if err != nil {
+			j.markDeploymentFailed(ctx, err.Error())
+			return nil
+		}
+	}
 
 	// Resolve registry authentication for image sources. Either path
 	// (saved credential / inline) lands plaintext creds on the cfg
@@ -343,7 +365,23 @@ func (j *DeployApplicationJob) Handle(ctx context.Context) error {
 			Msg("failed to load volumes; deploying without them")
 	}
 
+	if !j.Payload.Recreate {
+		if _, err := gitaccess.Resolve(ctx, j.Deps.DB, j.Deps.GitProviders, j.app.TeamID, j.app.SourceConfig, access.Clone, j.Payload.GitAccess, true); err != nil {
+			j.markDeploymentFailed(ctx, err.Error())
+			return nil
+		}
+		if _, err := gitaccess.ResolveDependencies(ctx, j.Deps.DB, j.Deps.GitProviders, j.app.TeamID, j.app.SourceConfig, j.Payload.Dependencies, true); err != nil {
+			j.markDeploymentFailed(ctx, err.Error())
+			return nil
+		}
+	}
 	task := tasks.DeployApplication(cfg)
+	if !j.Payload.Recreate {
+		if err := j.Deps.guardGitTask(task, j.app.TeamID, j.app.SourceConfig, j.Payload.GitAccess, j.Payload.Dependencies, j.deployment, j.Payload.RegistryCredentialReference); err != nil {
+			j.markDeploymentFailed(ctx, err.Error())
+			return nil
+		}
+	}
 	// TrackInDB() persists a server-tasks row before SSH starts so the
 	// frontend can stream live build/deploy output via ServerLogViewer
 	// entity="task" :entity-id="task_id" — same pattern site
@@ -402,6 +440,16 @@ func (j *DeployApplicationJob) Handle(ctx context.Context) error {
 		return nil
 	}
 
+	if !j.Payload.Recreate {
+		if _, err := gitaccess.Resolve(ctx, j.Deps.DB, j.Deps.GitProviders, j.app.TeamID, j.app.SourceConfig, access.Clone, j.Payload.GitAccess, true); err != nil {
+			j.markDeploymentFailed(ctx, err.Error())
+			return nil
+		}
+		if _, err := gitaccess.ResolveDependencies(ctx, j.Deps.DB, j.Deps.GitProviders, j.app.TeamID, j.app.SourceConfig, j.Payload.Dependencies, true); err != nil {
+			j.markDeploymentFailed(ctx, err.Error())
+			return nil
+		}
+	}
 	containerID, imageRef := parseDeployMarkers(output)
 	j.handleSuccess(ctx, containerID, imageRef)
 	return nil
@@ -424,11 +472,11 @@ func (j *DeployApplicationJob) Failed(ctx context.Context, err error) {
 	}
 	finishedAt := time.Now().UTC()
 	errMsg := err.Error()
-	if updateErr := j.Deps.Repos.Deployment().UpdateFields(ctx, j.Payload.DeploymentID, map[string]any{
+	if updateErr := j.Deps.DB.WithContext(ctx).Model(&models.Deployment{}).Where("id = ? AND team_id = ? AND server_id = ? AND target_type = ? AND target_id = ?", j.Payload.DeploymentID, j.Payload.TeamID, j.Payload.ServerID, "application", j.Payload.ApplicationID).Updates(map[string]any{
 		"status":      dockertypes.DeploymentStatusFailed,
 		"finished_at": finishedAt,
 		"error":       errMsg,
-	}); updateErr != nil {
+	}).Error; updateErr != nil {
 		j.Deps.Logger.Error().Err(updateErr).Str("deployment_id", j.Payload.DeploymentID).Msg("failed to persist framework deployment failure")
 	}
 }
@@ -464,6 +512,12 @@ func (j *DeployApplicationJob) loadModels(ctx context.Context) error {
 	j.server, err = j.Deps.ServerRepos.Server().FindByID(ctx, j.Payload.ServerID)
 	if err != nil {
 		return fmt.Errorf("find server: %w", err)
+	}
+	if j.server.TeamID != j.Payload.TeamID {
+		return fmt.Errorf("server does not belong to workload workspace")
+	}
+	if j.deployment != nil && (j.deployment.TeamID != j.Payload.TeamID || j.deployment.ServerID != j.Payload.ServerID || j.deployment.TargetType != "application" || j.deployment.TargetID != j.app.ID) {
+		return fmt.Errorf("deployment does not belong to workload")
 	}
 	return nil
 }
@@ -770,9 +824,11 @@ func applyDeployApplicationOverrides(cfg *tasks.DeployConfig, payload DeployAppl
 // NewDeployApplicationTask packages the asynq task for enqueueing from
 // the service layer.
 func NewDeployApplicationTask(
-	applicationID, deploymentID, serverID, teamID string,
+	applicationID, deploymentID, serverID, teamID string, snapshot ...*access.Snapshot,
 ) (*asynq.Task, error) {
 	return pkgjobs.TaskWithID(TypeDeployApplication, DeployApplicationPayload{
+		GitAccess:     firstSnapshot(snapshot),
+		Dependencies:  dependencySnapshots(snapshot),
 		ApplicationID: applicationID,
 		DeploymentID:  deploymentID,
 		ServerID:      serverID,
@@ -813,15 +869,22 @@ func NewDeployApplicationTaskFromGHA(
 	image, registryURL, registryUsername, registryPassword string,
 	mintedAtUnix string,
 ) (*asynq.Task, error) {
-	return pkgjobs.TaskWithID(TypeDeployApplication, DeployApplicationPayload{
-		ApplicationID:                        applicationID,
-		DeploymentID:                         deploymentID,
-		ServerID:                             serverID,
-		TeamID:                               teamID,
-		OverrideImage:                        image,
-		OverrideRegistryURL:                  registryURL,
-		OverrideRegistryUsername:             registryUsername,
-		OverrideRegistryPassword:             registryPassword,
-		OverrideRegistryPasswordMintedAtUnix: mintedAtUnix,
-	}, pkgjobs.Dedup("docker-deploy-app", deploymentID))
+	return nil, fmt.Errorf("raw registry credentials cannot be queued; use a protected registry reference")
+}
+
+func NewProtectedApplicationDeployTask(payload DeployApplicationPayload) (*asynq.Task, error) {
+	if payload.RegistryCredentialReference == "" || payload.GitAccess == nil || payload.OverrideRegistryPassword != "" {
+		return nil, fmt.Errorf("protected registry reference and repository authorization required")
+	}
+	return pkgjobs.TaskWithID(TypeDeployApplication, payload, pkgjobs.Dedup("docker-deploy-app", payload.DeploymentID))
+}
+
+// MarshalJSON prevents callers from accidentally putting a raw registry token
+// into the queue, even if they bypass the protected task constructor.
+func (p DeployApplicationPayload) MarshalJSON() ([]byte, error) {
+	if p.OverrideRegistryPassword != "" && p.OverrideRegistryPassword != "[REDACTED]" {
+		return nil, fmt.Errorf("registry credentials require a protected reference")
+	}
+	type payloadJSON DeployApplicationPayload
+	return json.Marshal(payloadJSON(p))
 }

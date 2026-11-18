@@ -4,6 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	gitaccess "github.com/kkz6/launch-go/internal/modules/git/access"
+	siteaccess "github.com/kkz6/launch-go/internal/modules/site/gitaccess"
+	"strings"
 
 	"github.com/hibiken/asynq"
 
@@ -64,6 +67,10 @@ func (j *DeployJob) Handle(ctx context.Context) error {
 		return fmt.Errorf("failed to find site: %w", err)
 	}
 
+	if _, err := siteaccess.ForDeployment(ctx, j.Deps.DB, j.Deps.ProviderFactory, j.site, j.deployment, gitaccess.Clone); err != nil {
+		return err
+	}
+
 	// Get server
 	j.server, err = j.Deps.ServerRepos.Server().FindByID(ctx, j.site.ServerID)
 	if err != nil {
@@ -102,7 +109,13 @@ func (j *DeployJob) Handle(ctx context.Context) error {
 	j.broadcastDeploymentProgress(ctx, j.site.ID, j.deployment.ID, "installing", startMsg)
 
 	// Build deploy config
-	config := j.buildDeployConfig(ctx, j.site, j.deployment, j.server.TeamID)
+	config, err := j.buildDeployConfig(ctx, j.site, j.deployment, j.server.TeamID)
+	if err != nil {
+		return err
+	}
+	if j.site.TeamID != j.server.TeamID {
+		return fmt.Errorf("site does not belong to server account")
+	}
 
 	// Create deploy task
 	task := tasks.DeploySiteTask(config)
@@ -155,31 +168,58 @@ func (j *DeployJob) Failed(ctx context.Context, err error) {
 	}
 }
 
-func (j *DeployJob) buildDeployConfig(ctx context.Context, site *models.Site, deployment *models.Deployment, teamID string) tasks.DeployOptions {
+func (j *DeployJob) buildDeployConfig(ctx context.Context, site *models.Site, deployment *models.Deployment, teamID string) (tasks.DeployOptions, error) {
 	repositoryURL := ""
 	var hasAppAuth bool
 	var tempToken, authURL, appName string
 
-	if site.SourceControlRepositoriesID != nil {
-		// Get repository and source control info
-		repo, sourceControl := j.getRepositoryAndSourceControl(ctx, site)
-		if repo != nil {
-			repositoryURL = repo.SSHURL
-
-			// Try to get app-based auth token
-			if sourceControl != nil && j.Deps.ProviderFactory != nil {
-				token, url, name := j.getAppAuthToken(ctx, sourceControl, repo)
-				if token != "" {
-					hasAppAuth = true
-					tempToken = token
-					authURL = url
-					appName = name
-					// Use HTTPS URL for app-based auth (credentials helper will provide token)
-					providerType := gitproviders.GitProviderType(sourceControl.Provider)
-					repositoryURL = providerType.HTTPSURL(repo.FullName)
-				}
-			}
+	grant, err := siteaccess.ForDeployment(ctx, j.Deps.DB, j.Deps.ProviderFactory, site, deployment, gitaccess.Clone)
+	if err != nil {
+		return tasks.DeployOptions{}, err
+	}
+	var credentials []string
+	var grants []*gitaccess.RepositoryAccess
+	if grant != nil {
+		grants = append(grants, grant)
+		repo, sc := grant.Repository, grant.SourceControl
+		tempToken, authURL, appName = j.getAppAuthToken(grant.Context(ctx), sc, repo)
+		if tempToken == "" {
+			return tasks.DeployOptions{}, fmt.Errorf("cannot obtain selected repository credentials")
 		}
+		hasAppAuth = true
+		repositoryURL = grant.CloneURL
+		credentials = append(credentials, authURL, strings.TrimSuffix(authURL, ".git"))
+		// Dependencies are the exact set captured when this deployment was requested.
+		raw, _ := deployment.GitAccess["dependencies"].(map[string]any)
+		for id, value := range raw {
+			data, err := json.Marshal(value)
+			if err != nil {
+				return tasks.DeployOptions{}, err
+			}
+			var expected gitaccess.Snapshot
+			if err := json.Unmarshal(data, &expected); err != nil {
+				return tasks.DeployOptions{}, err
+			}
+			dep, err := siteaccess.ResolveDependency(ctx, j.Deps.DB, j.Deps.ProviderFactory, site.TeamID, id, &expected)
+			if err != nil {
+				return tasks.DeployOptions{}, err
+			}
+			grants = append(grants, dep)
+			token, url, _ := j.getAppAuthToken(dep.Context(ctx), dep.SourceControl, dep.Repository)
+			if token == "" {
+				return tasks.DeployOptions{}, fmt.Errorf("cannot obtain selected dependency credentials")
+			}
+			credentials = append(credentials, url, strings.TrimSuffix(url, ".git"))
+		}
+		if err := grant.Validate(ctx); err != nil {
+			return tasks.DeployOptions{}, err
+		}
+	} else if site.SourceControlRepositoriesID != nil {
+		repo, sc := j.getRepositoryAndSourceControl(ctx, site)
+		if repo == nil || sc == nil {
+			return tasks.DeployOptions{}, fmt.Errorf("repository connection is unavailable")
+		}
+		repositoryURL = repo.SSHURL
 	}
 
 	// Use the persisted release name for zero-downtime deployment.
@@ -203,6 +243,14 @@ func (j *DeployJob) buildDeployConfig(ctx context.Context, site *models.Site, de
 	}
 
 	return tasks.DeployOptions{
+		BeforeExecution: func(ctx context.Context) error {
+			for _, grant := range grants {
+				if err := grant.Validate(ctx); err != nil {
+					return err
+				}
+			}
+			return nil
+		},
 		Site:             site,
 		Deployment:       deployment,
 		TeamID:           teamID,
@@ -212,10 +260,11 @@ func (j *DeployJob) buildDeployConfig(ctx context.Context, site *models.Site, de
 		HasAppAuth:       hasAppAuth,
 		TempToken:        tempToken,
 		AuthURL:          authURL,
+		GitCredentials:   strings.Join(credentials, "\n") + "\n",
 		AppName:          appName,
 		ReleaseTimestamp: releaseTimestamp,
 		EnvVariables:     envVars,
-	}
+	}, nil
 }
 
 func (j *DeployJob) getRepositoryAndSourceControl(ctx context.Context, site *models.Site) (*gitmodels.SourceControlRepository, *gitmodels.SourceControl) {
@@ -225,7 +274,7 @@ func (j *DeployJob) getRepositoryAndSourceControl(ctx context.Context, site *mod
 
 	// Query repository from source_control_repositories table
 	var repo gitmodels.SourceControlRepository
-	if err := j.Deps.DB.First(&repo, "id = ?", *site.SourceControlRepositoriesID).Error; err != nil {
+	if err := j.Deps.DB.WithContext(ctx).First(&repo, "id = ? AND source_control_id = ?", *site.SourceControlRepositoriesID, *site.SourceControlID).Error; err != nil {
 		return nil, nil
 	}
 
@@ -233,7 +282,7 @@ func (j *DeployJob) getRepositoryAndSourceControl(ctx context.Context, site *mod
 	var sourceControl *gitmodels.SourceControl
 	if j.Deps.SourceControlRepo != nil {
 		sc, err := j.Deps.SourceControlRepo.FindByID(ctx, *site.SourceControlID)
-		if err == nil {
+		if err == nil && sc.TeamID == site.TeamID {
 			sourceControl = sc
 		}
 	}
@@ -384,6 +433,13 @@ func (j *DeployJob) createProviderDeployment(ctx context.Context, site *models.S
 		return
 	}
 
+	grant, accessErr := siteaccess.ForDeployment(ctx, j.Deps.DB, j.Deps.ProviderFactory, site, deployment, gitaccess.Deployment)
+	if accessErr != nil {
+		return
+	}
+	if grant != nil {
+		ctx = grant.Context(ctx)
+	}
 	scData := j.buildSourceControlData(sourceControl)
 	provider, err := j.Deps.ProviderFactory.GetProviderWithInstallation(
 		gitproviders.GitProviderType(sourceControl.Provider),
@@ -458,6 +514,13 @@ func (j *DeployJob) updateProviderDeploymentStatus(ctx context.Context, site *mo
 		return
 	}
 
+	grant, accessErr := siteaccess.ForDeployment(ctx, j.Deps.DB, j.Deps.ProviderFactory, site, deployment, gitaccess.Deployment)
+	if accessErr != nil {
+		return
+	}
+	if grant != nil {
+		ctx = grant.Context(ctx)
+	}
 	scData := j.buildSourceControlData(sourceControl)
 	provider, err := j.Deps.ProviderFactory.GetProviderWithInstallation(
 		gitproviders.GitProviderType(sourceControl.Provider),

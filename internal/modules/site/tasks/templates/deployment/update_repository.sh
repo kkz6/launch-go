@@ -1,79 +1,64 @@
-# Check if the repository exists and if the remote URL is correct, if not, delete it
-if [ -f "{{ .RepositoryDirectory }}/HEAD" ]; then
-    cd {{ .RepositoryDirectory }}
-    CURRENT_REMOTE_URL=$(git config --get remote.origin.url || echo '');
-
-    if [ "$CURRENT_REMOTE_URL" != '{{ .RepositoryURL }}' ]; then
-        {{ if .ZeroDowntimeDeployment }}
-            rm -rf {{ .RepositoryDirectory }}
-            cd {{ .SitePath }}
-            mkdir -p {{ .RepositoryDirectory }}
-        {{ else }}
-            git remote set-url origin {{ .RepositoryURL }}
-        {{ end }}
-    fi
-fi
-
-# Set up deployment-specific variables to avoid race conditions
-DEPLOYMENT_ID="{{ .DeploymentID }}"
-CREDENTIALS_FILE="/tmp/git-credentials-${DEPLOYMENT_ID}"
-USE_APP_AUTH=false
-USE_SSH_AUTH=false
-
-# Cleanup function to ensure credentials are always removed. Silent by
-# design — which auth path was used and how it was torn down is internal
-# plumbing, not something a site owner watching the deploy log needs to
-# see. Genuine failures below still print.
-cleanup_credentials() {
-    if [ -f "$CREDENTIALS_FILE" ]; then
-        rm -f "$CREDENTIALS_FILE"
-    fi
-    # Reset git config to system defaults
-    git config --global --unset credential.helper 2>/dev/null || true
-}
-
-# Set trap to cleanup on script exit
-trap cleanup_credentials EXIT
-
-# Try to configure app-based authentication first
-{{ if and .HasAppAuth .TempToken .AuthURL }}
-    # Set up HTTPS authentication with temporary installation token using deployment-specific file
-    git config --global credential.helper "store --file=$CREDENTIALS_FILE"
-    echo "{{ .AuthURL }}" > "$CREDENTIALS_FILE"
-
-    # Set git configuration for this operation
-    git config --global user.email "deploy@{{ .AppName }}.local"
-    git config --global user.name "{{ .AppName }} Deployment"
-
-    USE_APP_AUTH=true
+# Credentials are delivered separately in a private per-execution directory.
+# Empty credential.helper resets inherited helpers, preventing ambient credentials
+# from granting access to an unselected private dependency.
+export GIT_TERMINAL_PROMPT=0
+export GIT_ASKPASS=false
+unset GIT_CONFIG_PARAMETERS
+export GIT_CONFIG_NOSYSTEM=1
+export GIT_CONFIG_GLOBAL=/dev/null
+export GIT_CONFIG_COUNT=5
+export GIT_CONFIG_KEY_0=credential.helper
+export GIT_CONFIG_VALUE_0=""
+export GIT_CONFIG_KEY_1=credential.useHttpPath
+export GIT_CONFIG_VALUE_1=true
+export GIT_CONFIG_KEY_2=credential.helper
+export GIT_CONFIG_VALUE_2=""
+export GIT_CONFIG_KEY_3=http.followRedirects
+export GIT_CONFIG_VALUE_3=false
+export GIT_CONFIG_KEY_4=http.emptyAuth
+export GIT_CONFIG_VALUE_4=true
+{{ if .HasAppAuth }}
+    : "${LAUNCH_SECRET_DIR:?Missing deployment credentials}"
+    test -r "$LAUNCH_SECRET_DIR/git-credentials" || exit 1
+    export GIT_CONFIG_VALUE_2="store --file=$LAUNCH_SECRET_DIR/git-credentials"
+    export GIT_ALLOW_PROTOCOL=https
+    export GIT_SSH_COMMAND=false
+    # GitHub SSH submodule URLs use the same explicit HTTPS repository grants.
+    export GIT_CONFIG_COUNT=7
+    export GIT_CONFIG_KEY_5=url.https://github.com/.insteadOf
+    export GIT_CONFIG_VALUE_5=git@github.com:
+    export GIT_CONFIG_KEY_6=url.https://github.com/.insteadOf
+    export GIT_CONFIG_VALUE_6=ssh://git@github.com/
+{{ else if .HasDeployKey }}
+    : "${LAUNCH_SECRET_DIR:?Missing deployment credentials}"
+    export GIT_SSH_COMMAND="ssh -i $LAUNCH_SECRET_DIR/git-key -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
 {{ else }}
-    # Check if site has SSH deploy keys as fallback
-    {{ if .DeployKeyPrivate }}
-        # Set up SSH authentication using deploy keys
-        DEPLOY_KEY_PATH="{{ .SitePath }}/deploy_key"
-
-        # Create deploy key file if it doesn't exist
-        if [ ! -f "$DEPLOY_KEY_PATH" ]; then
-            cat <<EOF > "$DEPLOY_KEY_PATH"
-{{ .DeployKeyPrivate }}
-EOF
-            chmod 600 "$DEPLOY_KEY_PATH"
-        fi
-
-        # Configure git to use the deploy key
-        export GIT_SSH_COMMAND="ssh -i $DEPLOY_KEY_PATH -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
-
-        USE_SSH_AUTH=true
-    {{ else }}
-        echo "❌ No authentication method available"
-        echo "This site requires either:"
-        echo "  1. App-based authentication"
-        echo "  2. SSH deploy keys (legacy method)"
-        echo ""
-        echo "Please configure authentication before deploying."
-        exit 1
-    {{ end }}
+    echo "No repository authentication is available. Reconnect and select this repository."
+    exit 1
 {{ end }}
+
+# Reused checkouts must fetch the currently selected canonical repository.
+# Remove legacy local authentication and rewrites before consulting origin;
+# URL-specific headers otherwise bypass the scoped credential helper.
+if [ -f "{{ .RepositoryDirectory }}/HEAD" ] || [ -f "{{ .RepositoryDirectory }}/.git/HEAD" ]; then
+    cd "{{ .RepositoryDirectory }}"
+    {{ if .HasAppAuth }}
+    while IFS= read -r key; do
+        git config --local --unset-all "$key" || true
+    done < <(git config --local --name-only --get-regexp '^(credential\.|http\.|url\.|include\.|includeif\.|core\.(sshcommand|askpass)$)' || true)
+    {{ end }}
+    {{ if .ZeroDowntimeDeployment }}
+    CURRENT_REMOTE_URL=$(git config --local --get remote.origin.url || echo '')
+    if [ "$CURRENT_REMOTE_URL" != '{{ .RepositoryURL }}' ]; then
+        cd "{{ .SitePath }}"
+        rm -rf "{{ .RepositoryDirectory }}"
+    else
+        git config --local --replace-all remote.origin.url '{{ .RepositoryURL }}'
+    fi
+    {{ else }}
+    git config --local --replace-all remote.origin.url '{{ .RepositoryURL }}'
+    {{ end }}
+fi
 
 cd {{ .SitePath }}
 
@@ -124,7 +109,7 @@ echo "🔄 Fetching latest changes..."
     # Clone the repository into the release directory
     echo "📂 Exporting code to release directory..."
     cd {{ .ReleaseDirectory }}
-    if git clone -l {{ .RepositoryDirectory }} . && git checkout --force {{ .RepositoryBranch }}; then
+    if GIT_ALLOW_PROTOCOL=file git clone -l {{ .RepositoryDirectory }} . && git checkout --force {{ .RepositoryBranch }}; then
         echo "✅ Code exported to release directory"
     else
         echo "❌ Failed to export code to release directory"

@@ -4,8 +4,8 @@
 // service layer's FindByIDAndTeam, so each ability maps to the minimum team
 // role required to perform the action.
 //
-// OAuth callbacks and public webhook routes are NOT governed by the gate —
-// they run outside TeamScope and carry no team-role context.
+// OAuth callbacks require the current session and a team administrator.
+// Public webhook routes instead verify the provider signature.
 package policies
 
 import (
@@ -23,16 +23,13 @@ func Register(g *access.Gate) {
 	// Source-control connection views (read-only, any member may list/inspect).
 	g.Define("git.source_control.view", member)
 
-	// Connecting a new git provider app installation requires editor or above.
-	// This covers POST /source-controls and the OAuth callback that finalises
-	// the install (HandleInstallationCallback performs SyncUserInstallation).
-	g.Define("git.source_control.connect", editor)
+	// Connecting and reviewing repository grants requires a team administrator.
+	g.Define("git.source_control.connect", admin)
 
 	// Refreshing / syncing cached repositories is a write operation; editors
 	// may trigger background sync jobs.
 	g.Define("git.source_control.sync", editor)
 
-	// Disconnecting a source-control connection is destructive (removes the
-	// installation record and all cached repositories); restricted to admins.
+	// Disconnecting archives authority and revokes credentials; history remains.
 	g.Define("git.source_control.delete", admin)
 }

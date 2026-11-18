@@ -30,22 +30,35 @@ func (r *TeamMemberRepository) AddUser(ctx context.Context, teamID, userID, role
 		Role:   &role,
 	}
 
-	return r.Create(ctx, &member)
+	return withLockedTeam(ctx, r.DB, teamID, func(tx *gorm.DB) error { return tx.Create(&member).Error })
 }
 
 // RemoveUser removes a user from a team
 func (r *TeamMemberRepository) RemoveUser(ctx context.Context, teamID, userID string) error {
-	return r.DB.WithContext(ctx).
-		Where("team_id = ? AND user_id = ?", teamID, userID).
-		Delete(&models.TeamMember{}).Error
+	return withLockedTeam(ctx, r.DB, teamID, func(tx *gorm.DB) error {
+		if err := tx.
+			Where("team_id = ? AND user_id = ?", teamID, userID).
+			Delete(&models.TeamMember{}).Error; err != nil {
+			return err
+		}
+		return suspendGitHubSponsor(ctx, tx, teamID, userID)
+	})
 }
 
 // UpdateRole updates a team member's role
 func (r *TeamMemberRepository) UpdateRole(ctx context.Context, teamID, userID, role string) error {
-	return r.DB.WithContext(ctx).
-		Model(&models.TeamMember{}).
-		Where("team_id = ? AND user_id = ?", teamID, userID).
-		Update("role", role).Error
+	return withLockedTeam(ctx, r.DB, teamID, func(tx *gorm.DB) error {
+		if err := tx.
+			Model(&models.TeamMember{}).
+			Where("team_id = ? AND user_id = ?", teamID, userID).
+			Update("role", role).Error; err != nil {
+			return err
+		}
+		if role != "admin" && role != "owner" {
+			return suspendGitHubSponsor(ctx, tx, teamID, userID)
+		}
+		return nil
+	})
 }
 
 // Get gets a specific team member

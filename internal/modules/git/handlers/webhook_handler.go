@@ -68,7 +68,11 @@ func (h *WebhookHandler) HandleWebhook(c *fiber.Ctx) error {
 		return fiberctx.RespondInternalError(c, "Webhook queue unavailable")
 	}
 
-	task, err := jobs.NewProcessGitWebhookTask(providerName, string(payload), signature)
+	event, delivery := c.Get("X-GitHub-Event"), c.Get("X-GitHub-Delivery")
+	if providerType == gittypes.GitProviderGitHub && (event == "" || delivery == "" || len(event) > 64 || len(delivery) > 128) {
+		return fiberctx.RespondBadRequest(c, "Missing or invalid webhook event/delivery")
+	}
+	task, err := jobs.NewProcessGitWebhookTask(providerName, string(payload), signature, event, delivery)
 	if err != nil {
 		h.logger.Error().Err(err).Str("provider", providerName).Msg("Failed to create webhook task")
 

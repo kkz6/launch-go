@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	gitaccess "github.com/kkz6/launch-go/internal/modules/git/access"
+	siteaccess "github.com/kkz6/launch-go/internal/modules/site/gitaccess"
 	"strings"
 	"time"
 
@@ -43,11 +45,13 @@ type DeployOptions struct {
 	DeploymentURL string
 
 	// Git authentication (set by job after checking source control)
-	RepositoryURL string
-	HasAppAuth    bool
-	TempToken     string
-	AuthURL       string
-	AppName       string
+	RepositoryURL   string
+	HasAppAuth      bool
+	TempToken       string
+	AuthURL         string
+	GitCredentials  string
+	BeforeExecution func(context.Context) error
+	AppName         string
 
 	// Zero-downtime specific
 	ReleaseTimestamp string
@@ -95,11 +99,24 @@ func DeploySiteTask(opts DeployOptions) taskrunner.Task {
 		script = buildStandardScript(opts)
 	}
 
+	secrets := map[string]string{}
+	if opts.HasAppAuth {
+		credentials := opts.GitCredentials
+		if credentials == "" {
+			credentials = opts.AuthURL + "\n"
+		}
+		secrets["git-credentials"] = credentials
+	} else if opts.Site.DeployKeyPrivate != "" {
+		secrets["git-key"] = string(opts.Site.DeployKeyPrivate)
+	}
+
 	return &deploySiteTask{
 		BaseTask: taskrunner.NewBaseTask(
 			taskrunner.WithName(name),
 			taskrunner.WithScript(script),
 			taskrunner.WithTimeoutSeconds(600),
+			taskrunner.WithSecretFiles(secrets),
+			taskrunner.WithBeforeExecution(opts.BeforeExecution),
 		),
 		opts: opts,
 		callback: callbackData{
@@ -137,6 +154,18 @@ func (t *deploySiteTask) OnSuccess(ctx context.Context, cbCtx *taskrunner.Callba
 			Str("site_id", t.callback.SiteID).
 			Str("deployment_id", t.callback.DeploymentID).
 			Msg("DeploySite: onFinished callback triggered")
+	}
+
+	if err := validateSiteDeploymentCallback(ctx, cbCtx, t.callback.SiteID, t.callback.TeamID, t.callback.DeploymentID); err != nil {
+		// A revoked run may finish remotely, but cannot start new workload effects.
+		result := cbCtx.DB.WithContext(ctx).Model(&models.Deployment{}).Where("id = ? AND site_id = ? AND team_id = ? AND status IN ?", t.callback.DeploymentID, t.callback.SiteID, t.callback.TeamID, []sitetypes.DeploymentStatus{sitetypes.DeploymentStatusPending, sitetypes.DeploymentStatusInstalling}).Update("status", sitetypes.DeploymentStatusFailed)
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected > 0 {
+			t.broadcastDeploymentEvent(cbCtx, "deployment.failed", "failed", map[string]interface{}{"message": "Repository access changed during deployment"})
+		}
+		return err
 	}
 
 	// Update deployment status to finished
@@ -395,28 +424,32 @@ func deploymentEventTaskID(eventName, eventID string) string {
 }
 
 type caddyfilePayload struct {
-	SiteID string  `json:"site_id"`
-	UserID *string `json:"user_id,omitempty"`
+	DeploymentID string  `json:"deployment_id,omitempty"`
+	SiteID       string  `json:"site_id"`
+	UserID       *string `json:"user_id,omitempty"`
 }
 
 type analyzeLaravelFeaturesPayload struct {
-	SiteID   string  `json:"site_id"`
-	ServerID string  `json:"server_id"`
-	UserID   *string `json:"user_id,omitempty"`
+	DeploymentID string  `json:"deployment_id,omitempty"`
+	SiteID       string  `json:"site_id"`
+	ServerID     string  `json:"server_id"`
+	UserID       *string `json:"user_id,omitempty"`
 }
 
 // dispatchInstallCaddyfile dispatches the install caddyfile job with type-safe payload.
 func (t *deploySiteTask) dispatchInstallCaddyfile(cbCtx *taskrunner.CallbackContext) {
 	t.dispatchJob(cbCtx, "site:install_caddyfile", caddyfilePayload{
-		SiteID: t.callback.SiteID,
+		DeploymentID: t.callback.DeploymentID,
+		SiteID:       t.callback.SiteID,
 	}, fmt.Sprintf("install_caddyfile:%s", t.callback.SiteID))
 }
 
 // dispatchAnalyzeLaravelFeatures dispatches the analyze Laravel features job with type-safe payload.
 func (t *deploySiteTask) dispatchAnalyzeLaravelFeatures(cbCtx *taskrunner.CallbackContext) {
 	t.dispatchJob(cbCtx, "site:analyze_laravel_features", analyzeLaravelFeaturesPayload{
-		SiteID:   t.callback.SiteID,
-		ServerID: t.callback.ServerID,
+		DeploymentID: t.callback.DeploymentID,
+		SiteID:       t.callback.SiteID,
+		ServerID:     t.callback.ServerID,
 	}, fmt.Sprintf("analyze_features:%s", t.callback.SiteID))
 }
 
@@ -438,8 +471,9 @@ func (t *deploySiteTask) installPendingQueues(ctx context.Context, cbCtx *taskru
 
 	for _, q := range queues {
 		t.dispatchJob(cbCtx, "site:install_queue", map[string]string{
-			"site_id":  t.callback.SiteID,
-			"queue_id": q.ID,
+			"deployment_id": t.callback.DeploymentID,
+			"site_id":       t.callback.SiteID,
+			"queue_id":      q.ID,
 		}, fmt.Sprintf("install_queue:%s:%s", t.callback.SiteID, q.ID))
 	}
 }
@@ -750,9 +784,7 @@ func renderUpdateRepository(opts DeployOptions, repoDir, releaseDir string) stri
 		ZeroDowntimeDeployment bool
 		DeploymentID           string
 		HasAppAuth             bool
-		TempToken              string
-		AuthURL                string
-		DeployKeyPrivate       string
+		HasDeployKey           bool
 		AppName                string
 		ReleaseDirectory       string
 	}{
@@ -763,9 +795,7 @@ func renderUpdateRepository(opts DeployOptions, repoDir, releaseDir string) stri
 		ZeroDowntimeDeployment: site.ZeroDowntimeDeployment,
 		DeploymentID:           opts.Deployment.ID,
 		HasAppAuth:             opts.HasAppAuth,
-		TempToken:              opts.TempToken,
-		AuthURL:                opts.AuthURL,
-		DeployKeyPrivate:       string(site.DeployKeyPrivate),
+		HasDeployKey:           site.DeployKeyPrivate != "",
 		AppName:                opts.AppName,
 		ReleaseDirectory:       releaseDir,
 	})
@@ -863,4 +893,58 @@ func RollbackDeployment(config RollbackDeploymentConfig) *taskrunner.BaseTask {
 		taskrunner.WithScript(withDeploymentLock(config.SitePath, script)),
 		taskrunner.WithTimeoutSeconds(90),
 	)
+}
+
+// Completion has no credential authority. It only verifies that the deployment
+// still belongs to this site and its original repository grants remain active.
+func validateSiteDeploymentCallback(ctx context.Context, cbCtx *taskrunner.CallbackContext, siteID, teamID, deploymentID string) error {
+	var deployment models.Deployment
+	if err := cbCtx.DB.WithContext(ctx).First(&deployment, "id = ? AND site_id = ? AND team_id = ?", deploymentID, siteID, teamID).Error; err != nil {
+		return err
+	}
+	var site models.Site
+	if err := cbCtx.DB.WithContext(ctx).First(&site, "id = ? AND team_id = ?", siteID, teamID).Error; err != nil {
+		return err
+	}
+	if len(deployment.GitAccess) == 0 {
+		if site.SourceControlID == nil {
+			return nil
+		}
+		var count int64
+		if err := cbCtx.DB.Table("source_controls").Where("id = ? AND provider = ?", *site.SourceControlID, "github").Count(&count).Error; err != nil {
+			return err
+		}
+		if count > 0 {
+			return gitaccess.ErrStaleAccess
+		}
+		return nil
+	}
+	snapshot, err := siteaccess.Expected(deployment.GitAccess)
+	if err != nil {
+		return err
+	}
+	if site.SourceControlID == nil || *site.SourceControlID != snapshot.ConnectionID || site.SourceControlRepositoriesID == nil || fmt.Sprint(*site.SourceControlRepositoriesID) != snapshot.RepositoryID {
+		return gitaccess.ErrStaleAccess
+	}
+	if err := gitaccess.ValidateSnapshot(ctx, cbCtx.DB, teamID, *snapshot); err != nil {
+		return err
+	}
+	if err := siteaccess.ValidateDependencySelection(&site, deployment.GitAccess); err != nil {
+		return err
+	}
+	raw, _ := deployment.GitAccess["dependencies"].(map[string]any)
+	for _, value := range raw {
+		b, err := json.Marshal(value)
+		if err != nil {
+			return err
+		}
+		var dep gitaccess.Snapshot
+		if err := json.Unmarshal(b, &dep); err != nil {
+			return err
+		}
+		if err := gitaccess.ValidateSnapshot(ctx, cbCtx.DB, teamID, dep); err != nil {
+			return err
+		}
+	}
+	return nil
 }

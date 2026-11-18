@@ -40,7 +40,10 @@ func TestDeployJobPersistsReleaseBeforeDispatchAndReusesIt(t *testing.T) {
 	require.ErrorContains(t, retry.Handle(context.Background()), "no dispatcher set")
 	require.NoError(t, db.First(&saved, "id = ?", deployment.ID).Error)
 	require.Equal(t, name, *saved.ReleaseName)
-	config := retry.buildDeployConfig(context.Background(), retry.site, &saved, "team-1")
+	config, err := retry.buildDeployConfig(context.Background(), retry.site, &saved, "team-1")
+	if err != nil {
+		t.Fatal(err)
+	}
 	require.Equal(t, name, config.ReleaseTimestamp)
 }
 

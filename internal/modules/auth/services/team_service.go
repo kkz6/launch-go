@@ -173,10 +173,17 @@ func (s *TeamService) sendTeamDeletedEmail(ctx context.Context, owner *models.Us
 }
 
 var teamTransferExcludedTables = map[string]struct{}{
-	"impersonation_sessions":   {},
-	"notification_preferences": {},
-	"team_invitations":         {},
-	"team_user":                {},
+	"impersonation_sessions":      {},
+	"notification_preferences":    {},
+	"team_invitations":            {},
+	"team_user":                   {},
+	"git_hub_connection_attempts": {},
+	"git_hub_authorizations":      {},
+	"git_hub_credential_leases":   {},
+	"git_hub_cleanup_manifests":   {},
+	"git_hub_webhook_deliveries":  {},
+	"git_hub_webhook_intents":     {},
+	"registry_credential_leases":  {},
 }
 
 func (s *TeamService) transferResourcesAndDelete(ctx context.Context, userID, sourceTeamID, destinationTeamID string) error {
@@ -187,6 +194,20 @@ func (s *TeamService) transferResourcesAndDelete(ctx context.Context, userID, so
 	}
 
 	return db.Transaction(func(tx *gorm.DB) error {
+		if err := lockGitHubTeams(tx, sourceTeamID, destinationTeamID); err != nil {
+			return err
+		}
+		// GitHub grants belong to their original account. Moving a team must never
+		// merge or silently reassign repository consent to the destination.
+		if tx.Migrator().HasTable("source_controls") {
+			var count int64
+			if err := tx.Table("source_controls").Where("team_id = ? AND provider = ?", sourceTeamID, "github").Count(&count).Error; err != nil {
+				return err
+			}
+			if count > 0 {
+				return fiberutil.Conflict("This team has GitHub connections. Transfer GitHub workloads explicitly before deleting the team")
+			}
+		}
 		for _, table := range tables {
 			if err := tx.Table(table).
 				Where("team_id = ?", sourceTeamID).

@@ -99,11 +99,7 @@ func TestBuildComposeDeployScript_NoRegistryLogins(t *testing.T) {
 }
 
 func TestBuildComposeDeployScript_MultipleRegistryLogins(t *testing.T) {
-	// Compose stacks can pull from N registries; the renderer emits
-	// one paired login/logout block per attached credential. Test
-	// two different hosts to confirm the per-iteration sentinels +
-	// per-iteration env-var indices both increment.
-	s := buildComposeDeployScript(ComposeDeployConfig{
+	cfg := ComposeDeployConfig{
 		DeploymentID: "01HZ",
 		ProjectSlug:  "acme",
 		ComposeSlug:  "stack",
@@ -113,31 +109,13 @@ func TestBuildComposeDeployScript_MultipleRegistryLogins(t *testing.T) {
 			{RegistryURL: "ghcr.io", Username: "kkz6", Password: "ghp_one"},
 			{RegistryURL: "", Username: "dockerhubuser", Password: "dh_two"},
 		},
-	})
-	// Per-iteration variable names so two logins don't clobber each
-	// other's URL/USER values.
-	mustContain(t, s, `DOCKER_REGISTRY_URL_0="ghcr.io"`)
-	mustContain(t, s, `DOCKER_REGISTRY_USER_0="kkz6"`)
-	mustContain(t, s, `DOCKER_REGISTRY_URL_1=""`)
-	mustContain(t, s, `DOCKER_REGISTRY_USER_1="dockerhubuser"`)
-	// Per-iteration heredoc sentinels — same reason.
-	mustContain(t, s, "<<'LAUNCH_DOCKER_PW_EOF_0'")
-	mustContain(t, s, "<<'LAUNCH_DOCKER_PW_EOF_1'")
-	// Both passwords land in the script (piped via stdin, not on cmdline).
-	mustContain(t, s, "ghp_one")
-	mustContain(t, s, "dh_two")
-	// `set +x` defensively wraps the login block.
-	mustContain(t, s, "set +x")
-	// REGRESSION: must NOT enable `set -x` anywhere in the rendered
-	// script. An earlier version closed the login block with
-	// `set -x` and every subsequent docker command leaked into the
-	// log as `+ command` shell-trace. See the same assertion +
-	// rationale in deploy_application_test.go.
-	mustNotContain(t, s, "set -x")
-	// Logout pairs run AFTER compose up — both URLs accounted for.
-	// The stderr filter for the credential warning sits between the
-	// command and the `|| true`.
-	mustContain(t, s, `docker logout "${DOCKER_REGISTRY_URL_0}"`)
-	mustContain(t, s, `docker logout "${DOCKER_REGISTRY_URL_1}"`)
-	mustContain(t, s, ") || true")
+	}
+	task := DeployCompose(cfg)
+	script := task.Script()
+	mustNotContain(t, script, "ghp_one")
+	mustNotContain(t, script, "dh_two")
+	mustNotContain(t, script, "${HOME}/.docker")
+	files := task.(interface{ SecretFiles() map[string]string }).SecretFiles()
+	mustContain(t, files["docker-config"], "ghcr.io")
+	mustContain(t, files["docker-config"], "https://index.docker.io/v1/")
 }

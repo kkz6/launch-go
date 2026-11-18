@@ -17,9 +17,10 @@ const TypeRestartAllSiteQueues = "site:restart_all_queues"
 
 // RestartQueuePayload holds data for queue worker restart
 type RestartQueuePayload struct {
-	SiteID  string  `json:"site_id"`
-	QueueID string  `json:"queue_id"`
-	UserID  *string `json:"user_id,omitempty"`
+	DeploymentID string  `json:"deployment_id,omitempty"`
+	SiteID       string  `json:"site_id"`
+	QueueID      string  `json:"queue_id"`
+	UserID       *string `json:"user_id,omitempty"`
 }
 
 // RestartQueueJob handles queue worker restart
@@ -53,6 +54,10 @@ func (j *RestartQueueJob) Handle(ctx context.Context) error {
 		return fmt.Errorf("failed to find site: %w", err)
 	}
 	j.site = site
+	deploymentGuard, err := newPostDeploymentCheck(ctx, j.Deps, site, j.Payload.DeploymentID)
+	if err != nil {
+		return err
+	}
 
 	// Get server
 	server, err := j.Deps.ServerRepos.Server().FindByID(ctx, site.ServerID)
@@ -69,9 +74,15 @@ func (j *RestartQueueJob) Handle(ctx context.Context) error {
 	// Restart the queue using supervisor
 	restartTask := tasks.RestartQueue(queue.ID)
 
+	if err := deploymentGuard.attach(restartTask); err != nil {
+		return err
+	}
 	result, err := j.Deps.RunTask(server, restartTask).AsRoot().Dispatch(ctx)
 	if err != nil {
 		j.Deps.Logger.Error().Err(err).Str("queue_id", queue.ID).Msg("Failed to restart queue")
+		return err
+	}
+	if err := deploymentGuard.validate(ctx); err != nil {
 		return err
 	}
 	if result.Error != nil {
@@ -115,8 +126,9 @@ func (j *RestartQueueJob) Failed(ctx context.Context, err error) {
 
 // RestartAllSiteQueuesPayload holds data for restarting all queues for a site
 type RestartAllSiteQueuesPayload struct {
-	SiteID string  `json:"site_id"`
-	UserID *string `json:"user_id,omitempty"`
+	DeploymentID string  `json:"deployment_id,omitempty"`
+	SiteID       string  `json:"site_id"`
+	UserID       *string `json:"user_id,omitempty"`
 }
 
 // RestartAllSiteQueuesJob handles restarting all queues for a site
@@ -142,6 +154,10 @@ func (j *RestartAllSiteQueuesJob) Handle(ctx context.Context) error {
 		return fmt.Errorf("failed to find site: %w", err)
 	}
 	j.site = site
+	deploymentGuard, err := newPostDeploymentCheck(ctx, j.Deps, site, j.Payload.DeploymentID)
+	if err != nil {
+		return err
+	}
 
 	// Get all queues for the site
 	queues, err := j.Deps.Repos.Queue().FindBySite(ctx, site.ID)
@@ -175,9 +191,15 @@ func (j *RestartAllSiteQueuesJob) Handle(ctx context.Context) error {
 	// Restart all queues
 	restartTask := tasks.RestartAllQueues(queueIDs)
 
+	if err := deploymentGuard.attach(restartTask); err != nil {
+		return err
+	}
 	result, err := j.Deps.RunTask(server, restartTask).AsRoot().Dispatch(ctx)
 	if err != nil {
 		j.Deps.Logger.Error().Err(err).Str("site_id", site.ID).Msg("Failed to restart queues")
+		return err
+	}
+	if err := deploymentGuard.validate(ctx); err != nil {
 		return err
 	}
 	if result.Error != nil {

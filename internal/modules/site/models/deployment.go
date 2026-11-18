@@ -20,6 +20,8 @@ type Deployment struct {
 	GitHash        *string                    `gorm:"column:git_hash;type:varchar(255)" json:"git_hash,omitempty"`
 	CommitData     dbtype.JSONMap             `gorm:"column:commit_data;type:json" json:"commit_data,omitempty"`
 	VcsData        dbtype.JSONMap             `gorm:"column:vcs_data;type:json" json:"vcs_data,omitempty"`
+	GitAccess      dbtype.JSONMap             `gorm:"column:git_access;type:json" json:"-"`
+	WebhookKey     *string                    `gorm:"column:webhook_key;size:128;uniqueIndex" json:"-"`
 	UserNotifiedAt *time.Time                 `gorm:"column:user_notified_at;type:timestamp null" json:"user_notified_at,omitempty"`
 
 	// Relations

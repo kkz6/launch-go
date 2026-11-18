@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	gitaccess "github.com/kkz6/launch-go/internal/modules/git/access"
+	siteaccess "github.com/kkz6/launch-go/internal/modules/site/gitaccess"
 
 	gitmodels "github.com/kkz6/launch-go/internal/modules/git/models"
 	gitproviders "github.com/kkz6/launch-go/internal/modules/git/providers"
@@ -46,6 +48,14 @@ func (j *UpdateProviderDeploymentStatusJob) Handle(ctx context.Context) error {
 
 	if len(deployment.VcsData) == 0 {
 		return nil
+	}
+
+	grant, err := siteaccess.ForDeployment(ctx, j.Deps.DB, j.Deps.ProviderFactory, site, deployment, gitaccess.Deployment)
+	if err != nil {
+		return err
+	}
+	if grant != nil {
+		ctx = grant.Context(ctx)
 	}
 
 	// Get repository

@@ -96,6 +96,9 @@ func (s *Service) DeleteUserWithBillingConfirmation(ctx context.Context, actorSt
 			}
 		}
 
+		if err := revokeDeletedGitHubSponsor(ctx, tx, targetUserID); err != nil {
+			return err
+		}
 		return s.repos.DeleteUser(tx, targetUserID)
 	})
 	if err != nil {

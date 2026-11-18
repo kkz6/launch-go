@@ -35,7 +35,7 @@ func (r *ComposeRepository) MergeSourceConfig(
 	return r.DB.WithContext(ctx).
 		Model(&models.Compose{}).
 		Where("id = ?", id).
-		Update("source_config", gorm.Expr("COALESCE(source_config, '{}'::jsonb) || ?::jsonb", string(b))).Error
+		Update("source_config", gorm.Expr("COALESCE(source_config::jsonb, '{}'::jsonb) || ?::jsonb", string(b))).Error
 }
 
 // FindByIDAndTeamServer fetches a compose stack scoped to the (team,

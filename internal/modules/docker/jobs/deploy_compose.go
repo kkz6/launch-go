@@ -4,6 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/kkz6/launch-go/internal/modules/docker/gitaccess"
+	"github.com/kkz6/launch-go/internal/modules/docker/registryaccess"
+	"github.com/kkz6/launch-go/internal/modules/git/access"
 	"time"
 
 	"github.com/hibiken/asynq"
@@ -27,10 +30,13 @@ const TypeDeployCompose = "docker:deploy_compose"
 // as the GHA path (skip on-host build, rewrite compose `build:` to
 // `image:` per service, docker login GHCR with the supplied creds).
 type DeployComposePayload struct {
-	ComposeID    string `json:"compose_id"`
-	DeploymentID string `json:"deployment_id"`
-	ServerID     string `json:"server_id"`
-	TeamID       string `json:"team_id"`
+	GitAccess                   *access.Snapshot  `json:"git_access,omitempty"`
+	Dependencies                []access.Snapshot `json:"git_dependencies,omitempty"`
+	RegistryCredentialReference string            `json:"registry_credential_reference,omitempty"`
+	ComposeID                   string            `json:"compose_id"`
+	DeploymentID                string            `json:"deployment_id"`
+	ServerID                    string            `json:"server_id"`
+	TeamID                      string            `json:"team_id"`
 
 	// ServiceImages maps compose service name → fully-qualified image
 	// reference (e.g. {"web": "ghcr.io/kkz6/test:launch-web-abc1234"}).
@@ -107,6 +113,34 @@ func (j *DeployComposeJob) Handle(ctx context.Context) error {
 		return err
 	}
 
+	if !j.Payload.Recreate {
+		if _, err := gitaccess.Resolve(ctx, j.Deps.DB, j.Deps.GitProviders, j.compose.TeamID, j.compose.SourceConfig, access.Clone, j.Payload.GitAccess, true); err != nil {
+			j.markComposeDeploymentFailed(ctx, err.Error())
+			return nil
+		}
+	}
+	if j.Payload.OverrideRegistryPassword != "" {
+		j.markComposeDeploymentFailed(ctx, "legacy queued registry credentials are no longer accepted; start a new deployment")
+		return nil
+	}
+	if j.Payload.RegistryCredentialReference != "" {
+		packageName, _ := j.compose.SourceConfig["gha_image_repository"].(string)
+		for _, image := range j.Payload.ServiceImages {
+			if err := registryaccess.ValidateImage(image, packageName); err != nil {
+				j.markComposeDeploymentFailed(ctx, err.Error())
+				return nil
+			}
+		}
+		password, err := registryaccess.Redeem(ctx, j.Deps.DB, j.Payload.RegistryCredentialReference, j.deployment, packageName, j.Payload.GitAccess)
+		if err != nil {
+			j.markComposeDeploymentFailed(ctx, err.Error())
+			return nil
+		}
+		j.Payload.OverrideRegistryURL = "ghcr.io"
+		j.Payload.OverrideRegistryUsername = "oauth2"
+		j.Payload.OverrideRegistryPassword = password
+		defer registryaccess.Delete(context.WithoutCancel(ctx), j.Deps.DB, j.Payload.RegistryCredentialReference)
+	}
 	// Pre-flight GHCR bearer age check — same rationale as in
 	// DeployApplicationJob.Handle. See ghcrBearerExpiredSoon on the
 	// app job for the longer-form comment.
@@ -161,7 +195,14 @@ func (j *DeployComposeJob) Handle(ctx context.Context) error {
 	}
 	hydrateComposeSource(&cfg, j.compose)
 	// Same authenticated-clone treatment as application git deploys.
-	cfg.GitRepo = j.Deps.resolveAuthenticatedCloneURL(ctx, map[string]any(j.compose.SourceConfig), cfg.GitRepo)
+	if !j.Payload.Recreate && cfg.GitRepo != "" {
+		var err error
+		cfg.GitRepo, cfg.GitCredentials, err = j.Deps.resolveCloneCredentials(ctx, j.compose.TeamID, j.compose.SourceConfig, cfg.GitRepo, j.Payload.GitAccess, j.Payload.Dependencies)
+		if err != nil {
+			j.markComposeDeploymentFailed(ctx, err.Error())
+			return nil
+		}
+	}
 
 	// Reload mode: force a no-build `up -d` that reuses on-host images
 	// and applies the refreshed .env. Set before the ServiceImages
@@ -239,7 +280,23 @@ func (j *DeployComposeJob) Handle(ctx context.Context) error {
 			Msg("load compose registry credentials failed; deploy will run unauthenticated")
 	}
 
+	if !j.Payload.Recreate {
+		if _, err := gitaccess.Resolve(ctx, j.Deps.DB, j.Deps.GitProviders, j.compose.TeamID, j.compose.SourceConfig, access.Clone, j.Payload.GitAccess, true); err != nil {
+			j.markComposeDeploymentFailed(ctx, err.Error())
+			return nil
+		}
+		if _, err := gitaccess.ResolveDependencies(ctx, j.Deps.DB, j.Deps.GitProviders, j.compose.TeamID, j.compose.SourceConfig, j.Payload.Dependencies, true); err != nil {
+			j.markComposeDeploymentFailed(ctx, err.Error())
+			return nil
+		}
+	}
 	task := tasks.DeployCompose(cfg)
+	if !j.Payload.Recreate {
+		if err := j.Deps.guardGitTask(task, j.compose.TeamID, j.compose.SourceConfig, j.Payload.GitAccess, j.Payload.Dependencies, j.deployment, j.Payload.RegistryCredentialReference); err != nil {
+			j.markComposeDeploymentFailed(ctx, err.Error())
+			return nil
+		}
+	}
 	// TrackInDB() persists a server-tasks row so the frontend can
 	// stream live `docker compose up` output via ServerLogViewer —
 	// matches the application + database paths.
@@ -289,6 +346,16 @@ func (j *DeployComposeJob) Handle(ctx context.Context) error {
 		j.handleFailure(ctx, output, runErr, exitCode)
 		return nil
 	}
+	if !j.Payload.Recreate {
+		if _, err := gitaccess.Resolve(ctx, j.Deps.DB, j.Deps.GitProviders, j.compose.TeamID, j.compose.SourceConfig, access.Clone, j.Payload.GitAccess, true); err != nil {
+			j.markComposeDeploymentFailed(ctx, err.Error())
+			return nil
+		}
+		if _, err := gitaccess.ResolveDependencies(ctx, j.Deps.DB, j.Deps.GitProviders, j.compose.TeamID, j.compose.SourceConfig, j.Payload.Dependencies, true); err != nil {
+			j.markComposeDeploymentFailed(ctx, err.Error())
+			return nil
+		}
+	}
 	j.handleSuccess(ctx)
 	return nil
 }
@@ -305,11 +372,11 @@ func (j *DeployComposeJob) Failed(ctx context.Context, err error) {
 	}
 	finishedAt := time.Now().UTC()
 	errMsg := err.Error()
-	if updateErr := j.Deps.Repos.Deployment().UpdateFields(ctx, j.Payload.DeploymentID, map[string]any{
+	if updateErr := j.Deps.DB.WithContext(ctx).Model(&models.Deployment{}).Where("id = ? AND team_id = ? AND server_id = ? AND target_type = ? AND target_id = ?", j.Payload.DeploymentID, j.Payload.TeamID, j.Payload.ServerID, "compose", j.Payload.ComposeID).Updates(map[string]any{
 		"status":      dockertypes.DeploymentStatusFailed,
 		"finished_at": finishedAt,
 		"error":       errMsg,
-	}); updateErr != nil {
+	}).Error; updateErr != nil {
 		j.Deps.Logger.Error().Err(updateErr).Str("deployment_id", j.Payload.DeploymentID).Msg("failed to persist framework compose failure")
 	}
 }
@@ -343,6 +410,12 @@ func (j *DeployComposeJob) loadModels(ctx context.Context) error {
 	j.server, err = j.Deps.ServerRepos.Server().FindByID(ctx, j.Payload.ServerID)
 	if err != nil {
 		return fmt.Errorf("find server: %w", err)
+	}
+	if j.server.TeamID != j.Payload.TeamID {
+		return fmt.Errorf("server does not belong to workload workspace")
+	}
+	if j.deployment != nil && (j.deployment.TeamID != j.Payload.TeamID || j.deployment.ServerID != j.Payload.ServerID || j.deployment.TargetType != "compose" || j.deployment.TargetID != j.compose.ID) {
+		return fmt.Errorf("deployment does not belong to workload")
 	}
 	return nil
 }
@@ -513,8 +586,10 @@ func hydrateComposeSource(cfg *tasks.ComposeDeployConfig, c *models.Compose) {
 }
 
 // NewDeployComposeTask packages the asynq task for the service.
-func NewDeployComposeTask(composeID, deploymentID, serverID, teamID string) (*asynq.Task, error) {
+func NewDeployComposeTask(composeID, deploymentID, serverID, teamID string, snapshot ...*access.Snapshot) (*asynq.Task, error) {
 	return pkgjobs.TaskWithID(TypeDeployCompose, DeployComposePayload{
+		GitAccess:    firstSnapshot(snapshot),
+		Dependencies: dependencySnapshots(snapshot),
 		ComposeID:    composeID,
 		DeploymentID: deploymentID,
 		ServerID:     serverID,
@@ -549,15 +624,22 @@ func NewDeployComposeTaskFromGHA(
 	registryURL, registryUsername, registryPassword string,
 	mintedAtUnix string,
 ) (*asynq.Task, error) {
-	return pkgjobs.TaskWithID(TypeDeployCompose, DeployComposePayload{
-		ComposeID:                            composeID,
-		DeploymentID:                         deploymentID,
-		ServerID:                             serverID,
-		TeamID:                               teamID,
-		ServiceImages:                        serviceImages,
-		OverrideRegistryURL:                  registryURL,
-		OverrideRegistryUsername:             registryUsername,
-		OverrideRegistryPassword:             registryPassword,
-		OverrideRegistryPasswordMintedAtUnix: mintedAtUnix,
-	}, pkgjobs.Dedup("docker-deploy-compose", deploymentID))
+	return nil, fmt.Errorf("raw registry credentials cannot be queued; use a protected registry reference")
+}
+
+func NewProtectedComposeDeployTask(payload DeployComposePayload) (*asynq.Task, error) {
+	if payload.RegistryCredentialReference == "" || payload.GitAccess == nil || payload.OverrideRegistryPassword != "" {
+		return nil, fmt.Errorf("protected registry reference and repository authorization required")
+	}
+	return pkgjobs.TaskWithID(TypeDeployCompose, payload, pkgjobs.Dedup("docker-deploy-compose", payload.DeploymentID))
+}
+
+// MarshalJSON prevents callers from accidentally putting a raw registry token
+// into the queue, even if they bypass the protected task constructor.
+func (p DeployComposePayload) MarshalJSON() ([]byte, error) {
+	if p.OverrideRegistryPassword != "" && p.OverrideRegistryPassword != "[REDACTED]" {
+		return nil, fmt.Errorf("registry credentials require a protected reference")
+	}
+	type payloadJSON DeployComposePayload
+	return json.Marshal(payloadJSON(p))
 }

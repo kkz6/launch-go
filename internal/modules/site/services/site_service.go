@@ -11,15 +11,19 @@ import (
 
 	databasedto "github.com/kkz6/launch-go/internal/modules/database/dto"
 	dnscontracts "github.com/kkz6/launch-go/internal/modules/dns/contracts"
+	gitaccess "github.com/kkz6/launch-go/internal/modules/git/access"
 	gitcontracts "github.com/kkz6/launch-go/internal/modules/git/contracts"
+	gitproviders "github.com/kkz6/launch-go/internal/modules/git/providers"
 	serverdto "github.com/kkz6/launch-go/internal/modules/server/dto"
 	servermodels "github.com/kkz6/launch-go/internal/modules/server/models"
 	servertypes "github.com/kkz6/launch-go/internal/modules/server/types"
 	"github.com/kkz6/launch-go/internal/modules/site/contracts"
 	"github.com/kkz6/launch-go/internal/modules/site/dto"
+	siteaccess "github.com/kkz6/launch-go/internal/modules/site/gitaccess"
 	"github.com/kkz6/launch-go/internal/modules/site/jobs"
 	"github.com/kkz6/launch-go/internal/modules/site/models"
 	sitetypes "github.com/kkz6/launch-go/internal/modules/site/types"
+	"github.com/kkz6/launch-go/internal/pkg/dbtype"
 	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/launch/activity"
 	"github.com/kkz6/launch-go/internal/pkg/security"
@@ -40,6 +44,7 @@ type SiteService struct {
 	databaseManager      contracts.DatabaseManager
 	dnsRecordService     dnscontracts.DNSRecordService
 	sourceControlService gitcontracts.SourceControlService
+	providerFactory      *gitproviders.ProviderFactory
 }
 
 // NewSiteService creates a new site service
@@ -188,9 +193,14 @@ func (s *SiteService) createSite(ctx context.Context, serverID, teamID, userID s
 		return nil, fiberutil.NewValidationErrorMessage("type", "Invalid site type: %s", req.Type)
 	}
 
-	// Validate source control for non-WordPress/phpMyAdmin sites
-	if req.Type != sitetypes.SiteTypeWordpress && req.Type != sitetypes.SiteTypePhpMyAdmin && req.SourceControlID != nil && *req.SourceControlID != "" {
-		if err := s.validateSourceControl(ctx, teamID, req.SourceControlID, req.SourceControlRepositoriesID); err != nil {
+	if err := s.validateSourceControl(ctx, teamID, req.SourceControlID, req.SourceControlRepositoriesID); err != nil {
+		return nil, err
+	}
+	if len(req.RepositoryDependencyIDs) > 0 && (req.SourceControlID == nil || req.SourceControlRepositoriesID == nil) {
+		return nil, fiberutil.BadRequest("Select a repository before adding dependencies")
+	}
+	for _, id := range req.RepositoryDependencyIDs {
+		if _, err := siteaccess.ResolveDependency(ctx, s.DB(), s.providerFactory, teamID, id, nil); err != nil {
 			return nil, err
 		}
 	}
@@ -245,6 +255,7 @@ func (s *SiteService) createSite(ctx context.Context, serverID, teamID, userID s
 		PhpVersion:                  phpVersion,
 		SourceControlID:             req.SourceControlID,
 		SourceControlRepositoriesID: sourceControlRepoID,
+		RepositoryDependencyIDs:     req.RepositoryDependencyIDs,
 		ConnectedDomainID:           req.ConnectedDomainID,
 	}
 	site.ServerID = serverID
@@ -639,35 +650,17 @@ func (s *SiteService) handleQueueCreation(ctx context.Context, site *models.Site
 
 // validateSourceControl validates source control and repository exist
 func (s *SiteService) validateSourceControl(ctx context.Context, teamID string, sourceControlID *string, repoID *string) error {
-	if sourceControlID == nil || *sourceControlID == "" {
-		return nil
-	}
-
-	// Check source control exists
-	exists, err := s.Repos().Site().SourceControlExists(ctx, *sourceControlID, teamID)
-	if err != nil {
-		return fmt.Errorf("failed to validate source control: %w", err)
-	}
-	if !exists {
-		return fiberutil.NewValidationError(map[string][]string{
-			"source_control_id": {"The selected source control does not exist"},
-		})
-	}
-
-	// Check repository exists if provided
+	site := &models.Site{SourceControlID: sourceControlID}
+	site.TeamID = teamID
 	if repoID != nil && *repoID != "" {
-		exists, err := s.Repos().Site().SourceControlRepositoryExists(ctx, *repoID, teamID)
+		id, err := strconv.ParseUint(*repoID, 10, 64)
 		if err != nil {
-			return fmt.Errorf("failed to validate repository: %w", err)
+			return fiberutil.BadRequest("Invalid repository selection")
 		}
-		if !exists {
-			return fiberutil.NewValidationError(map[string][]string{
-				"source_control_repositories_id": {"The selected repository does not exist"},
-			})
-		}
+		site.SourceControlRepositoriesID = &id
 	}
-
-	return nil
+	_, err := siteaccess.Resolve(ctx, s.DB(), s.providerFactory, site, gitaccess.Clone, nil)
+	return err
 }
 
 // handleDNSRecordCreation creates a DNS A record for a site
@@ -810,6 +803,18 @@ func (s *SiteService) updateSite(ctx context.Context, id, serverID, teamID, user
 	// Conditional field (not for WordPress)
 	if req.RepositoryBranch != nil && site.Type != sitetypes.SiteTypeWordpress && site.Type != sitetypes.SiteTypePhpMyAdmin {
 		updates["repository_branch"] = req.RepositoryBranch
+	}
+
+	if req.RepositoryDependencyIDs != nil {
+		if site.SourceControlID == nil && len(*req.RepositoryDependencyIDs) > 0 {
+			return nil, fiberutil.BadRequest("Select a repository before adding dependencies")
+		}
+		for _, id := range *req.RepositoryDependencyIDs {
+			if _, err := siteaccess.ResolveDependency(ctx, s.DB(), s.providerFactory, teamID, id, nil); err != nil {
+				return nil, err
+			}
+		}
+		updates["repository_dependency_ids"] = dbtype.JSONStringSlice(*req.RepositoryDependencyIDs)
 	}
 
 	// Hook fields with line ending normalization
@@ -1145,6 +1150,8 @@ func originalSiteUpdateFields(site *models.Site, updates map[string]any) map[str
 			original[field] = site.DeploymentReleasesRetention
 		case "queue_deployments":
 			original[field] = site.QueueDeployments
+		case "repository_dependency_ids":
+			original[field] = site.RepositoryDependencyIDs
 		case "repository_branch":
 			original[field] = site.RepositoryBranch
 		case "hook_before_updating_repository":

@@ -19,9 +19,10 @@ const TypeAnalyzeLaravelFeatures = "site:analyze_laravel_features"
 
 // AnalyzeLaravelFeaturesPayload holds data for Laravel feature analysis
 type AnalyzeLaravelFeaturesPayload struct {
-	SiteID   string  `json:"site_id"`
-	ServerID string  `json:"server_id"`
-	UserID   *string `json:"user_id,omitempty"`
+	DeploymentID string  `json:"deployment_id,omitempty"`
+	SiteID       string  `json:"site_id"`
+	ServerID     string  `json:"server_id"`
+	UserID       *string `json:"user_id,omitempty"`
 }
 
 // AnalyzeLaravelFeaturesJob analyzes a Laravel site to detect available features
@@ -62,6 +63,10 @@ func (j *AnalyzeLaravelFeaturesJob) Handle(ctx context.Context) error {
 		return fmt.Errorf("failed to find site: %w", err)
 	}
 	j.site = site
+	deploymentGuard, err := newPostDeploymentCheck(ctx, j.Deps, site, j.Payload.DeploymentID)
+	if err != nil {
+		return err
+	}
 
 	// Only analyze Laravel sites
 	if site.Type != sitetypes.SiteTypeLaravel {
@@ -75,11 +80,17 @@ func (j *AnalyzeLaravelFeaturesJob) Handle(ctx context.Context) error {
 		return fmt.Errorf("failed to find server: %w", err)
 	}
 	j.server = server
+	if j.Payload.DeploymentID != "" && (server.ID != site.ServerID || server.TeamID != site.TeamID) {
+		return fmt.Errorf("server does not belong to the deployment site")
+	}
 
 	j.Deps.Logger.Info().Str("site_id", site.ID).Str("server_id", server.ID).Msg("Analyzing Laravel features")
 
 	// Read composer.json from the site
 	task := tasks.ReadComposerJSON(site.GetApplicationDirectory())
+	if err := deploymentGuard.attach(task); err != nil {
+		return err
+	}
 	result, err := j.Deps.RunTask(server, task).AsUser(site.User).Dispatch(ctx)
 	if err != nil {
 		j.Deps.Logger.Error().Err(err).Str("site_id", site.ID).Msg("Failed to read composer.json")
@@ -104,6 +115,9 @@ func (j *AnalyzeLaravelFeaturesJob) Handle(ctx context.Context) error {
 
 	j.Deps.Logger.Info().Str("site_id", site.ID).Strs("features", detectedFeatures).Msg("Detected Laravel features")
 
+	if err := deploymentGuard.validate(ctx); err != nil {
+		return err
+	}
 	// Always update site's features field, even when empty, to clear stale data
 	featuresJSON, _ := json.Marshal(detectedFeatures)
 	if err := j.Deps.Repos.Site().UpdateFields(ctx, site.ID, map[string]interface{}{

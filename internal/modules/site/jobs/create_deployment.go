@@ -2,7 +2,13 @@ package jobs
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	gitaccess "github.com/kkz6/launch-go/internal/modules/git/access"
+	siteaccess "github.com/kkz6/launch-go/internal/modules/site/gitaccess"
+	"github.com/kkz6/launch-go/internal/pkg/dbtype"
+	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 	"time"
 
 	"github.com/hibiken/asynq"
@@ -22,6 +28,8 @@ type CreateDeploymentPayload struct {
 	GitHash    *string        `json:"git_hash,omitempty"`
 	Branch     *string        `json:"branch,omitempty"`
 	CommitData map[string]any `json:"commit_data,omitempty"`
+	GitAccess  dbtype.JSONMap `json:"git_access,omitempty"`
+	WebhookKey string         `json:"webhook_key,omitempty"`
 }
 
 // CreateDeploymentJob creates a deployment record and dispatches the deploy job
@@ -48,42 +56,66 @@ func (j *CreateDeploymentJob) Handle(ctx context.Context) error {
 
 	j.Deps.Logger.Info().Str("site_id", site.ID).Msg("Creating deployment")
 
-	// Check if there's already an active deployment
-	activeDeployment, err := j.Deps.Repos.Deployment().FindActiveBySite(ctx, site.ID)
-	if err != nil {
-		return fmt.Errorf("failed to check for active deployment: %w", err)
-	}
-
-	// Determine initial status
-	status := sitetypes.DeploymentStatusPending
-	if activeDeployment != nil && site.QueueDeployments {
-		// Queue this deployment if there's already an active one
-		status = sitetypes.DeploymentStatusQueued
-	} else if activeDeployment != nil {
-		// Can't start a new deployment while one is active and queuing is disabled
-		return fmt.Errorf("deployment already in progress")
-	}
-
-	// Extract git hash from commit data if not explicitly provided
-	gitHash := j.Payload.GitHash
-	if gitHash == nil && j.Payload.CommitData != nil {
-		if sha, ok := j.Payload.CommitData["sha"].(string); ok && sha != "" {
-			gitHash = &sha
+	deployment := &models.Deployment{}
+	existing := false
+	err = j.Deps.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// Serialize this site's intent creation, including queue redelivery.
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(site, "id = ?", site.ID).Error; err != nil {
+			return err
 		}
+		if j.Payload.Branch != nil && *j.Payload.Branch != site.GetRepositoryBranch() {
+			return fmt.Errorf("deployment branch changed")
+		}
+		if j.Payload.WebhookKey != "" {
+			findErr := tx.Where("webhook_key = ?", j.Payload.WebhookKey).First(deployment).Error
+			if findErr == nil {
+				if deployment.SiteID != site.ID {
+					return fmt.Errorf("deployment intent mismatch")
+				}
+				existing = true
+				_, err := siteaccess.ForDeployment(ctx, tx, j.Deps.ProviderFactory, site, deployment, gitaccess.Clone)
+				return err
+			}
+			if !errors.Is(findErr, gorm.ErrRecordNotFound) {
+				return findErr
+			}
+		}
+		deployment.SiteID, deployment.TeamID = site.ID, site.TeamID
+		deployment.GitAccess = j.Payload.GitAccess
+		if _, err := siteaccess.ForDeployment(ctx, tx, j.Deps.ProviderFactory, site, deployment, gitaccess.Clone); err != nil {
+			return err
+		}
+		var active int64
+		if err := tx.Model(&models.Deployment{}).Where("site_id = ? AND status IN ?", site.ID, []sitetypes.DeploymentStatus{sitetypes.DeploymentStatusPending, sitetypes.DeploymentStatusInstalling}).Count(&active).Error; err != nil {
+			return err
+		}
+		deployment.Status = sitetypes.DeploymentStatusPending
+		if active > 0 {
+			if !site.QueueDeployments {
+				return fmt.Errorf("deployment already in progress")
+			}
+			deployment.Status = sitetypes.DeploymentStatusQueued
+		}
+		deployment.GitHash = j.Payload.GitHash
+		if deployment.GitHash == nil {
+			if sha, ok := j.Payload.CommitData["sha"].(string); ok && sha != "" {
+				deployment.GitHash = &sha
+			}
+		}
+		deployment.CommitData = j.Payload.CommitData
+		deployment.UserID = j.Payload.UserID
+		if j.Payload.WebhookKey != "" {
+			deployment.WebhookKey = &j.Payload.WebhookKey
+		}
+		return tx.Create(deployment).Error
+	})
+	if err != nil {
+		return err
 	}
-
-	// Create deployment record
-	deployment := &models.Deployment{
-		Status:     status,
-		GitHash:    gitHash,
-		CommitData: j.Payload.CommitData,
+	if existing && deployment.Status != sitetypes.DeploymentStatusPending {
+		return nil
 	}
-	deployment.SiteID = site.ID
-	deployment.TeamID = site.TeamID
-
-	if err := j.Deps.Repos.Deployment().Create(ctx, deployment); err != nil {
-		return fmt.Errorf("failed to create deployment: %w", err)
-	}
+	status := deployment.Status
 
 	j.Deps.Logger.Info().
 		Str("site_id", site.ID).
@@ -95,6 +127,23 @@ func (j *CreateDeploymentJob) Handle(ctx context.Context) error {
 	if status == sitetypes.DeploymentStatusQueued {
 		j.Deps.Logger.Info().Str("deployment_id", deployment.ID).Msg("Deployment queued behind active deployment")
 		return nil
+	}
+
+	// A durable webhook intent retains its pending row during a queue outage.
+	// Redelivery uses the same row and task ID; it never creates another deploy.
+	if j.Payload.WebhookKey != "" {
+		task, err := deployments.NewTask(site.ID, deployment.ID, stringPtrValue(j.Payload.UserID), nil, site.ZeroDowntimeDeployment)
+		if err != nil {
+			return fmt.Errorf("failed to create deploy task: %w", err)
+		}
+		if j.Deps.Queue == nil {
+			return fmt.Errorf("deployment queue unavailable")
+		}
+		_, err = j.Deps.Queue.Enqueue(task, asynq.ProcessIn(time.Second))
+		if errors.Is(err, asynq.ErrTaskIDConflict) || errors.Is(err, asynq.ErrDuplicateTask) {
+			return nil
+		}
+		return err
 	}
 
 	// Add a small delay to ensure DB transaction is committed

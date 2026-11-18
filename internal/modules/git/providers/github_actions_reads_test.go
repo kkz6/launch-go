@@ -1,7 +1,6 @@
 package providers
 
 import (
-	"context"
 	"testing"
 	"time"
 
@@ -14,7 +13,7 @@ func TestListWorkflowRunJobs_ParsesJobsAndSteps(t *testing.T) {
 	defer f.Close()
 	p := testProvider(t, f.srv.URL)
 
-	jobs, err := p.ListWorkflowRunJobs(context.Background(), "inst-1", "o", "r", "5")
+	jobs, err := p.ListWorkflowRunJobs(testRepositoryContext(), "inst-1", "o", "r", "5")
 	require.NoError(t, err)
 	require.Len(t, jobs, 1)
 	assert.Equal(t, "build-and-deploy", jobs[0].Name)
@@ -30,7 +29,7 @@ func TestListWorkflowRunJobs_ParsesJobsAndSteps(t *testing.T) {
 
 func TestListWorkflowRunJobs_RequiresRunID(t *testing.T) {
 	p := testProvider(t, "http://example.invalid")
-	_, err := p.ListWorkflowRunJobs(context.Background(), "inst-1", "o", "r", "")
+	_, err := p.ListWorkflowRunJobs(testRepositoryContext(), "inst-1", "o", "r", "")
 	require.Error(t, err)
 }
 
@@ -42,7 +41,7 @@ func TestFindLatestWorkflowRun_PicksRunAtOrAfterSince(t *testing.T) {
 	// The fake's run is created 2026-06-09T00:00:00Z. A dispatch the day
 	// before is comfortably before it → the run is matched.
 	since := time.Date(2026, 6, 8, 0, 0, 0, 0, time.UTC)
-	run, err := p.FindLatestWorkflowRun(context.Background(), "inst-1", "o", "r", "launch-deploy-x.yml", "main", since)
+	run, err := p.FindLatestWorkflowRun(testRepositoryContext(), "inst-1", "o", "r", "launch-deploy-x.yml", "main", since)
 	require.NoError(t, err)
 	require.NotNil(t, run)
 	assert.Equal(t, int64(12345), run.ID)
@@ -58,7 +57,7 @@ func TestFindLatestWorkflowRun_IgnoresRunsBeforeSince(t *testing.T) {
 	// A dispatch well after the fake's run (even past the 30s skew slack)
 	// → nothing matches.
 	since := time.Date(2026, 6, 10, 0, 0, 0, 0, time.UTC)
-	run, err := p.FindLatestWorkflowRun(context.Background(), "inst-1", "o", "r", "launch-deploy-x.yml", "main", since)
+	run, err := p.FindLatestWorkflowRun(testRepositoryContext(), "inst-1", "o", "r", "launch-deploy-x.yml", "main", since)
 	require.NoError(t, err)
 	assert.Nil(t, run)
 }

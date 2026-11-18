@@ -1,11 +1,23 @@
 package jobs
 
 import (
+	"context"
 	"strings"
 	"testing"
 
 	gittypes "github.com/kkz6/launch-go/internal/modules/git/types"
+	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 )
+
+func TestQueuedPublicCloneRejectsAmbientSSHAndLocalRepositories(t *testing.T) {
+	deps := &JobDeps{Deps: &pkgjobs.Deps{}}
+	for _, repository := range []string{"ssh://github.com/org/private.git", "file:///srv/private", "/srv/private", "ext::helper", "https://token@github.com/org/private.git"} {
+		_, _, err := deps.resolveCloneCredentials(context.Background(), "account-a", map[string]any{}, repository, nil, nil)
+		if err == nil {
+			t.Errorf("accepted private credential fallback %q", repository)
+		}
+	}
+}
 
 func TestInjectTokenIntoCloneURL_GitHubHTTPS(t *testing.T) {
 	got, err := injectTokenIntoCloneURL(
@@ -116,33 +128,10 @@ func TestInjectTokenIntoCloneURL_RejectsMalformed(t *testing.T) {
 	}
 }
 
-func TestExtractAccessToken_Present(t *testing.T) {
-	jsonStr := `{"access_token":"ghp_secret","other":"value"}`
-	got := extractAccessToken(&jsonStr)
-	if got != "ghp_secret" {
-		t.Errorf("got %q, want %q", got, "ghp_secret")
+func TestGitHubCredentialRejectsForeignHostsAndEmbeddedCredentials(t *testing.T) {
+	for _, repo := range []string{"https://evil.example/acme/api.git", "https://github.com.evil.example/acme/api.git", "https://github.com:443/acme/api.git", "https://username:password@github.com/acme/api.git", "https://github.com/acme/api.git?redirect=evil", "https://github.com/acme/api.git#fragment"} {
+		if _, err := injectTokenIntoCloneURL(repo, gittypes.GitProviderGitHub, "private-token"); err == nil {
+			t.Errorf("credential accepted unsafe repository %q", repo)
+		}
 	}
 }
-
-func TestExtractAccessToken_AbsentOrInvalid(t *testing.T) {
-	cases := []struct {
-		name string
-		in   *string
-	}{
-		{"nil", nil},
-		{"empty", strPtrLocal("")},
-		{"no field", strPtrLocal(`{"other":"x"}`)},
-		{"malformed", strPtrLocal(`{"access_token`)},
-		// Non-string access_token shouldn't panic — should return empty.
-		{"wrong type", strPtrLocal(`{"access_token":123}`)},
-	}
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			if got := extractAccessToken(c.in); got != "" {
-				t.Errorf("got %q, want empty", got)
-			}
-		})
-	}
-}
-
-func strPtrLocal(s string) *string { return &s }

@@ -8,12 +8,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/kkz6/launch-go/internal/modules/docker/gitaccess"
+	"github.com/kkz6/launch-go/internal/modules/git/access"
+	"github.com/kkz6/launch-go/internal/pkg/util"
 	"strings"
 	"time"
 
 	"github.com/hibiken/asynq"
 	gitcontracts "github.com/kkz6/launch-go/internal/modules/git/contracts"
-	gitmodels "github.com/kkz6/launch-go/internal/modules/git/models"
 	gitproviders "github.com/kkz6/launch-go/internal/modules/git/providers"
 	gittypes "github.com/kkz6/launch-go/internal/modules/git/types"
 
@@ -38,8 +40,10 @@ const TypeGHABootstrapWorkflow = "docker:gha_bootstrap_workflow"
 // same job for create + re-sync + rotate paths; the RotateToken flag
 // distinguishes them.
 type GHABootstrapWorkflowPayload struct {
-	WorkloadKind string `json:"workload_kind"` // "application" | "compose"
-	WorkloadID   string `json:"workload_id"`
+	BindingID    string           `json:"binding_id"`
+	GitAccess    *access.Snapshot `json:"git_access,omitempty"`
+	WorkloadKind string           `json:"workload_kind"` // "application" | "compose"
+	WorkloadID   string           `json:"workload_id"`
 	// RotateToken=true mints a fresh deploy token, hashes it, returns
 	// the raw value via the result-channel (UI subtab grabs it from
 	// the toast). false leaves the existing hash intact — used for
@@ -78,11 +82,11 @@ const ghaBootstrapDedupTTL = 2 * time.Minute
 // De-duplicated per workload (Unique, self-clearing) so spam-clicking "Re-sync"
 // doesn't queue duplicate jobs, while still allowing a fresh re-sync once the
 // previous one finishes.
-func NewGHABootstrapWorkflowTask(kind, id string, rotate bool, baseURL string) (*asynq.Task, error) {
+func NewGHABootstrapWorkflowTask(kind, id string, rotate bool, baseURL string, snapshot ...*access.Snapshot) (*asynq.Task, error) {
 	return pkgjobs.Task(
 		TypeGHABootstrapWorkflow,
 		GHABootstrapWorkflowPayload{
-			WorkloadKind:  kind,
+			BindingID: util.NewULID(), GitAccess: firstSnapshot(snapshot), WorkloadKind: kind,
 			WorkloadID:    id,
 			RotateToken:   rotate,
 			LaunchBaseURL: baseURL,
@@ -110,14 +114,22 @@ func (j *GHABootstrapWorkflowJob) Handle(ctx context.Context) error {
 		return errors.New("gha bootstrap: git provider factory not wired (set on docker module at boot)")
 	}
 
-	switch j.Payload.WorkloadKind {
-	case "application":
-		return j.handleApplication(ctx)
-	case "compose":
-		return j.handleCompose(ctx)
-	default:
-		return fmt.Errorf("gha bootstrap: unsupported workload_kind %q", j.Payload.WorkloadKind)
-	}
+	return gitaccess.WithWorkloadLock(ctx, j.Deps.DB, j.Payload.WorkloadKind, j.Payload.WorkloadID, func(connection *gorm.DB) error {
+		local := *j
+		dependencies := *j.Deps
+		shared := *j.Deps.Deps
+		shared.DB = connection
+		dependencies.Deps = &shared
+		local.Deps = &dependencies
+		switch local.Payload.WorkloadKind {
+		case "application":
+			return local.handleApplication(ctx)
+		case "compose":
+			return local.handleCompose(ctx)
+		default:
+			return fmt.Errorf("gha bootstrap: unsupported workload_kind %q", local.Payload.WorkloadKind)
+		}
+	})
 }
 
 func (j *GHABootstrapWorkflowJob) handleApplication(ctx context.Context) error {
@@ -129,10 +141,32 @@ func (j *GHABootstrapWorkflowJob) handleApplication(ctx context.Context) error {
 		return fmt.Errorf("gha bootstrap: application %s is not configured for github_actions", app.ID)
 	}
 
+	resolved, err := gitaccess.Resolve(ctx, j.Deps.DB, j.Deps.GitProviders, app.TeamID, app.SourceConfig, access.ActionsBootstrap, j.Payload.GitAccess, true)
+	if err != nil {
+		return err
+	}
+	if resolved == nil {
+		return errors.New("GitHub Actions requires a selected repository")
+	}
+	ctx = resolved.Context(ctx)
+	oldSnapshot, _ := gitaccess.BootstrapSnapshot(app.SourceConfig)
+	newSnapshot := resolved.Snapshot()
+	authorizationChanged := oldSnapshot == nil || *oldSnapshot != newSnapshot
 	cfg, err := parseGHASourceConfig(app.SourceConfig)
 	if err != nil {
 		return fmt.Errorf("gha bootstrap: application %s: %w", app.ID, err)
 	}
+	cfg.InstallationID = resolved.InstallationID
+	names := strings.Split(resolved.Repository.FullName, "/")
+	cfg.Owner, cfg.Repo = names[0], names[1]
+	if j.Payload.BindingID == "" {
+		return errors.New("workflow authorization binding missing; re-sync workflow")
+	}
+	cfg.Generation = workflowBindingNamespace(newSnapshot, j.Payload.WorkloadID, j.Payload.BindingID)
+	data, _ := json.Marshal(app.SourceConfig["gha_cleanup_manifest_ids"])
+	_ = json.Unmarshal(data, &cfg.CleanupManifestIDs)
+	cfg.BuildSecretPrefix = "LAUNCH_BUILD_" + cfg.Generation + "_"
+	cfg.WebhookVariable = "LAUNCH_" + strings.ToUpper(j.Payload.WorkloadID) + "_" + cfg.Generation + "_URL"
 	// Carry the chosen builder into the workflow so it's honoured rather
 	// than auto-detected. Empty (nil) = auto-detect by Dockerfile
 	// presence.
@@ -155,8 +189,8 @@ func (j *GHABootstrapWorkflowJob) handleApplication(ctx context.Context) error {
 	// Namespace the deploy-token secret and the workflow file per application so
 	// multiple apps can share one repo without clobbering each other's token /
 	// workflow (which caused cross-app deploy 401s).
-	cfg.DeployTokenSecret = appDeployTokenSecretName(app.ID)
-	perAppWorkflowPath := appWorkflowPath(app.ID)
+	cfg.DeployTokenSecret = appDeployTokenSecretName(app.ID) + "_" + cfg.Generation
+	perAppWorkflowPath := strings.TrimSuffix(appWorkflowPath(app.ID), ".yml") + "-" + strings.ToLower(cfg.Generation) + ".yml"
 	if cfg.WorkflowPath != perAppWorkflowPath {
 		// First time on the per-app path (new app, or migrating off the old
 		// shared launch-deploy.yml): the stored SHA refers to the old file, so
@@ -171,7 +205,7 @@ func (j *GHABootstrapWorkflowJob) handleApplication(ctx context.Context) error {
 	// its hash is stored), so force a fresh token mint to populate the new
 	// secret — otherwise the per-app workflow references an empty secret → 401.
 	lastPushedSecret := stringAt(app.SourceConfig, "gha_deploy_secret_name")
-	forceTokenPush := lastPushedSecret != cfg.DeployTokenSecret
+	forceTokenPush := authorizationChanged || lastPushedSecret != cfg.DeployTokenSecret
 
 	rawToken, tokenHash, err := j.mintTokenIfNeeded(app.GHADeployTokenHash, forceTokenPush)
 	if err != nil {
@@ -200,9 +234,10 @@ func (j *GHABootstrapWorkflowJob) handleApplication(ctx context.Context) error {
 	// whole column dropped auto_deploy. A jsonb `||` merge touches only the
 	// keys below and leaves auto_deploy (and anything else) intact.
 	scMerge, err := sourceConfigMergeExpr(map[string]any{
-		"gha_workflow_sha":       cfg.LastCommitSHA,
+		"gha_access":             newSnapshot,
 		"gha_workflow_path":      cfg.WorkflowPath,
 		"gha_deploy_secret_name": cfg.DeployTokenSecret,
+		"gha_workflow_sha":       cfg.LastCommitSHA,
 		"gha_image_repository":   "ghcr.io/" + cfg.ImagePackage,
 		// Success clears any previous failure state so a retry after the
 		// customer grants permissions flips the banner off.
@@ -213,6 +248,9 @@ func (j *GHABootstrapWorkflowJob) handleApplication(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("gha bootstrap: build source_config merge: %w", err)
 	}
+	if err := resolved.Validate(ctx); err != nil {
+		return err
+	}
 	updates := map[string]any{"source_config": scMerge}
 	if tokenHash != "" {
 		updates["gha_deploy_token_hash"] = tokenHash
@@ -220,6 +258,7 @@ func (j *GHABootstrapWorkflowJob) handleApplication(ctx context.Context) error {
 	if err := j.Deps.DB.WithContext(ctx).Model(&app).Updates(updates).Error; err != nil {
 		return fmt.Errorf("gha bootstrap: persist application %s: %w", app.ID, err)
 	}
+	j.queueReplacedWorkflowCleanup(ctx, cfg)
 
 	j.Deps.Logger.Info().
 		Str("application_id", app.ID).
@@ -556,10 +595,32 @@ func (j *GHABootstrapWorkflowJob) handleCompose(ctx context.Context) error {
 		return fmt.Errorf("gha bootstrap: compose %s is not configured for github_actions", compose.ID)
 	}
 
+	resolved, err := gitaccess.Resolve(ctx, j.Deps.DB, j.Deps.GitProviders, compose.TeamID, compose.SourceConfig, access.ActionsBootstrap, j.Payload.GitAccess, true)
+	if err != nil {
+		return err
+	}
+	if resolved == nil {
+		return errors.New("GitHub Actions requires a selected repository")
+	}
+	ctx = resolved.Context(ctx)
+	oldSnapshot, _ := gitaccess.BootstrapSnapshot(compose.SourceConfig)
+	newSnapshot := resolved.Snapshot()
+	authorizationChanged := oldSnapshot == nil || *oldSnapshot != newSnapshot
 	cfg, err := parseGHASourceConfig(compose.SourceConfig)
 	if err != nil {
 		return fmt.Errorf("gha bootstrap: compose %s: %w", compose.ID, err)
 	}
+	cfg.InstallationID = resolved.InstallationID
+	names := strings.Split(resolved.Repository.FullName, "/")
+	cfg.Owner, cfg.Repo = names[0], names[1]
+	if j.Payload.BindingID == "" {
+		return errors.New("workflow authorization binding missing; re-sync workflow")
+	}
+	cfg.Generation = workflowBindingNamespace(newSnapshot, j.Payload.WorkloadID, j.Payload.BindingID)
+	data, _ := json.Marshal(compose.SourceConfig["gha_cleanup_manifest_ids"])
+	_ = json.Unmarshal(data, &cfg.CleanupManifestIDs)
+	cfg.BuildSecretPrefix = "LAUNCH_BUILD_" + cfg.Generation + "_"
+	cfg.WebhookVariable = "LAUNCH_" + strings.ToUpper(j.Payload.WorkloadID) + "_" + cfg.Generation + "_URL"
 
 	// Namespace the GHCR image tag per compose stack. The compose template
 	// already keys the tag on the service name. Give the whole stack its
@@ -571,7 +632,9 @@ func (j *GHABootstrapWorkflowJob) handleCompose(ctx context.Context) error {
 
 	// Compose keeps the shared LAUNCH_DEPLOY_TOKEN secret (no per-app
 	// namespacing yet), so no forced re-push.
-	rawToken, tokenHash, err := j.mintTokenIfNeeded(compose.GHADeployTokenHash, false)
+	cfg.DeployTokenSecret = "LAUNCH_COMPOSE_" + strings.ToUpper(compose.ID) + "_" + cfg.Generation + "_TOKEN"
+	cfg.WorkflowPath = ".github/workflows/launch-compose-" + strings.ToLower(compose.ID) + "-" + strings.ToLower(cfg.Generation) + ".yml"
+	rawToken, tokenHash, err := j.mintTokenIfNeeded(compose.GHADeployTokenHash, authorizationChanged || stringAt(compose.SourceConfig, "gha_deploy_secret_name") != cfg.DeployTokenSecret)
 	if err != nil {
 		return err
 	}
@@ -585,13 +648,19 @@ func (j *GHABootstrapWorkflowJob) handleCompose(ctx context.Context) error {
 	// Merge only these keys (jsonb ||) so the re-sync can't clobber a
 	// concurrently-set auto_deploy — same fix as the application path.
 	scMerge, err := sourceConfigMergeExpr(map[string]any{
-		"gha_workflow_sha":     cfg.LastCommitSHA,
-		"gha_image_repository": "ghcr.io/" + cfg.ImagePackage,
-		"gha_install_status":   string(dockertypes.GHAInstallStatusOK),
-		"gha_pending_changes":  0,
+		"gha_access":             newSnapshot,
+		"gha_workflow_path":      cfg.WorkflowPath,
+		"gha_deploy_secret_name": cfg.DeployTokenSecret,
+		"gha_workflow_sha":       cfg.LastCommitSHA,
+		"gha_image_repository":   "ghcr.io/" + cfg.ImagePackage,
+		"gha_install_status":     string(dockertypes.GHAInstallStatusOK),
+		"gha_pending_changes":    0,
 	})
 	if err != nil {
 		return fmt.Errorf("gha bootstrap: build source_config merge: %w", err)
+	}
+	if err := resolved.Validate(ctx); err != nil {
+		return err
 	}
 	updates := map[string]any{"source_config": scMerge}
 	if tokenHash != "" {
@@ -600,6 +669,7 @@ func (j *GHABootstrapWorkflowJob) handleCompose(ctx context.Context) error {
 	if err := j.Deps.DB.WithContext(ctx).Model(&compose).Updates(updates).Error; err != nil {
 		return fmt.Errorf("gha bootstrap: persist compose %s: %w", compose.ID, err)
 	}
+	j.queueReplacedWorkflowCleanup(ctx, cfg)
 
 	j.Deps.Logger.Info().
 		Str("compose_id", compose.ID).
@@ -621,15 +691,20 @@ func (j *GHABootstrapWorkflowJob) handleCompose(ctx context.Context) error {
 // docker_applications / docker_composes — this struct just gives us
 // type safety while reading it out.
 type ghaSourceConfig struct {
-	SourceControlID string
-	InstallationID  string
-	Owner           string
-	Repo            string
-	Branch          string
-	DockerfilePath  string
-	ComposeFilePath string
-	WorkflowPath    string
-	ExistingSHA     string
+	CleanupManifestID  string
+	CleanupManifestIDs []string
+	Generation         string
+	BuildSecretPrefix  string
+	WebhookVariable    string
+	SourceControlID    string
+	InstallationID     string
+	Owner              string
+	Repo               string
+	Branch             string
+	DockerfilePath     string
+	ComposeFilePath    string
+	WorkflowPath       string
+	ExistingSHA        string
 	// DeployTokenSecret is the GitHub repo-secret NAME that holds this
 	// workload's deploy token. Namespaced per application so multiple apps
 	// can share one repo without overwriting each other's token (empty →
@@ -896,7 +971,7 @@ func sourceConfigMergeExpr(patch map[string]any) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	return gorm.Expr("COALESCE(source_config, '{}'::jsonb) || ?::jsonb", string(b)), nil
+	return gorm.Expr("COALESCE(source_config::jsonb, '{}'::jsonb) || ?::jsonb", string(b)), nil
 }
 
 // mintTokenIfNeeded generates a fresh deploy token + sha256 hash when rotation
@@ -944,16 +1019,52 @@ func (j *GHABootstrapWorkflowJob) bootstrap(
 	workloadKind, workloadID string,
 	buildSecrets []buildSecretKV,
 ) error {
-	// Provider lookup: the source_controls row's installation_id is
-	// what GetInstallationToken needs. We look up the installation
-	// from the database via the source_control_id stored in
-	// source_config.
-	installationID, err := j.resolveInstallationID(ctx, cfg.SourceControlID)
+	installationID := cfg.InstallationID
+	if installationID == "" {
+		return errors.New("repository authorization required")
+	}
+
+	secretNames := make([]string, 0, len(buildSecrets))
+	for _, secret := range buildSecrets {
+		secretNames = append(secretNames, secret.Name)
+	}
+	workflow, err := j.renderWorkflow(cfg, workloadKind, workloadID, secretNames)
 	if err != nil {
 		return err
 	}
-	cfg.InstallationID = installationID
-
+	digest := sha256.Sum256([]byte(workflow))
+	resources := []access.Resource{{Kind: "workflow", Name: cfg.WorkflowPath, Branch: cfg.Branch, ContentSHA256: hex.EncodeToString(digest[:])}, {Kind: "secret", Name: cfg.DeployTokenSecret}, {Kind: "variable", Name: cfg.WebhookVariable}}
+	for _, secret := range buildSecrets {
+		resources = append(resources, access.Resource{Kind: "secret", Name: cfg.BuildSecretPrefix + secret.Name})
+	}
+	if j.Payload.GitAccess == nil {
+		return errors.New("workflow repository snapshot required")
+	}
+	manifestID, err := access.RegisterCleanup(ctx, j.Deps.DB, cfg.SourceControlID, j.Payload.GitAccess.RepositoryID, *j.Payload.GitAccess, resources)
+	if err != nil {
+		return err
+	}
+	cfg.CleanupManifestID = manifestID
+	found := false
+	for _, id := range cfg.CleanupManifestIDs {
+		if id == manifestID {
+			found = true
+		}
+	}
+	if !found {
+		cfg.CleanupManifestIDs = append(cfg.CleanupManifestIDs, manifestID)
+	}
+	merge, err := sourceConfigMergeExpr(map[string]any{"gha_cleanup_manifest_ids": cfg.CleanupManifestIDs})
+	if err != nil {
+		return err
+	}
+	var model any = &dockermodels.Application{}
+	if workloadKind == "compose" {
+		model = &dockermodels.Compose{}
+	}
+	if err = j.Deps.DB.WithContext(ctx).Model(model).Where("id = ?", workloadID).Update("source_config", merge).Error; err != nil {
+		return err
+	}
 	gh, err := j.githubProvider()
 	if err != nil {
 		return err
@@ -986,44 +1097,23 @@ func (j *GHABootstrapWorkflowJob) bootstrap(
 	// customer sees the missing one as a build-time failure when
 	// they next push. The alternative (failing the whole bootstrap)
 	// would block all builds for one transient hiccup.
-	pushedSecretNames := make([]string, 0, len(buildSecrets))
-	for _, s := range buildSecrets {
-		repoSecretName := "LAUNCH_BUILD_" + s.Name
-		if err := gh.PutActionsSecret(ctx, installationID, cfg.Owner, cfg.Repo, repoSecretName, s.Value); err != nil {
-			j.Deps.Logger.Warn().Err(err).
-				Str("workload_kind", workloadKind).
-				Str("workload_id", workloadID).
-				Str("repo_secret", repoSecretName).
-				Msg("gha bootstrap: failed to push build secret; excluding from workflow")
-			continue
+	for _, secret := range buildSecrets {
+		if err := gh.PutActionsSecret(ctx, installationID, cfg.Owner, cfg.Repo, cfg.BuildSecretPrefix+secret.Name, secret.Value); err != nil {
+			return fmt.Errorf("put build secret: %w", err)
 		}
-		pushedSecretNames = append(pushedSecretNames, s.Name)
 	}
 
-	// Variables — overwrite each run (PATCH if exists). Cheap and
-	// avoids drift if someone manually edits them in GH's UI.
-	idVarName := "LAUNCH_APP_ID"
-	if workloadKind == "compose" {
-		idVarName = "LAUNCH_COMPOSE_ID"
-	}
-	if err := gh.PutActionsVariable(ctx, installationID, cfg.Owner, cfg.Repo, idVarName, workloadID); err != nil {
-		return fmt.Errorf("put %s variable: %w", idVarName, err)
-	}
-	if err := gh.PutActionsVariable(ctx, installationID, cfg.Owner, cfg.Repo, "LAUNCH_WEBHOOK_URL", j.Payload.LaunchBaseURL); err != nil {
-		return fmt.Errorf("put LAUNCH_WEBHOOK_URL variable: %w", err)
+	if err := gh.PutActionsVariable(ctx, installationID, cfg.Owner, cfg.Repo, cfg.WebhookVariable, j.Payload.LaunchBaseURL); err != nil {
+		return fmt.Errorf("put webhook variable: %w", err)
 	}
 
 	// Render + commit the workflow YAML. PutContents returns the new
 	// commit SHA which we stash on cfg for the caller to persist.
-	yaml, err := j.renderWorkflow(cfg, workloadKind, workloadID, pushedSecretNames)
-	if err != nil {
-		return err
-	}
 	commitSHA, err := gh.PutContents(
 		ctx,
 		installationID, cfg.Owner, cfg.Repo,
 		cfg.WorkflowPath,
-		yaml,
+		workflow,
 		"Configure Launch deploy workflow",
 		cfg.ExistingSHA,
 		cfg.Branch,
@@ -1054,18 +1144,23 @@ func (j *GHABootstrapWorkflowJob) renderWorkflow(
 			Platform:          cfg.Platform,
 			DeployTokenSecret: cfg.DeployTokenSecret,
 			BuildSecretNames:  buildSecretNames,
+			BuildSecretPrefix: cfg.BuildSecretPrefix,
+			WebhookVariable:   cfg.WebhookVariable,
 			AutoDeploy:        cfg.AutoDeploy,
 		})
 	case "compose":
 		return dockertasks.RenderComposeWorkflow(dockertasks.ComposeWorkflowData{
-			Branch:           cfg.Branch,
-			ComposeFilePath:  cfg.ComposeFilePath,
-			LaunchBaseURL:    j.Payload.LaunchBaseURL,
-			ComposeID:        id,
-			ImagePackage:     cfg.ImagePackage,
-			Platform:         cfg.Platform,
-			BuildSecretNames: buildSecretNames,
-			AutoDeploy:       cfg.AutoDeploy,
+			Branch:            cfg.Branch,
+			ComposeFilePath:   cfg.ComposeFilePath,
+			LaunchBaseURL:     j.Payload.LaunchBaseURL,
+			ComposeID:         id,
+			ImagePackage:      cfg.ImagePackage,
+			Platform:          cfg.Platform,
+			BuildSecretNames:  buildSecretNames,
+			BuildSecretPrefix: cfg.BuildSecretPrefix,
+			WebhookVariable:   cfg.WebhookVariable,
+			DeployTokenSecret: cfg.DeployTokenSecret,
+			AutoDeploy:        cfg.AutoDeploy,
 		})
 	default:
 		return "", fmt.Errorf("renderWorkflow: unsupported workload kind %q", kind)
@@ -1117,24 +1212,6 @@ func (j *GHABootstrapWorkflowJob) loadComposeBuildSecrets(ctx context.Context, c
 	return out
 }
 
-// resolveInstallationID reads the source_controls row to find the
-// GitHub App installation we should authenticate as for repo writes.
-// Doing this in the job (not the service) keeps the source-control
-// lookup off the request path; the bootstrap is one-shot anyway.
-func (j *GHABootstrapWorkflowJob) resolveInstallationID(ctx context.Context, sourceControlID string) (string, error) {
-	var sc gitmodels.SourceControl
-	if err := j.Deps.DB.WithContext(ctx).Where("id = ?", sourceControlID).First(&sc).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return "", fmt.Errorf("source_control %s not found", sourceControlID)
-		}
-		return "", err
-	}
-	if sc.InstallationID == nil || *sc.InstallationID == "" {
-		return "", fmt.Errorf("source_control %s has no installation_id (GitHub App not installed?)", sourceControlID)
-	}
-	return *sc.InstallationID, nil
-}
-
 func (j *GHABootstrapWorkflowJob) githubProvider() (*gitproviders.GitHubProvider, error) {
 	provider, err := j.Deps.GitProviders.GetProvider(gitproviders.GitProviderType(gittypes.GitProviderGitHub))
 	if err != nil {
@@ -1151,3 +1228,30 @@ func (j *GHABootstrapWorkflowJob) githubProvider() (*gitproviders.GitHubProvider
 // dependency that other bits of the codebase might expect from a
 // source-control row carrier. Keeps refactors honest.
 var _ = gitcontracts.SourceControlService(nil)
+
+func (j *GHABootstrapWorkflowJob) queueReplacedWorkflowCleanup(ctx context.Context, cfg *ghaSourceConfig) {
+	for _, id := range cfg.CleanupManifestIDs {
+		if id == cfg.CleanupManifestID {
+			continue
+		}
+		if err := access.ActivateCleanupManifest(ctx, j.Deps.DB, id); err != nil {
+			j.Deps.Logger.Warn().Err(err).Msg("workflow cleanup activation failed")
+			continue
+		}
+		task, err := NewGHACleanupTask(id)
+		if err != nil {
+			continue
+		}
+		if j.Deps.Queue != nil {
+			if _, err = j.Deps.Queue.Enqueue(task); err != nil {
+				j.Deps.Logger.Warn().Err(err).Msg("workflow cleanup enqueue failed")
+			}
+		}
+	}
+}
+
+func workflowBindingNamespace(snapshot access.Snapshot, workloadID, bindingID string) string {
+	data, _ := json.Marshal(snapshot)
+	sum := sha256.Sum256(append(data, []byte("/"+workloadID+"/"+bindingID)...))
+	return strings.ToUpper(hex.EncodeToString(sum[:8]))
+}

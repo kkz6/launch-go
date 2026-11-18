@@ -9,12 +9,14 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
+	"github.com/kkz6/launch-go/internal/modules/git/internal/capability"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -89,7 +91,7 @@ func (f *fakeGitHub) serve(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/access_tokens"):
 		w.WriteHeader(http.StatusCreated)
-		_ = json.NewEncoder(w).Encode(map[string]any{"token": "ghs_fake_installation_token"})
+		_ = json.NewEncoder(w).Encode(map[string]any{"token": "ghs_fake_installation_token", "expires_at": time.Now().Add(time.Hour).UTC().Format(time.RFC3339)})
 	case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/deployments"):
 		status := f.deploymentStatus
 		if status == 0 {
@@ -256,7 +258,7 @@ func TestCreateDeployment_UsesCommitAsRefAndBypassesRequiredContexts(t *testing.
 	installationID := "100"
 	p.SetSourceControl(&SourceControlData{InstallationID: &installationID})
 
-	result, err := p.CreateDeployment(context.Background(), &DeploymentInfo{
+	result, err := p.CreateDeployment(testRepositoryContext(), &DeploymentInfo{
 		ServerID:     "server-1",
 		SiteID:       "site-1",
 		DeploymentID: "deployment-1",
@@ -317,7 +319,7 @@ func TestCreateDeploymentPreservesProviderErrors(t *testing.T) {
 	installationID := "100"
 	p.SetSourceControl(&SourceControlData{InstallationID: &installationID})
 
-	_, err := p.CreateDeployment(context.Background(), &DeploymentInfo{RepoFullName: "kkz6/test-repo", Branch: "missing"})
+	_, err := p.CreateDeployment(testRepositoryContext(), &DeploymentInfo{RepoFullName: "kkz6/test-repo", Branch: "missing"})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "status 422")
 	assert.Contains(t, err.Error(), "invalid ref")
@@ -332,7 +334,7 @@ func TestCreateDeploymentReturnsResultWhenInitialStatusFails(t *testing.T) {
 	installationID := "100"
 	p.SetSourceControl(&SourceControlData{InstallationID: &installationID})
 
-	result, err := p.CreateDeployment(context.Background(), &DeploymentInfo{RepoFullName: "kkz6/test-repo", Branch: "main"})
+	result, err := p.CreateDeployment(testRepositoryContext(), &DeploymentInfo{RepoFullName: "kkz6/test-repo", Branch: "main"})
 	require.Error(t, err)
 	require.NotNil(t, result)
 	assert.Equal(t, "42", result.ID)
@@ -348,7 +350,7 @@ func TestCreateDeploymentAllowsMissingStatusesURL(t *testing.T) {
 	installationID := "100"
 	p.SetSourceControl(&SourceControlData{InstallationID: &installationID})
 
-	result, err := p.CreateDeployment(context.Background(), &DeploymentInfo{RepoFullName: "kkz6/test-repo", Branch: "main"})
+	result, err := p.CreateDeployment(testRepositoryContext(), &DeploymentInfo{RepoFullName: "kkz6/test-repo", Branch: "main"})
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	assert.Empty(t, result.StatusesURL)
@@ -360,7 +362,7 @@ func TestPutContents_SendsBase64BodyAndReturnsBlobSHA(t *testing.T) {
 	p := testProvider(t, fake.srv.URL)
 
 	sha, err := p.PutContents(
-		context.Background(),
+		testRepositoryContext(),
 		"100", // installationID
 		"kkz6", "test-repo",
 		".github/workflows/launch-deploy.yml",
@@ -402,7 +404,7 @@ func TestPutContents_DoesNotReturnCommitSHA(t *testing.T) {
 	p := testProvider(t, fake.srv.URL)
 
 	sha, err := p.PutContents(
-		context.Background(),
+		testRepositoryContext(),
 		"100", "kkz6", "test-repo",
 		"some-file.txt", "hello", "commit msg", "", "main",
 	)
@@ -428,7 +430,7 @@ func TestPutContents_UpsertsWhenFileExistsWithoutSHA(t *testing.T) {
 	p := testProvider(t, fake.srv.URL)
 
 	_, err := p.PutContents(
-		context.Background(),
+		testRepositoryContext(),
 		"100", "kkz6", "shared-repo",
 		".github/workflows/launch-deploy.yml",
 		"name: Launch Deploy\n",
@@ -466,7 +468,7 @@ func TestPutContents_CreatesWhenFileAbsent(t *testing.T) {
 	p := testProvider(t, fake.srv.URL)
 
 	_, err := p.PutContents(
-		context.Background(),
+		testRepositoryContext(),
 		"100", "kkz6", "new-repo",
 		".github/workflows/launch-deploy.yml",
 		"name: Launch Deploy\n", "msg", "", "main",
@@ -484,7 +486,7 @@ func TestPutActionsSecret_EncryptsValueAndPosts(t *testing.T) {
 	p := testProvider(t, fake.srv.URL)
 
 	require.NoError(t, p.PutActionsSecret(
-		context.Background(),
+		testRepositoryContext(),
 		"100", "kkz6", "test-repo",
 		"LAUNCH_DEPLOY_TOKEN",
 		"super-secret-token-value",
@@ -524,7 +526,7 @@ func TestPutActionsVariable_PostsCreate(t *testing.T) {
 	p := testProvider(t, fake.srv.URL)
 
 	require.NoError(t, p.PutActionsVariable(
-		context.Background(),
+		testRepositoryContext(),
 		"100", "kkz6", "test-repo",
 		"LAUNCH_APP_ID", "01HJXVHGRGTQRX4P0G3Y8R6CK7",
 	))
@@ -569,7 +571,7 @@ func TestPutActionsVariable_FallsBackToPatchOnConflict(t *testing.T) {
 
 	p := testProvider(t, fake.srv.URL)
 	require.NoError(t, p.PutActionsVariable(
-		context.Background(),
+		testRepositoryContext(),
 		"100", "kkz6", "test-repo",
 		"LAUNCH_APP_ID", "updated-value",
 	))
@@ -606,10 +608,47 @@ func TestDeleteActionsSecret_TreatsNotFoundAsSuccess(t *testing.T) {
 	})
 
 	p := testProvider(t, fake.srv.URL)
-	err := p.DeleteActionsSecret(context.Background(), "100", "kkz6", "test-repo", "LAUNCH_DEPLOY_TOKEN")
+	err := p.DeleteActionsSecret(testRepositoryContext(), "100", "kkz6", "test-repo", "LAUNCH_DEPLOY_TOKEN")
 	assert.NoError(t, err, "404 on DELETE must be treated as idempotent success")
 }
 
 // guard: this file uses fmt only via tests calling Sprintf in the
 // fake — keep importing it so a future refactor doesn't drop it.
 var _ = fmt.Sprintf
+
+type testAuthorization struct{}
+
+func (testAuthorization) TokenScope(context.Context, string) ([]int64, map[string]string, error) {
+	return []int64{1}, map[string]string{"contents": "write", "workflows": "write", "actions": "write", "deployments": "write", "secrets": "write", "variables": "write"}, nil
+}
+func (testAuthorization) Validate(context.Context) error                       { return nil }
+func (testAuthorization) RecordToken(context.Context, string, time.Time) error { return nil }
+func testRepositoryContext() context.Context {
+	return capability.With(context.Background(), testAuthorization{})
+}
+
+func TestDeleteContentsPreservesUserModifiedWorkflow(t *testing.T) {
+	deletes := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/access_tokens") {
+			w.WriteHeader(http.StatusCreated)
+			_ = json.NewEncoder(w).Encode(map[string]any{"token": "test-token", "expires_at": time.Now().Add(time.Hour).UTC().Format(time.RFC3339)})
+			return
+		}
+		if r.Method == http.MethodGet {
+			_ = json.NewEncoder(w).Encode(map[string]any{"sha": "modified-blob", "encoding": "base64", "content": base64.StdEncoding.EncodeToString([]byte("user modified workflow"))})
+			return
+		}
+		if r.Method == http.MethodDelete {
+			deletes++
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer server.Close()
+	p := testProvider(t, server.URL)
+	err := p.DeleteContents(testRepositoryContext(), "42", "org", "repo", ".github/workflows/launch.yml", "main", strings.Repeat("a", 64))
+	require.ErrorContains(t, err, "modified")
+	require.Zero(t, deletes)
+}

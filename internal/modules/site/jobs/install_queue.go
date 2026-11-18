@@ -18,9 +18,10 @@ const TypeInstallQueue = "site:install_queue"
 
 // InstallQueuePayload holds data for queue worker installation
 type InstallQueuePayload struct {
-	SiteID  string  `json:"site_id"`
-	QueueID string  `json:"queue_id"`
-	UserID  *string `json:"user_id,omitempty"`
+	DeploymentID string  `json:"deployment_id,omitempty"`
+	SiteID       string  `json:"site_id"`
+	QueueID      string  `json:"queue_id"`
+	UserID       *string `json:"user_id,omitempty"`
 }
 
 // InstallQueueJob handles queue worker installation
@@ -54,6 +55,13 @@ func (j *InstallQueueJob) Handle(ctx context.Context) error {
 		return fmt.Errorf("failed to find site: %w", err)
 	}
 	j.site = site
+	if queue.SiteID != site.ID || queue.TeamID != site.TeamID {
+		return fmt.Errorf("queue does not belong to deployment site")
+	}
+	deploymentGuard, err := newPostDeploymentCheck(ctx, j.Deps, site, j.Payload.DeploymentID)
+	if err != nil {
+		return err
+	}
 
 	// Get server
 	server, err := j.Deps.ServerRepos.Server().FindByID(ctx, site.ServerID)
@@ -87,6 +95,9 @@ func (j *InstallQueueJob) Handle(ctx context.Context) error {
 		User:         queue.User,
 	})
 
+	if err := deploymentGuard.attach(uploadTask); err != nil {
+		return err
+	}
 	result, err := j.Deps.RunTask(server, uploadTask).AsRoot().Dispatch(ctx)
 	if err != nil {
 		j.Deps.Logger.Error().Err(err).Str("queue_id", queue.ID).Msg("Failed to upload queue config")
@@ -99,6 +110,9 @@ func (j *InstallQueueJob) Handle(ctx context.Context) error {
 
 	// Reload supervisor
 	reloadTask := servertasks.ReloadSupervisor()
+	if err := deploymentGuard.attach(reloadTask); err != nil {
+		return err
+	}
 	result, err = j.Deps.RunTask(server, reloadTask).AsRoot().Dispatch(ctx)
 	if err != nil {
 		j.Deps.Logger.Error().Err(err).Str("queue_id", queue.ID).Msg("Failed to reload supervisor")
@@ -109,6 +123,9 @@ func (j *InstallQueueJob) Handle(ctx context.Context) error {
 		j.Deps.Logger.Error().Str("queue_id", queue.ID).Int("exit_code", result.GetExitCode()).Msg("Supervisor reload failed")
 	}
 
+	if err := deploymentGuard.validate(ctx); err != nil {
+		return err
+	}
 	// Mark queue as installed
 	now := time.Now()
 	queue.InstalledAt = &now
@@ -141,6 +158,15 @@ func (j *InstallQueueJob) Failed(ctx context.Context, err error) {
 		return
 	}
 
+	if j.Payload.DeploymentID != "" {
+		site, err := j.Deps.Repos.Site().FindByID(ctx, j.Payload.SiteID)
+		if err != nil {
+			return
+		}
+		if _, err := newPostDeploymentCheck(ctx, j.Deps, site, j.Payload.DeploymentID); err != nil {
+			return
+		}
+	}
 	now := time.Now()
 	queue.InstalledAt = nil
 	queue.InstallationFailedAt = &now

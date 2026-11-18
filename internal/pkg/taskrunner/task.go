@@ -59,15 +59,58 @@ func NewBaseTask(opts ...TaskOption) *BaseTask {
 
 // BaseTask provides the standard task implementation
 type BaseTask struct {
-	name    string
-	script  string
-	timeout time.Duration
+	name            string
+	script          string
+	timeout         time.Duration
+	secretFiles     map[string]string
+	beforeExecution func(context.Context) error
 
 	// Callbacks
 	OutputCallback   func(output string)
 	FinishedCallback func(ctx context.Context, result *TaskResult)
 	FailedCallback   func(ctx context.Context, result *TaskResult)
 	TimeoutCallback  func(ctx context.Context, result *TaskResult)
+}
+
+// WithSecretFiles supplies transient files separately from the persisted script.
+// Scripts read them from ${LAUNCH_SECRET_DIR}; values are never serialized.
+func WithSecretFiles(files map[string]string) TaskOption {
+	return func(t *BaseTask) { t.SetSecretFiles(files) }
+}
+
+// WithBeforeExecution rechecks authority immediately before credentials are
+// delivered and again before the uploaded task is started. It is never stored.
+func WithBeforeExecution(check func(context.Context) error) TaskOption {
+	return func(t *BaseTask) { t.beforeExecution = check }
+}
+func (t *BaseTask) SetBeforeExecution(check func(context.Context) error) { t.beforeExecution = check }
+func (t *BaseTask) BeforeExecution(ctx context.Context) error {
+	if t.beforeExecution != nil {
+		return t.beforeExecution(ctx)
+	}
+	return nil
+}
+
+func validateTaskExecution(ctx context.Context, task Task) error {
+	if checked, ok := task.(interface{ BeforeExecution(context.Context) error }); ok {
+		return checked.BeforeExecution(ctx)
+	}
+	return nil
+}
+
+func (t *BaseTask) SetSecretFiles(files map[string]string) {
+	t.secretFiles = make(map[string]string, len(files))
+	for name, value := range files {
+		t.secretFiles[name] = value
+	}
+}
+
+func (t *BaseTask) SecretFiles() map[string]string {
+	files := make(map[string]string, len(t.secretFiles))
+	for name, value := range t.secretFiles {
+		files[name] = value
+	}
+	return files
 }
 
 // Name returns the task name

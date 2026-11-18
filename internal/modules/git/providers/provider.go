@@ -74,9 +74,13 @@ type ProviderConfig struct {
 	PrivateKey    string
 	WebhookSecret string
 	AppSlug       string
-	// ClientID and ClientSecret are only used for GitLab/Bitbucket OAuth
+	// OAuth credentials are also required for verified GitHub user connections.
 	ClientID     string
 	ClientSecret string
+	CallbackURL  string
+	// APIURL and BaseURL permit an isolated provider endpoint in integration tests.
+	APIURL  string
+	BaseURL string
 }
 
 // ProviderFactory creates providers based on type

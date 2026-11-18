@@ -3,7 +3,10 @@ package services
 import (
 	"context"
 	"errors"
+	"github.com/kkz6/launch-go/internal/modules/docker/gitaccess"
+	"github.com/kkz6/launch-go/internal/modules/git/access"
 	"path"
+	"strings"
 	"time"
 
 	"github.com/hibiken/asynq"
@@ -13,7 +16,6 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/docker/jobs"
 	"github.com/kkz6/launch-go/internal/modules/docker/models"
 	dockertypes "github.com/kkz6/launch-go/internal/modules/docker/types"
-	gitmodels "github.com/kkz6/launch-go/internal/modules/git/models"
 	gitproviders "github.com/kkz6/launch-go/internal/modules/git/providers"
 	gittypes "github.com/kkz6/launch-go/internal/modules/git/types"
 	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
@@ -188,24 +190,6 @@ func splitAll(s, sep string) []string {
 	return out
 }
 
-// resolveGitHubInstallationID looks up the GitHub App installation
-// id for a given source_controls row. Same shape as the jobs-package
-// helper but kept local so the service path doesn't depend on jobs
-// internals.
-func resolveGitHubInstallationID(ctx context.Context, db *gorm.DB, sourceControlID string) (string, error) {
-	var sc gitmodels.SourceControl
-	if err := db.WithContext(ctx).Where("id = ?", sourceControlID).First(&sc).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return "", fiberutil.Validation("GitHub connection for this app was deleted; reconnect from Settings → Connections.")
-		}
-		return "", err
-	}
-	if sc.InstallationID == nil || *sc.InstallationID == "" {
-		return "", fiberutil.Validation("GitHub App is no longer installed on this account; reinstall from Settings → Connections.")
-	}
-	return *sc.InstallationID, nil
-}
-
 // ghaWorkflowDispatcher is the subset of *gitproviders.GitHubProvider
 // the dispatch path needs. Defined as an interface so unit tests can
 // supply a fake without a real HTTP client.
@@ -223,15 +207,27 @@ func deleteGHAWorkflowRun(
 	factory *gitproviders.ProviderFactory,
 	sourceConfig map[string]any,
 	runID string,
+	teamID string,
 ) error {
 	fields, err := parseGHADispatchFields(sourceConfig)
 	if err != nil {
 		return err
 	}
-	installationID, err := resolveGitHubInstallationID(ctx, db, fields.SourceControlID)
+	snapshot, err := gitaccess.BootstrapSnapshot(sourceConfig)
 	if err != nil {
 		return err
 	}
+	resolved, err := gitaccess.Resolve(ctx, db, factory, teamID, sourceConfig, access.ActionsWrite, snapshot, true)
+	if err != nil {
+		return err
+	}
+	if resolved == nil {
+		return errors.New("repository authorization required")
+	}
+	ctx = resolved.Context(ctx)
+	installationID := resolved.InstallationID
+	names := strings.Split(resolved.Repository.FullName, "/")
+	fields.Owner, fields.Repo = names[0], names[1]
 	gh, err := resolveGitHubDispatcher(factory)
 	if err != nil {
 		return err
@@ -273,6 +269,7 @@ func dispatchGHADeploy(
 	db *gorm.DB,
 	gh ghaWorkflowDispatcher,
 	sourceConfig map[string]any,
+	authorization ...*access.RepositoryAccess,
 ) error {
 	fields, err := parseGHADispatchFields(sourceConfig)
 	if err != nil {
@@ -282,10 +279,17 @@ func dispatchGHADeploy(
 		return fiberutil.Conflict("GitHub Actions setup hasn't finished. Wait for the bootstrap to commit the workflow file, or click Re-sync workflow on the GitHub Actions tab.")
 	}
 
-	installationID, err := resolveGitHubInstallationID(ctx, db, fields.SourceControlID)
-	if err != nil {
+	if len(authorization) != 1 || authorization[0] == nil {
+		return errors.New("repository authorization required")
+	}
+	resolved := authorization[0]
+	if err := resolved.Validate(ctx); err != nil {
 		return err
 	}
+	ctx = resolved.Context(ctx)
+	installationID := resolved.InstallationID
+	names := strings.Split(resolved.Repository.FullName, "/")
+	fields.Owner, fields.Repo = names[0], names[1]
 
 	if err := gh.TriggerWorkflowDispatch(
 		ctx, installationID, fields.Owner, fields.Repo, fields.WorkflowFile, fields.Branch,
@@ -321,7 +325,18 @@ func (s *ApplicationService) deployViaGitHubActions(
 	if err != nil {
 		return nil, err
 	}
-	if err := dispatchGHADeploy(ctx, s.ServiceDeps().DB, gh, map[string]any(app.SourceConfig)); err != nil {
+	snapshot, err := gitaccess.BootstrapSnapshot(app.SourceConfig)
+	if err != nil {
+		return nil, err
+	}
+	resolved, err := gitaccess.Resolve(ctx, s.DB(), s.GitProviders(), teamID, app.SourceConfig, access.ActionsWrite, snapshot, true)
+	if err != nil {
+		return nil, err
+	}
+	if resolved == nil {
+		return nil, errors.New("repository authorization required")
+	}
+	if err := dispatchGHADeploy(ctx, s.ServiceDeps().DB, gh, map[string]any(app.SourceConfig), resolved); err != nil {
 		return nil, err
 	}
 
@@ -353,7 +368,7 @@ func (s *ApplicationService) deployViaGitHubActions(
 		"status":         "pending",
 		"trigger_source": string(dockertypes.DeploymentTriggerGitHubActions),
 	})
-	if task, err := newGHAStepsPollerTask(deployment); err == nil {
+	if task, err := newGHAStepsPollerTask(deployment, snapshot); err == nil {
 		if err := s.EnqueueTask(task); err != nil {
 			s.LogError(err, "enqueue gha steps poller", "application_id", app.ID)
 		}
@@ -372,7 +387,18 @@ func (s *ComposeService) deployViaGitHubActions(
 	if err != nil {
 		return nil, err
 	}
-	if err := dispatchGHADeploy(ctx, s.ServiceDeps().DB, gh, map[string]any(c.SourceConfig)); err != nil {
+	snapshot, err := gitaccess.BootstrapSnapshot(c.SourceConfig)
+	if err != nil {
+		return nil, err
+	}
+	resolved, err := gitaccess.Resolve(ctx, s.DB(), s.GitProviders(), teamID, c.SourceConfig, access.ActionsWrite, snapshot, true)
+	if err != nil {
+		return nil, err
+	}
+	if resolved == nil {
+		return nil, errors.New("repository authorization required")
+	}
+	if err := dispatchGHADeploy(ctx, s.ServiceDeps().DB, gh, map[string]any(c.SourceConfig), resolved); err != nil {
 		return nil, err
 	}
 
@@ -398,7 +424,7 @@ func (s *ComposeService) deployViaGitHubActions(
 		"status":         "pending",
 		"trigger_source": string(dockertypes.DeploymentTriggerGitHubActions),
 	})
-	if task, err := newGHAStepsPollerTask(deployment); err == nil {
+	if task, err := newGHAStepsPollerTask(deployment, snapshot); err == nil {
 		if err := s.EnqueueTask(task); err != nil {
 			s.LogError(err, "enqueue gha steps poller", "compose_id", c.ID)
 		}
@@ -417,15 +443,23 @@ func fetchGHARunSteps(
 	factory *gitproviders.ProviderFactory,
 	sourceConfig map[string]any,
 	runID string,
+	teamID string,
 ) ([]gitproviders.WorkflowJob, error) {
 	fields, err := parseGHADispatchFields(sourceConfig)
 	if err != nil {
 		return nil, fiberutil.Validation(err.Error())
 	}
-	installationID, err := resolveGitHubInstallationID(ctx, db, fields.SourceControlID)
+	resolved, err := gitaccess.Resolve(ctx, db, factory, teamID, sourceConfig, access.ActionsRead, nil, false)
 	if err != nil {
 		return nil, err
 	}
+	if resolved == nil {
+		return nil, errors.New("repository authorization required")
+	}
+	ctx = resolved.Context(ctx)
+	installationID := resolved.InstallationID
+	names := strings.Split(resolved.Repository.FullName, "/")
+	fields.Owner, fields.Repo = names[0], names[1]
 	if factory == nil {
 		return nil, fiberutil.Validation("GitHub provider is not configured on this Launch deployment.")
 	}
@@ -503,11 +537,17 @@ func ghaOverallRunStatus(wfJobs []gitproviders.WorkflowJob) string {
 // for a freshly dispatched GHA deploy. Returns an error (which callers
 // treat as "skip — no live timeline") when the placeholder row has no id
 // yet, since the poller keys everything off the deployment id.
-func newGHAStepsPollerTask(deployment *models.Deployment) (*asynq.Task, error) {
+func newGHAStepsPollerTask(deployment *models.Deployment, snapshot ...*access.Snapshot) (*asynq.Task, error) {
 	if deployment == nil || deployment.ID == "" {
 		return nil, errors.New("deployment has no id; cannot start gha steps poller")
 	}
+	var pinned *access.Snapshot
+	if len(snapshot) > 0 {
+		pinned = snapshot[0]
+	}
 	return jobs.NewPollGHAStepsTask(jobs.PollGHAStepsPayload{
+		GitAccess:        pinned,
+		TeamID:           deployment.TeamID,
 		TargetType:       deployment.TargetType,
 		TargetID:         deployment.TargetID,
 		DeploymentID:     deployment.ID,
