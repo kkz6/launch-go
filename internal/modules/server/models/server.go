@@ -146,7 +146,7 @@ func (s *Server) RootUsername() string {
 }
 
 // GetProvisionCommand returns the one-liner the customer pastes into
-// their server. Pipes to `sudo bash` (not bare `bash`) because the
+// their server. Pipes to `sudo bash` because the
 // script must run as root for the SSH public key to land in
 // /root/.ssh/authorized_keys where Launch's backend looks for it.
 // Most cloud images default to a non-root user (ubuntu/admin/ec2-user)
@@ -165,7 +165,7 @@ func (s *Server) GetAutomaticProvisionCommand() string {
 }
 
 func provisionCommand(scriptURL string) string {
-	return fmt.Sprintf(`(script=$(wget -q -O - '%s') && [ -n "$script" ] || { echo "Could not download the provisioning script. Copy a fresh command from Launch." >&2; exit 1; }; printf '%%s\n' "$script" | sudo bash)`, scriptURL)
+	return fmt.Sprintf("wget -qO- '%s' | sudo bash", scriptURL)
 }
 
 // GetProvisionScriptURL returns a signed URL for the provision script.
