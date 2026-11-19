@@ -255,7 +255,8 @@ func (s *PasskeyService) beginEmailLogin(ctx context.Context, email string) (*pr
 		return nil, fiberutil.BadRequest("Failed to initialize passkey authentication")
 	}
 
-	if err := s.storeSession(ctx, passkeyAuthKeyPrefix+user.ID, session); err != nil {
+	cacheKey := passkeyAuthKeyPrefix + user.ID + ":" + session.Challenge
+	if err := s.storeSession(ctx, cacheKey, session); err != nil {
 		return nil, fiberutil.BadRequest("Failed to start passkey authentication session")
 	}
 
@@ -277,13 +278,14 @@ func (s *PasskeyService) beginDiscoverableLogin(ctx context.Context) (*protocol.
 }
 
 func (s *PasskeyService) findLoginSession(ctx context.Context, userID string, parsedResponse *protocol.ParsedCredentialAssertionData) (*webauthn.SessionData, error) {
-	// Try user-specific session first, then discoverable session
-	session, err := s.loadSession(ctx, passkeyAuthKeyPrefix+userID)
+	// Match the ceremony's challenge so another tab or an abandoned email
+	// login cannot overwrite or consume the session used by passkey autofill.
+	challenge := parsedResponse.Response.CollectedClientData.Challenge
+	session, err := s.loadSession(ctx, passkeyAuthKeyPrefix+userID+":"+challenge)
 	if err == nil {
 		return session, nil
 	}
 
-	challenge := parsedResponse.Response.CollectedClientData.Challenge
 	discoverableKey := passkeyAuthKeyPrefix + passkeyAuthDiscoverable + ":" + challenge
 	session, err = s.loadSession(ctx, discoverableKey)
 	if err != nil {
