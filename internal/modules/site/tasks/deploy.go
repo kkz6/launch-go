@@ -720,7 +720,7 @@ fi
 		ReleaseDirectory: releaseDir,
 		CurrentDirectory: currentDir,
 	}))
-	scriptBuilder.WriteString("\necho 'LAUNCHCTL_RELEASE_SWITCH_COMPLETED'\n")
+	scriptBuilder.WriteString("\necho 'Current release updated.'\n")
 	scriptBuilder.WriteString(runtimeScript)
 	scriptBuilder.WriteString("\n")
 

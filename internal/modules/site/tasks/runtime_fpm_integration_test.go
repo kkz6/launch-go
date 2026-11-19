@@ -49,6 +49,7 @@ func TestRealPHPFPMRuntimeActivation(t *testing.T) {
 	require.NoError(t, ctx.Err(), "PHP-FPM fixture exceeded timeout: %s", output)
 	require.NoError(t, err, "PHP-FPM fixture failed: %s", output)
 	require.Contains(t, string(output), "REAL_PHP_FPM_ACTIVATION_PASSED")
+	require.NotContains(t, string(output), "LAUNCHCTL_")
 	t.Log(string(output))
 }
 
@@ -92,8 +93,9 @@ if runuser -u launcher -- bash /fixture/promote.sh > /tmp/runtime-test/failure.l
     echo 'Expected the denied PHP-FPM reload to fail' >&2
     exit 1
 fi
-grep -q LAUNCHCTL_RELEASE_SWITCH_COMPLETED /tmp/runtime-test/failure.log
-grep -q LAUNCHCTL_RUNTIME_REFRESH_FAILED /tmp/runtime-test/failure.log
+grep -Fq 'Current release updated.' /tmp/runtime-test/failure.log
+grep -Fq 'PHP runtime refresh failed:' /tmp/runtime-test/failure.log
+if grep -q LAUNCHCTL_ /tmp/runtime-test/failure.log; then exit 1; fi
 if grep -q 'Rollback completed successfully' /tmp/runtime-test/failure.log; then exit 1; fi
 serving=$(readlink -f /tmp/runtime-test/site/current)
 test "$serving" != /tmp/runtime-test/site/releases/20261101000000

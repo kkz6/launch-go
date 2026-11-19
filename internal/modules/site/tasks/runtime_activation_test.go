@@ -21,6 +21,9 @@ func TestRuntimeActivationUsesSelectedPHPAndSkipsStaticSites(t *testing.T) {
 			task, err := RefreshRuntime(RuntimeActivationConfig{SitePath: "/home/launcher/app", SiteType: siteType, PhpVersion: &version})
 			require.NoError(t, err)
 			require.Contains(t, task.Script(), "sudo -n /usr/sbin/service php8.3-fpm reload")
+			require.Contains(t, task.Script(), "Refreshing PHP runtime (php8.3-fpm)...")
+			require.Contains(t, task.Script(), "PHP runtime refreshed (php8.3-fpm).")
+			require.NotContains(t, task.Script(), "LAUNCHCTL_RUNTIME_REFRESH_")
 			require.Contains(t, task.Script(), "exec 8<'/usr/sbin/php-fpm8.3'")
 			require.Contains(t, task.Script(), "flock -x -w 30 8")
 			require.NotContains(t, task.Script(), " restart")
@@ -32,6 +35,33 @@ func TestRuntimeActivationUsesSelectedPHPAndSkipsStaticSites(t *testing.T) {
 	require.NoError(t, err)
 	require.NotContains(t, task.Script(), "sudo")
 	require.NotContains(t, task.Script(), "php-fpm")
+}
+
+func TestDeploymentRuntimeLogsShowReadableProgress(t *testing.T) {
+	registerReleaseTemplates(t)
+	for _, mode := range []string{"standard", "zero_downtime"} {
+		t.Run(mode, func(t *testing.T) {
+			root, site := releaseFixture(t)
+			// The standard deployment builder requires an unquoted directory name.
+			site.Path = filepath.Join(root, "site")
+			version := sitetypes.PhpVersion83
+			site.Type, site.PhpVersion = sitetypes.SiteTypeGeneric, &version
+			fixture := fakeRuntime(t, root, "")
+			opts := DeployOptions{Site: site, Deployment: &models.Deployment{}, ReleaseTimestamp: candidateRelease}
+			script := buildStandardScript(opts)
+			if mode == "zero_downtime" {
+				script = buildZeroDowntimeScript(opts)
+			}
+			output := filepath.Join(root, "deployment.log")
+			require.NoError(t, runReleaseScript(t, root, "(\n"+fixture.wrap(script)+"\n) > '"+escapeShellPath(output)+"' 2>&1"))
+			log, err := os.ReadFile(output)
+			require.NoError(t, err)
+			require.Contains(t, string(log), "Refreshing PHP runtime (php8.3-fpm)...")
+			require.Contains(t, string(log), "PHP runtime refreshed (php8.3-fpm).")
+			require.Contains(t, string(log), "Done!")
+			require.NotContains(t, string(log), "LAUNCHCTL_")
+		})
+	}
 }
 
 func TestRuntimeActivationRejectsInvalidConfigurationBeforeCodeChanges(t *testing.T) {
@@ -66,7 +96,8 @@ func TestLegacyDeploymentWithoutPHPVersionDoesNotGuessHTTPRuntime(t *testing.T) 
 	root, site := releaseFixture(t)
 	site.Type = sitetypes.SiteTypeGeneric
 	script := buildZeroDowntimeScript(DeployOptions{Site: site, Deployment: &models.Deployment{}, ReleaseTimestamp: candidateRelease})
-	require.Contains(t, script, "LAUNCHCTL_RUNTIME_REFRESH_SKIPPED")
+	require.Contains(t, script, "PHP runtime refresh skipped: no PHP version is selected.")
+	require.NotContains(t, script, "LAUNCHCTL_RUNTIME_REFRESH_")
 	require.NotContains(t, script, "/usr/sbin/service")
 	require.NoError(t, runReleaseScript(t, root, script))
 	assertCurrentRelease(t, filepath.Join(site.Path, "current"), filepath.Join(site.Path, "releases", candidateRelease))
@@ -84,8 +115,14 @@ func TestRollbackRuntimeFailurePreservesPromotedCodeAndCanRetry(t *testing.T) {
 	fixture := fakeRuntime(t, root, current)
 	rollback := RollbackDeployment(RollbackDeploymentConfig{SitePath: site.Path, ReleaseDirectory: target, CurrentDirectory: current, Runtime: config})
 	output := filepath.Join(root, "output")
-	err := runReleaseScript(t, root, "export RUNTIME_FAIL=1\n"+fixture.wrap(rollback.Script()))
+	err := runReleaseScript(t, root, "(\nexport RUNTIME_FAIL=1\n"+fixture.wrap(rollback.Script())+"\n) > '"+escapeShellPath(output)+"' 2>&1")
 	require.Error(t, err)
+	failureLog, readErr := os.ReadFile(output)
+	require.NoError(t, readErr)
+	require.Contains(t, string(failureLog), "PHP runtime refresh failed: PHP-FPM reload failed.")
+	require.Contains(t, string(failureLog), "Retry runtime refresh; the current code has not been reverted.")
+	require.NotContains(t, string(failureLog), "PHP runtime refreshed")
+	require.NotContains(t, string(failureLog), "LAUNCHCTL_RUNTIME_REFRESH_")
 	assertCurrentRelease(t, current, target)
 	require.FileExists(t, filepath.Join(previous, "sentinel"))
 	trace, err := os.ReadFile(fixture.trace)
@@ -96,7 +133,7 @@ func TestRollbackRuntimeFailurePreservesPromotedCodeAndCanRetry(t *testing.T) {
 	require.NoError(t, err)
 	refresh, err := RefreshRuntime(config)
 	require.NoError(t, err)
-	// Capture markers while the retry uses the already-serving symlink.
+	// Capture progress while the retry uses the already-serving symlink.
 	err = runReleaseScript(t, root, "(\n"+fixture.wrap(refresh.Script())+"\n) > '"+escapeShellPath(output)+"' 2>&1")
 	log, readErr := os.ReadFile(output)
 	require.NoError(t, readErr)
@@ -105,8 +142,9 @@ func TestRollbackRuntimeFailurePreservesPromotedCodeAndCanRetry(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, before.ModTime(), after.ModTime())
 	assertCurrentRelease(t, current, target)
-	require.Contains(t, string(log), "LAUNCHCTL_RUNTIME_REFRESH_COMPLETED php8.3-fpm")
-	require.NotContains(t, string(log), "LAUNCHCTL_RELEASE_SWITCH_COMPLETED")
+	require.Contains(t, string(log), "PHP runtime refreshed (php8.3-fpm).")
+	require.NotContains(t, string(log), "LAUNCHCTL_")
+	require.NotContains(t, string(log), "Current release updated.")
 }
 
 func TestDeploymentRuntimeFailureDoesNotPruneRetainedReleases(t *testing.T) {

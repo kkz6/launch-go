@@ -12,7 +12,7 @@ import (
 )
 
 func TestGitHubCandidatesKeepUsableOrganizationRepositoriesWhenOneIsDenied(t *testing.T) {
-	for _, status := range []int{http.StatusForbidden, http.StatusNotFound} {
+	for _, status := range []int{http.StatusForbidden, http.StatusNotFound, http.StatusUnavailableForLegalReasons} {
 		for _, previouslySelected := range []bool{false, true} {
 			t.Run(fmt.Sprintf("status=%d/selected=%t", status, previouslySelected), func(t *testing.T) {
 				f := newGitFixture(t)

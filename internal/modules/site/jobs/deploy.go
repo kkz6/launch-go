@@ -3,12 +3,16 @@ package jobs
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	gitaccess "github.com/kkz6/launch-go/internal/modules/git/access"
 	siteaccess "github.com/kkz6/launch-go/internal/modules/site/gitaccess"
 	"strings"
+	"time"
 
 	"github.com/hibiken/asynq"
+	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	gitmodels "github.com/kkz6/launch-go/internal/modules/git/models"
 	gitproviders "github.com/kkz6/launch-go/internal/modules/git/providers"
@@ -17,6 +21,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/site/models"
 	"github.com/kkz6/launch-go/internal/modules/site/tasks"
 	sitetypes "github.com/kkz6/launch-go/internal/modules/site/types"
+	"github.com/kkz6/launch-go/internal/pkg/dbtype"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 	"github.com/kkz6/launch-go/internal/pkg/retry"
 )
@@ -76,6 +81,9 @@ func (j *DeployJob) Handle(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to find server: %w", err)
 	}
+	if j.site.TeamID != j.server.TeamID {
+		return fmt.Errorf("site does not belong to server account")
+	}
 
 	// Save the exact release identity before starting any remote work. New names
 	// are deterministic per deployment, including concurrent queue redeliveries.
@@ -113,27 +121,44 @@ func (j *DeployJob) Handle(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if j.site.TeamID != j.server.TeamID {
-		return fmt.Errorf("site does not belong to server account")
+	// Linking the task is required before SSH starts so failed preflight and
+	// installation attempts keep their log target. Preserve repository checks.
+	var taskLinkErr error
+	beforeExecution := config.BeforeExecution
+	config.BeforeExecution = func(ctx context.Context) error {
+		if taskLinkErr != nil {
+			// The background task owns this failure and its queue advancement.
+			// Returning it from Handle too would invoke both failure callbacks.
+			return taskLinkErr
+		}
+		if beforeExecution != nil {
+			return beforeExecution(ctx)
+		}
+		return nil
 	}
-
-	// Create deploy task
 	task := tasks.DeploySiteTask(config)
 
 	// Execute the deploy task on the server in background mode
 	// The task's callback methods (OnSuccess, OnFailure, OnExpired) will handle completion
 	// - In production mode: via HTTP webhook callbacks
 	// - In local mode: via SSH streaming with direct callback invocation
-	taskModel, err := j.Deps.RunTask(j.server, task).AsUser(j.site.User).TrackInDB().RunInBackground(ctx)
+	taskModel, err := j.Deps.RunTask(j.server, task).AsUser(j.site.User).ForSite(j.site.ID).TrackInDB().
+		OnTaskCreated(func(taskID string) {
+			result := j.Deps.DB.WithContext(ctx).Model(&models.Deployment{}).
+				Where("id = ? AND site_id = ? AND team_id = ?", j.deployment.ID, j.site.ID, j.site.TeamID).
+				Update("task_id", taskID)
+			if result.Error != nil {
+				taskLinkErr = fmt.Errorf("persist deployment task: %w", result.Error)
+			} else if result.RowsAffected != 1 {
+				taskLinkErr = fmt.Errorf("deployment scope changed before linking task")
+			} else {
+				j.deployment.TaskID = &taskID
+			}
+		}).RunInBackground(ctx)
 	if err != nil {
-		// Failed handles the terminal state and queue advancement once.
-		return fmt.Errorf("failed to start deployment: %w", err)
-	}
-
-	// Update deployment with task ID
-	j.deployment.TaskID = &taskModel.ID
-	if updateErr := j.Deps.Repos.Deployment().Update(ctx, j.deployment); updateErr != nil {
-		j.Deps.Logger.Error().Err(updateErr).Msg("Failed to update deployment with task ID")
+		// Failed handles the terminal state and queue advancement once. Include
+		// linkage failures when connection preflight stopped before its guard ran.
+		return fmt.Errorf("failed to start deployment: %w", errors.Join(taskLinkErr, err))
 	}
 
 	logMsg := "Deployment task started in background"
@@ -160,12 +185,33 @@ func (j *DeployJob) Failed(ctx context.Context, err error) {
 		Str("deployment_id", j.Payload.DeploymentID).
 		Msg(logMsg)
 
-	// Update deployment status
-	deployment, findErr := j.Deps.Repos.Deployment().FindByID(ctx, j.Payload.DeploymentID)
-	if findErr == nil {
-		site, _ := j.Deps.Repos.Site().FindByID(ctx, j.Payload.SiteID)
-		j.handleDeploymentFailure(ctx, deployment, site, err.Error())
+	j.handleDeploymentFailure(ctx, deploymentPreparationFailureMessage(err))
+}
+
+// Only known preparation errors may appear in saved diagnostics. Upstream errors
+// can contain credentials or environment values, so never persist their raw text.
+func deploymentPreparationFailureMessage(err error) string {
+	if errors.Is(err, gitaccess.ErrAccessDenied) {
+		return "Repository access is unavailable. Reconnect GitHub and select this site's repository for this account, then start a new deployment."
 	}
+	if errors.Is(err, gitaccess.ErrStaleAccess) {
+		return "Repository access changed after this deployment was requested. Confirm the selected repository, then start a new deployment."
+	}
+	if err != nil {
+		switch err.Error() {
+		case "select a connection and a repository together", "selected repository does not belong to this connection":
+			return "The repository selection is incomplete or does not match its connection. Select the connection and repository in site settings, then start a new deployment."
+		case "selected source connection is unavailable", "repository connection is unavailable", "cannot obtain selected repository credentials":
+			return "The selected repository connection is unavailable. Check or reconnect it and select this site's repository, then start a new deployment."
+		case "repository authorization is missing; start a new deployment", "repository authorization is invalid; start a new deployment", "legacy deployment has no repository authorization; start a new deployment":
+			return "This deployment has no valid saved repository authorization. Confirm the repository selection and start a new deployment."
+		case "dependency repository is unavailable", "cannot obtain selected dependency credentials":
+			return "A selected dependency repository is unavailable. Check its connection and selection for this account, then start a new deployment."
+		case "cannot name deployment release without creation time":
+			return "The deployment is missing the information needed to prepare its release. Start a new deployment."
+		}
+	}
+	return "Deployment preparation failed. Check the site's repository and deployment settings, then start a new deployment."
 }
 
 func (j *DeployJob) buildDeployConfig(ctx context.Context, site *models.Site, deployment *models.Deployment, teamID string) (tasks.DeployOptions, error) {
@@ -375,31 +421,84 @@ func (j *DeployJob) broadcastDeploymentProgress(ctx context.Context, siteID, dep
 	})
 }
 
-func (j *DeployJob) handleDeploymentFailure(ctx context.Context, deployment *models.Deployment, site *models.Site, message string) {
-	// A preflight task callback may already have recorded this failure and
-	// advanced the queue before Handle returns its error to Failed.
-	result := j.Deps.DB.WithContext(ctx).Model(&models.Deployment{}).
-		Where("id = ? AND status IN ?", deployment.ID, []sitetypes.DeploymentStatus{
-			sitetypes.DeploymentStatusPending, sitetypes.DeploymentStatusInstalling,
-		}).Update("status", sitetypes.DeploymentStatusFailed)
-	if result.Error != nil {
-		j.Deps.Logger.Error().Err(result.Error).Msg("Failed to update deployment status to failed")
-		return
-	}
-	if result.RowsAffected == 0 {
-		return
-	}
-	deployment.Status = sitetypes.DeploymentStatusFailed
-
-	// If first deployment failed, mark site installation as failed
-	if site != nil && site.InstalledAt == nil {
-		if err := j.Deps.Repos.Site().MarkAsFailed(ctx, site.ID); err != nil {
-			j.Deps.Logger.Error().Err(err).Msg("Failed to update site installation_failed_at")
+func (j *DeployJob) handleDeploymentFailure(ctx context.Context, message string) {
+	var site models.Site
+	var deployment models.Deployment
+	changed := false
+	err := j.Deps.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// Read the scope first, then lock server -> site -> deployment so ownership
+		// cannot change between validation and attaching the diagnostic log.
+		var scope models.Site
+		if err := tx.Select("id", "server_id", "team_id").First(&scope, "id = ?", j.Payload.SiteID).Error; err != nil {
+			return err
 		}
+		var server servermodels.Server
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Select("id", "team_id").
+			Where("id = ? AND team_id = ?", scope.ServerID, scope.TeamID).First(&server).Error; err != nil {
+			return err
+		}
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+			Where("id = ? AND server_id = ? AND team_id = ?", scope.ID, server.ID, server.TeamID).First(&site).Error; err != nil {
+			return err
+		}
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+			Where("id = ? AND site_id = ? AND team_id = ?", j.Payload.DeploymentID, site.ID, site.TeamID).First(&deployment).Error; err != nil {
+			return err
+		}
+		if (j.site != nil && (j.site.ID != site.ID || j.site.ServerID != site.ServerID || j.site.TeamID != site.TeamID)) ||
+			(j.server != nil && (j.server.ID != server.ID || j.server.TeamID != server.TeamID)) ||
+			(j.deployment != nil && (j.deployment.ID != deployment.ID || j.deployment.SiteID != site.ID || j.deployment.TeamID != site.TeamID)) {
+			return errors.New("deployment ownership changed before recording failure")
+		}
+		// A task callback may already have handled this attempt. Never backfill
+		// terminal history or advance the deployment queue a second time.
+		if deployment.Status != sitetypes.DeploymentStatusPending && deployment.Status != sitetypes.DeploymentStatusInstalling {
+			return nil
+		}
+		fields := map[string]any{"status": sitetypes.DeploymentStatusFailed}
+		if deployment.TaskID == nil || *deployment.TaskID == "" {
+			task := servermodels.Task{
+				Name: "Prepare site deployment", Type: "site:deployment_preparation",
+				User: site.User, Status: "failed",
+				SiteID: &site.ID, Output: dbtype.EncryptedString(message),
+			}
+			task.ServerID = server.ID
+			if err := tx.Create(&task).Error; err != nil {
+				return err
+			}
+			fields["task_id"] = task.ID
+			deployment.TaskID = &task.ID
+		} else {
+			var task servermodels.Task
+			if err := tx.Select("id").Where("id = ? AND server_id = ? AND (site_id IS NULL OR site_id = ?)", *deployment.TaskID, server.ID, site.ID).
+				First(&task).Error; err != nil {
+				return err
+			}
+		}
+		if err := tx.Model(&models.Deployment{}).
+			Where("id = ? AND site_id = ? AND team_id = ?", deployment.ID, site.ID, site.TeamID).Updates(fields).Error; err != nil {
+			return err
+		}
+		if site.InstalledAt == nil {
+			if err := tx.Model(&models.Site{}).Where("id = ? AND server_id = ? AND team_id = ?", site.ID, server.ID, site.TeamID).
+				Update("installation_failed_at", time.Now().UTC()).Error; err != nil {
+				return err
+			}
+		}
+		deployment.Status = sitetypes.DeploymentStatusFailed
+		changed = true
+		return nil
+	})
+	if err != nil {
+		j.Deps.Logger.Error().Err(err).Msg("Failed to record deployment preparation failure")
+		return
+	}
+	if !changed {
+		return
 	}
 
 	// Update deployment status on git provider
-	j.updateProviderDeploymentStatus(ctx, site, deployment, gitproviders.DeploymentStatusFailure)
+	j.updateProviderDeploymentStatus(ctx, &site, &deployment, gitproviders.DeploymentStatusFailure)
 
 	failMsg := "Deployment failed"
 	if j.Payload.ZeroDowntime {

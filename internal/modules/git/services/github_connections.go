@@ -60,10 +60,13 @@ type GitHubInstallationChoice struct {
 	AvatarURL    string `json:"avatar_url"`
 }
 type GitHubCandidatesResponse struct {
-	Repositories         []GitHubRepositoryChoice `json:"repositories"`
-	SourceControlID      *string                  `json:"source_control_id"`
-	ConnectionGeneration uint64                   `json:"connection_generation"`
-	SelectionVersion     uint64                   `json:"selection_version"`
+	Repositories         []GitHubRepositoryChoice  `json:"repositories"`
+	SelectedRepositories *[]GitHubRepositoryChoice `json:"selected_repositories,omitempty"`
+	Page                 int                       `json:"page,omitempty"`
+	NextPage             int                       `json:"next_page,omitempty"`
+	SourceControlID      *string                   `json:"source_control_id"`
+	ConnectionGeneration uint64                    `json:"connection_generation"`
+	SelectionVersion     uint64                    `json:"selection_version"`
 }
 type GitHubRepositoryChoice struct {
 	Unavailable        bool                   `json:"unavailable,omitempty"`
@@ -278,7 +281,7 @@ func (s *SourceControlService) CompleteGitHubCallback(ctx context.Context, teamI
 func (s *SourceControlService) verifiedInstallation(ctx context.Context, p *providers.GitHubProvider, token, id string) (map[string]any, error) {
 	installs, err := p.GetUserInstallations(ctx, token)
 	if err != nil {
-		return nil, errAttempt
+		return nil, s.githubReviewError("installations", err)
 	}
 	for _, i := range installs {
 		if providers.ExtractFloatID(i, "id") == id && providers.ExtractFloatID(i, "app_id") == p.Config().AppID && i["suspended_at"] == nil {
@@ -371,8 +374,14 @@ func (s *SourceControlService) reviewGitHubConnection(ctx context.Context, attem
 	}
 	return &connection, nil
 }
-func (s *SourceControlService) GitHubCandidates(ctx context.Context, id, teamID, userID, sessionID, installationID string) (GitHubCandidatesResponse, error) {
+func (s *SourceControlService) GitHubCandidates(ctx context.Context, id, teamID, userID, sessionID, installationID string, pages ...int) (GitHubCandidatesResponse, error) {
 	out := GitHubCandidatesResponse{Repositories: []GitHubRepositoryChoice{}}
+	if len(pages) > 1 || (len(pages) == 1 && (pages[0] < 1 || pages[0] > 10000)) {
+		return out, fiberutil.BadRequest("Invalid repository page")
+	}
+	if len(pages) == 1 {
+		out.Page = pages[0]
+	}
 	a, err := s.loadAttempt(ctx, id, teamID, userID, sessionID)
 	if err != nil {
 		return out, err
@@ -395,14 +404,19 @@ func (s *SourceControlService) GitHubCandidates(ctx context.Context, id, teamID,
 	}
 	authorization, token, err := access.UserToken(ctx, s.DB(), p, *a.AuthorizationID)
 	if err != nil {
-		return out, errAttempt
+		return out, s.githubReviewError("user_token", err)
 	}
 	if _, err = s.verifiedInstallation(ctx, p, token, installationID); err != nil {
 		return out, err
 	}
-	repos, err := p.GetUserInstallationRepositories(ctx, token, installationID)
+	var repos []map[string]any
+	if out.Page > 0 {
+		repos, out.NextPage, err = p.GetUserInstallationRepositoriesPage(ctx, token, installationID, out.Page)
+	} else {
+		repos, err = p.GetUserInstallationRepositories(ctx, token, installationID)
+	}
 	if err != nil {
-		return out, err
+		return out, s.githubReviewError("repositories", err)
 	}
 	selected := map[string]bool{}
 	saved := map[string]models.SourceControlRepository{}
@@ -419,9 +433,16 @@ func (s *SourceControlService) GitHubCandidates(ctx context.Context, id, teamID,
 	}
 	for _, r := range repos {
 		full := str(r, "full_name")
-		admin, err := p.UserRepositoryAdmin(ctx, token, full, authorization.Login)
-		if err != nil {
-			return out, err
+		// The user-token repository response describes this user's permissions.
+		// Paged display can use its strict boolean; Save still verifies each
+		// chosen repository independently before issuing any grant.
+		permissions, _ := r["permissions"].(map[string]any)
+		admin, hasAdmin := permissions["admin"].(bool)
+		if out.Page == 0 || !hasAdmin {
+			admin, err = p.UserRepositoryAdmin(ctx, token, full, authorization.Login)
+			if err != nil {
+				return out, s.githubReviewError("repository_permissions", err)
+			}
 		}
 		if !admin {
 			continue
@@ -437,15 +458,30 @@ func (s *SourceControlService) GitHubCandidates(ctx context.Context, id, teamID,
 		emitted[remoteID] = true
 		out.Repositories = append(out.Repositories, GitHubRepositoryChoice{AffectedWorkloads: impact, GitHubRepositoryID: remoteID, FullName: full, Name: str(r, "name"), DefaultBranch: str(r, "default_branch"), Private: boolean(r, "private"), Selected: selected[remoteID]})
 	}
+	if out.Page == 1 {
+		selectedRepositories := []GitHubRepositoryChoice{}
+		out.SelectedRepositories = &selectedRepositories
+	}
 	for remoteID, repo := range saved {
-		if emitted[remoteID] {
+		if out.Page > 1 || (out.Page == 0 && emitted[remoteID]) {
 			continue
 		}
 		impact, err := s.repositoryImpact(ctx, teamID, *out.SourceControlID, remoteID)
 		if err != nil {
 			return out, err
 		}
-		out.Repositories = append(out.Repositories, GitHubRepositoryChoice{GitHubRepositoryID: remoteID, FullName: repo.FullName, Name: repo.Name, DefaultBranch: repo.DefaultBranch, Private: !repo.Public, Selected: true, Unavailable: true, AffectedWorkloads: impact})
+		choice := GitHubRepositoryChoice{GitHubRepositoryID: remoteID, FullName: repo.FullName, Name: repo.Name, DefaultBranch: repo.DefaultBranch, Private: !repo.Public, Selected: true, AffectedWorkloads: impact}
+		if out.Page == 1 {
+			*out.SelectedRepositories = append(*out.SelectedRepositories, choice)
+		} else {
+			choice.Unavailable = true
+			out.Repositories = append(out.Repositories, choice)
+		}
+	}
+	if out.SelectedRepositories != nil {
+		sort.Slice(*out.SelectedRepositories, func(i, j int) bool {
+			return (*out.SelectedRepositories)[i].FullName < (*out.SelectedRepositories)[j].FullName
+		})
 	}
 	sort.Slice(out.Repositories, func(i, j int) bool { return out.Repositories[i].FullName < out.Repositories[j].FullName })
 	return out, nil
@@ -514,14 +550,14 @@ func (s *SourceControlService) SelectGitHubRepositories(ctx context.Context, id,
 	}
 	authorization, token, err := access.UserToken(ctx, s.DB(), p, *a.AuthorizationID)
 	if err != nil {
-		return out, errAttempt
+		return out, s.githubReviewError("user_token", err)
 	}
 	if _, err = s.verifiedInstallation(ctx, p, token, req.InstallationID); err != nil {
 		return out, err
 	}
 	inventory, err := p.GetUserInstallationRepositories(ctx, token, req.InstallationID)
 	if err != nil {
-		return out, err
+		return out, s.githubReviewError("repositories", err)
 	}
 	chosen := map[string]map[string]any{}
 	for _, repo := range inventory {
