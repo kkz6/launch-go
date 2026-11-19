@@ -29,7 +29,7 @@ fi
 
 {{ template "deployment/make_deployment_current.sh" . }}
 
-echo 'LAUNCHCTL_RELEASE_SWITCH_COMPLETED'
+echo 'Current release updated.'
 {{ .RuntimeScript }}
 
 echo "Rollback completed successfully!"

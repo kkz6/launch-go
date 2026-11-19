@@ -18,6 +18,7 @@ func TestGitHubRepositoryPermissionDenialsDoNotHideOtherCandidates(t *testing.T)
 		admin   bool
 		wantErr bool
 	}{
+		{name: "repository restricted by GitHub", status: http.StatusUnavailableForLegalReasons, body: "{\"message\":\"Repository access blocked\"}"},
 		{name: "administrator", status: http.StatusOK, body: `{"permission":"admin"}`, admin: true},
 		{name: "write only", status: http.StatusOK, body: `{"permission":"write"}`},
 		{name: "organization policy denies repository", status: http.StatusForbidden, body: `{"message":"Resource not accessible by integration"}`},

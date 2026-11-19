@@ -58,7 +58,7 @@ func renderDeploymentRuntime(config RuntimeActivationConfig) (string, error) {
 	// Older sites can deploy using the default CLI binary without a recorded
 	// HTTP runtime. Preserve those deployments without guessing an FPM service.
 	if config.SiteType.IsValid() && config.SiteType != sitetypes.SiteTypeStatic && config.PhpVersion == nil {
-		return "echo 'LAUNCHCTL_RUNTIME_REFRESH_SKIPPED: no PHP version is selected. Select the site PHP version to enable automatic runtime refresh.' >&2\n", nil
+		return "echo 'PHP runtime refresh skipped: no PHP version is selected. Select the site PHP version to enable automatic runtime refresh.' >&2\n", nil
 	}
 	return renderRuntimeActivation(config)
 }

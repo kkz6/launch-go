@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net/http"
 	"net/url"
 	"strings"
@@ -54,11 +53,21 @@ func (p *GitHubProvider) userToken(ctx context.Context, body map[string]string) 
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("GitHub authorization failed: status %d", resp.StatusCode)
+		failure := githubUserResponseError(resp)
+		if resp.StatusCode == http.StatusBadRequest {
+			var result GitHubUserToken
+			if json.NewDecoder(resp.Body).Decode(&result) == nil && result.Error == "bad_refresh_token" {
+				failure.AuthorizationInvalid = true
+			}
+		}
+		return nil, failure
 	}
 	var token GitHubUserToken
 	if err := json.NewDecoder(resp.Body).Decode(&token); err != nil {
 		return nil, err
+	}
+	if token.Error == "bad_refresh_token" {
+		return nil, &GitHubUserAccessError{StatusCode: resp.StatusCode, AuthorizationInvalid: true}
 	}
 	if token.Error != "" || token.AccessToken == "" || token.ExpiresIn <= 0 || token.RefreshToken == "" || token.RefreshTokenExpiresIn <= 0 {
 		return nil, errors.New("GitHub authorization requires reconnect")
@@ -84,7 +93,7 @@ func (p *GitHubProvider) userObject(ctx context.Context, token, path string) (ma
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("GitHub user access unavailable: status %d", resp.StatusCode)
+		return nil, githubUserResponseError(resp)
 	}
 	var result map[string]any
 	err = decodeGitHubJSON(resp, &result)
@@ -99,7 +108,11 @@ func (p *GitHubProvider) GetUserInstallationRepositories(ctx context.Context, to
 	if !decimalID(installationID) {
 		return nil, ErrInstallationNotFound
 	}
-	return p.userPages(ctx, token, "/user/installations/"+installationID+"/repositories?per_page=100", "repositories")
+	repositories, err := p.userPages(ctx, token, "/user/installations/"+installationID+"/repositories?per_page=100", "repositories")
+	if err != nil {
+		return nil, err
+	}
+	return availableUserRepositories(repositories), nil
 }
 
 func (p *GitHubProvider) UserRepositoryAdmin(ctx context.Context, token, fullName, login string) (bool, error) {
@@ -114,7 +127,7 @@ func (p *GitHubProvider) UserRepositoryAdmin(ctx context.Context, token, fullNam
 	defer resp.Body.Close()
 	// An installation can list repositories that this user cannot administer.
 	// Deny that repository without preventing review of unrelated candidates.
-	if resp.StatusCode == http.StatusNotFound {
+	if resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusUnavailableForLegalReasons {
 		return false, nil
 	}
 	if resp.StatusCode == http.StatusForbidden && resp.Header.Get("X-RateLimit-Remaining") != "0" && resp.Header.Get("Retry-After") == "" {
@@ -127,7 +140,11 @@ func (p *GitHubProvider) UserRepositoryAdmin(ctx context.Context, token, fullNam
 		}
 	}
 	if resp.StatusCode != http.StatusOK {
-		return false, fmt.Errorf("GitHub user access unavailable: status %d", resp.StatusCode)
+		failure := githubUserResponseError(resp)
+		// Ordinary denials returned above. A remaining 403 represents a
+		// rate limit or an unreadable response, not evidence of revocation.
+		failure.Retryable = failure.Retryable || resp.StatusCode == http.StatusForbidden
+		return false, failure
 	}
 	var result struct{ Permission string }
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
@@ -149,8 +166,9 @@ func (p *GitHubProvider) userPages(ctx context.Context, token, path, key string)
 			return nil, err
 		}
 		if resp.StatusCode != http.StatusOK {
+			failure := githubUserResponseError(resp)
 			_ = resp.Body.Close()
-			return nil, fmt.Errorf("GitHub user access unavailable: status %d", resp.StatusCode)
+			return nil, failure
 		}
 		next := ParseLinkHeader(resp.Header.Get("Link"))
 		var page map[string]any

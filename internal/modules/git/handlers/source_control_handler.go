@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"strconv"
+
 	"github.com/gofiber/fiber/v2"
 
 	"github.com/kkz6/launch-go/internal/modules/git/contracts"
@@ -224,7 +226,15 @@ func (h *SourceControlHandler) GitHubAttempt(r *fiberctx.Request) error {
 }
 func (h *SourceControlHandler) GitHubCandidates(r *fiberctx.Request) error {
 	session, _ := r.Locals("sessionID").(string)
-	result, err := h.service.GitHubCandidates(r.Context(), r.Params("attemptId"), r.TeamID, r.UserID, session, r.Params("installationId"))
+	var pages []int
+	if r.Ctx.Context().QueryArgs().Has("page") {
+		page, err := strconv.Atoi(r.Query("page"))
+		if err != nil || page < 1 || page > 10000 {
+			return fiberctx.BadRequest("Invalid repository page")
+		}
+		pages = append(pages, page)
+	}
+	result, err := h.service.GitHubCandidates(r.Context(), r.Params("attemptId"), r.TeamID, r.UserID, session, r.Params("installationId"), pages...)
 	if err != nil {
 		return err
 	}
